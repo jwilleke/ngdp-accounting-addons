@@ -18,7 +18,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-002](#d-002-recurring-jobs-come-from-ngdpbase-core) | 2026-10-04 | Recurring jobs come from ngdpbase core, not a private scheduler | Accepted |
 | [D-003](#d-003-learn-payment-outcomes-by-asking-not-by-webhook) | 2026-10-04 | Learn payment outcomes by asking the service, not by inbound webhook | Accepted |
 | [D-004](#d-004-paymentmanager-with-configurable-providers) | 2026-10-04 | `PaymentManager` with configurable, capability-declaring providers | Accepted |
-| [D-005](#d-005-where-paymentmanager-lives) | 2026-10-04 | Where `PaymentManager` lives | Proposed |
+| [D-005](#d-005-paymentmanager-lives-in-ngdpbase-core) | 2026-10-04 | `PaymentManager` lives in ngdpbase core, off by default | Accepted |
 | [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
 | [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
@@ -113,42 +113,52 @@ donations and events call `PaymentManager`, never a service directly.
 __Consequences:__
 
 - Several providers can be active at once (for example Stripe online plus cash at the door), unlike
-  ngdpbase's usual single `ngdpbase.<capability>.provider`. Add-on configuration lives under
-  `ngdpbase.addons.<slug>.*`, and in the add-on merge layer maps merge per entry while plain arrays
-  replace wholesale, so providers are a map keyed by provider name, not a list:
-  `ngdpbase.addons.<slug>.providers.<name>.enabled` and `.<name>.*` settings. Keys use the `$VAR`
-  form.
-- Correction, 2026-10-04: this entry first named the key `ngdpbase.payment.providers` (a list). That
-  is not where add-on configuration lives (ngdpbase `docs/guides/addons-developer-guide.md`, sections
-  3 and Standing rules).
+  ngdpbase's usual single `ngdpbase.<capability>.provider`, so providers are a map keyed by provider
+  name, not a list (plain arrays are replaced wholesale on merge). Since D-005 the keys are core keys
+  (proposed `ngdpbase.payment.providers.<name>.enabled` and `.<name>.*`; final names are set in
+  [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614)).
+- Correction, 2026-10-04: this entry first named the key `ngdpbase.payment.providers` (a list), then
+  `ngdpbase.addons.<slug>.providers` while the manager was planned for this repository. D-005 moved it
+  to core.
 - Providers declare capabilities (for example `checkout`, `sync`, `refund`, `import`,
   `manualEntry`), and the interface offers only what the configured providers support. Zelle, for
   instance, has no API for small organizations, so it is record-or-import only.
 - The manual provider is always available, so payments work with nothing configured.
-- Every ledger transaction carries `provider` and the service's `externalId`, unique together, so a
-  repeated sync or import posts once. The ledger knows nothing about any one service.
+- Every payment carries `provider` and the service's `externalId`, unique together, so a repeated
+  sync or import is recorded once; ledger transactions keep both. The ledger knows nothing about any
+  one service.
 - Toast's API access and refund support are unverified.
 
-## D-005: Where PaymentManager lives
+## D-005: PaymentManager lives in ngdpbase core
 
-- __Status:__ Proposed
+- __Status:__ Accepted
 - __Date:__ 2026-10-04
-- __Links:__ [D-004](#d-004-paymentmanager-with-configurable-providers)
+- __Links:__ [D-004](#d-004-paymentmanager-with-configurable-providers), [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614),
+  [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3)
 
-__Options:__
+__Context:__ `PaymentManager` (D-004) could live in this repository's payments add-on, registered with
+`engine.registerManager`, or in ngdpbase core. Other add-ons (calendar reservations, paid forms, events
+outside accounting) also need to take money. A core manager can ship disabled and not load until
+enabled, as OIDC does (`oidc-auth-server.enabled: false`).
 
-- __In this repository (recommended):__ the payments add-on registers it with
-  `engine.registerManager`, built in the shape of a core manager so it can move into ngdpbase later
-  if add-ons outside accounting need payments.
-- __In ngdpbase core now:__ available to every add-on, but adds a third core dependency to this
-  project.
+__Decision:__ `PaymentManager`, `BasePaymentProvider` and the providers live in ngdpbase core, off by
+default and not loaded until enabled. Requested as [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614).
 
-__Evidence:__ ngdpbase's add-on guide shows add-ons registering their own managers with
-`engine.registerManager` (section 6) and says core changes must be self-contained, with no
-add-on-specific code in the core repo (section 10). A payments manager written for these add-ons fits
-the first; moving it to core would need it to be general first.
+__Consequences:__
 
-__Decision:__ Pending.
+- Core stays general (ngdpbase's add-on guide, section 10: no add-on-specific code in core). Core
+  starts payments, syncs outcomes, refunds, keeps sync cursors and `provider` plus `externalId`, and
+  hands each outcome to the add-on that registered for it, with an opaque `reference` the add-on
+  supplied (as forms hands off submissions with `registerHandler`). Core knows nothing about funds,
+  invoices or the ledger.
+- This repository keeps the ledger, funds, dues, donations, events, receipts and reports, and
+  registers a handler that turns payment outcomes into ledger transactions.
+- Configuration keys are core keys from the start, so operators never face a rename.
+- One more core dependency: payments wait on an ngdpbase release, and the minimum ngdpbase version
+  rises with it. Suggested order in [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614): manager, manual provider and hand-off first; Stripe
+  next; others later. Sync depends on D-002 (ngdpbase#1611).
+- The proposed `org-payments` add-on shrinks to the payment screens and the hand-off handler, or folds
+  into `org-ledger`; that is part of requirements.md open question 3 (layout and slugs).
 
 ## D-006: Every add-on runs on bare metal, Docker and Kubernetes
 
