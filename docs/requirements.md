@@ -88,8 +88,10 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 | `fund` | Required fund id; defaults to `general` |
 | `category` | Income or expense category: dues, donation, event fee, processing fee, refund, supplies, and so on (configurable list) |
 | `party` | Who paid or was paid: a reference to an ngdpbase Person (`PersonManager`, `src/managers/PersonManager.ts`), or a free-text name |
-| `method` | `stripe-card`, `stripe-ach`, `cash`, `check`, `other` |
-| `reference` | Check number, Stripe object id, or other external reference |
+| `method` | How the money moved: `card`, `ach`, `cash`, `check`, `bank-transfer`, `other` |
+| `provider` | The ngdpbase payment provider that recorded it (`manual`, `stripe`, ...), or empty for an entry made directly in the ledger ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers), [D-005](plans/decisions.md#d-005-paymentmanager-lives-in-ngdpbase-core)) |
+| `externalId` | The provider's own id for the payment. `provider` plus `externalId` is unique, so a payment delivered twice is posted once |
+| `reference` | Check number or other human reference |
 | `source` | Link to what created it: `{ type: dues-invoice, donation, event-registration, reimbursement, manual, adjustment; id }` |
 | `status` | `pending` (for example ACH not yet settled), `posted`, `voided` |
 | `deductible` | For donations: the tax-deductible amount, and the value of goods or services received, if any |
@@ -107,6 +109,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - __Posted transactions are not edited in place.__ A correction voids the original (with a required reason) and posts a replacement, linked both ways. Small non-financial fixes (memo, attachment) are allowed and audited.
 - __Nothing financial is hard-deleted.__ Voided transactions stay visible in history and exports.
 - __Audit trail.__ Every create, post, void, edit, refund, export and settings change is recorded with actor, time, before and after values, and reason. Use ngdpbase's audit path (`recordAuditEvent` in `src/utils/auditEvents.ts`, `docs/guides/audit-developer-guide.md`) and also keep the ledger's own append-only change history, so the record survives with the add-on's data.
+- __Audit events.__ ngdpbase names events `{target}-{action}` and holds them in `ngdpbase.audit.events`, a map, so the ledger declares its own events in its `config/default-config.json`. Each event sets `on-failure`: `refuse` means the action does not complete unless the record does (record first, then act); `continue` means the action proceeds and a lost record is counted (ngdpbase `docs/guides/audit-developer-guide.md`). Proposed: `refuse` for every financial write (post, void, refund, transfer, period lock, export).
 - __Processing fees.__ Stripe fees are recorded so deposits reconcile (proposed: gross amount as income, fee as a separate `out` transaction in the same fund; see open questions).
 - __Period lock (optional).__ The treasurer can lock a month after the board report; posting into a locked month needs the high-assurance void and adjust permission.
 - __No double entry.__ There are no accounts, debits or credits. The export carries enough detail for the real books to do that.
@@ -383,8 +386,8 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Add-ons can add keys to `ngdpbase.config.secret-keys` | Bug [ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612); fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): becomes a set that every layer extends ([D-008](plans/decisions.md#d-008-where-secret-values-live)) | Payment provider keys |
 | Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, payment sync. Tracked in [ngdpbase#1611](https://github.com/jwilleke/ngdpbase/issues/1611) and [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) ([D-002](plans/decisions.md#d-002-recurring-jobs-come-from-ngdpbase-core)) |
 | Add-on-owned system-category and vault | Planned, [#1507](https://github.com/jwilleke/ngdpbase/issues/1507) | Board memory pages (Phase 2) |
-| Add-on use of `DatabaseManager` tables and migrations | Not documented | Ledger storage, if SQLite is chosen |
-| Add-on audit event names | To confirm in `docs/guides/audit-developer-guide.md` | Audit trail |
+| Add-on use of `DatabaseManager` tables and migrations | Not supported (checked 2026-10-04): the migration ledger is one core file (`src/providers/databaseMigrations.ts`), the database is off by default (`ngdpbase.database.provider: none`), and nothing in core stores rows yet (`docs/managers/DatabaseManager.md`) | Ledger storage, if SQLite is chosen |
+| Add-on audit event names | Partly: an add-on can declare events in its config, because `ngdpbase.audit.events` is a map. But emitted names are typed by core's `AUDIT_EVENT` (`src/utils/auditEventNames.ts`), so add-on code needs a cast, and `npm run lint:audit` covers only add-ons inside the ngdpbase repository | Audit trail |
 
 ## 12. Phasing
 
@@ -399,7 +402,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 4. __Step-up approach:__ treasurer at `required-aal: 2` is decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)). Remaining: also put the high-assurance permissions on ngdpbase's step-up list for a recent factor? Should core still gain an assurance condition on policies?
 5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
 6. __TOTP:__ is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
-7. __Storage:__ JSON files under `dataPath` (like calendar) or SQLite through `DatabaseManager` (encrypted with SQLCipher if keyed)?
+7. __Storage:__ JSON files under `dataPath` (like calendar) or SQLite through `DatabaseManager`? Today only JSON files are supported: add-ons cannot add database migrations (section 11). With JSON files, writes must be atomic (write a temporary file, then rename), and two pods share the data directory during a rolling update ([D-006](plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)), so the ledger needs one writer at a time.
 8. __Membership tiers and access roles:__ should paying dues grant an ngdpbase role (for example `member`) automatically, and remove it when lapsed?
 9. __Admin access to donor detail:__ default no? Separation of duties between admin and treasurer?
 10. __Stripe fees:__ record gross plus a fee expense, or net?
