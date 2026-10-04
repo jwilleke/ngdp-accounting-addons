@@ -1,0 +1,7 @@
+private/
+.claude/settings.local.json
+.claude/worktrees/
+.kit-sync/
+.kit-check/
+.continue/
+.agents/

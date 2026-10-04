@@ -2,7 +2,7 @@
 
 Add-ons for [ngdpbase](https://github.com/jwilleke/ngdpbase) that give small organizations dues, payments, donations, fund tracking, event fees and treasurer reports, all in the same wiki where they keep the rest of their records.
 
-**Status:** planning, no code yet. This repository holds requirements and planning issues only.
+__Status:__ planning, no code yet. This repository holds requirements and planning issues only.
 
 ## Who it is for
 
@@ -10,9 +10,9 @@ Clubs first, then churches and associations: groups run by volunteers whose offi
 
 ## Why
 
-- **Replace WildApricot.** Its price increases and billing by contact count push small groups away. These add-ons run on the organization's own ngdpbase site, with no per-contact pricing.
-- **Keep board memory.** Dues history, giving records, fund balances and the treasurer's notes stay with the organization when officers change, not in one person's spreadsheet or inbox.
-- **Stay small on purpose.** This is not a full accounting package. The books of record live in QuickBooks or Wave, and these add-ons export to them.
+- __Replace WildApricot.__ Its price increases and billing by contact count push small groups away. These add-ons run on the organization's own ngdpbase site, with no per-contact pricing.
+- __Keep board memory.__ Dues history, giving records, fund balances and the treasurer's notes stay with the organization when officers change, not in one person's spreadsheet or inbox.
+- __Stay small on purpose.__ This is not a full accounting package. The books of record live in QuickBooks or Wave, and these add-ons export to them.
 
 ## Modules
 
