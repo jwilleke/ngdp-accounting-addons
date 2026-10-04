@@ -36,7 +36,10 @@ agent kit with its `install-kit.sh`. Do not adopt the template's Node/TypeScript
 __Consequences:__
 
 - Kit-managed files are updated by `kit-sync` pull requests; fix kit files upstream, never here.
-- Add the Node/TypeScript scaffolding when the first add-on is built.
+- When the first add-on is built, take the code scaffolding from ngdpbase's own tooling, not this kit:
+  [`jwilleke/ngdpbase-addon-template`](https://github.com/jwilleke/ngdpbase-addon-template) (repository
+  with Dockerfile and Renovate wiring) or `npm run create:addon` (one add-on directory). Both emit a
+  matching slug and real seed-page UUIDs. ngdpbase requires Node 24+.
 
 ## D-002: Recurring jobs come from ngdpbase core
 
@@ -94,7 +97,7 @@ __Consequences:__
 - __Status:__ Accepted
 - __Date:__ 2026-10-04
 - __Links:__ [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3); ngdpbase
-  `docs/guides/managers-developer-guide.md`
+  `docs/guides/managers-developer-guide.md`, `docs/guides/addons-developer-guide.md`
 
 __Context:__ Stripe will not always be the service. Organizations may use Toast, Zelle, others, or
 only cash and checks, and switching must be a configuration change.
@@ -106,9 +109,15 @@ donations and events call `PaymentManager`, never a service directly.
 
 __Consequences:__
 
-- Several providers can be active at once (for example Stripe online plus cash at the door), so
-  configuration takes a list, `ngdpbase.payment.providers`, unlike ngdpbase's usual single
-  `ngdpbase.<capability>.provider`. Keys use the `$VAR` form.
+- Several providers can be active at once (for example Stripe online plus cash at the door), unlike
+  ngdpbase's usual single `ngdpbase.<capability>.provider`. Add-on configuration lives under
+  `ngdpbase.addons.<slug>.*`, and in the add-on merge layer maps merge per entry while plain arrays
+  replace wholesale, so providers are a map keyed by provider name, not a list:
+  `ngdpbase.addons.<slug>.providers.<name>.enabled` and `.<name>.*` settings. Keys use the `$VAR`
+  form.
+- Correction, 2026-10-04: this entry first named the key `ngdpbase.payment.providers` (a list). That
+  is not where add-on configuration lives (ngdpbase `docs/guides/addons-developer-guide.md`, sections
+  3 and Standing rules).
 - Providers declare capabilities (for example `checkout`, `sync`, `refund`, `import`,
   `manualEntry`), and the interface offers only what the configured providers support. Zelle, for
   instance, has no API for small organizations, so it is record-or-import only.
@@ -130,5 +139,10 @@ __Options:__
   if add-ons outside accounting need payments.
 - __In ngdpbase core now:__ available to every add-on, but adds a third core dependency to this
   project.
+
+__Evidence:__ ngdpbase's add-on guide shows add-ons registering their own managers with
+`engine.registerManager` (section 6) and says core changes must be self-contained, with no
+add-on-specific code in the core repo (section 10). A payments manager written for these add-ons fits
+the first; moving it to core would need it to be general first.
 
 __Decision:__ Pending.
