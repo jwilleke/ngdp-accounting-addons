@@ -298,7 +298,7 @@ __Recommendation: B.__
 - Masking is still needed (the resolved value must not render on the admin screen), so the
   `secret-keys` gap ([ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612), P0) is a
   blocker for shipping any provider with a secret. Fixed in
-  [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (open, not merged): `secret-keys`
+  [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): `secret-keys`
   becomes a set that every layer extends. The add-on then declares its keys in its
   `config/default-config.json` as `"ngdpbase.config.secret-keys": { "<key>": true }` (a plain list
   of names also adds). Readers use `enabledEntries()` from ngdpbase `src/utils/configFiles.ts`.
