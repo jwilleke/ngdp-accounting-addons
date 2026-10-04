@@ -286,7 +286,8 @@ __Recommendation: B.__
 - Keep the secret count small: a Stripe restricted key with only the permissions the provider uses,
   separate test and live keys, and no webhook secret (D-003).
 - Masking is still needed (the resolved value must not render on the admin screen), so the
-  `secret-keys` gap is a blocker for shipping any provider with a secret. Fix it in ngdpbase (make
+  `secret-keys` gap ([ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612), P0) is a
+  blocker for shipping any provider with a secret. Fix it in ngdpbase (make
   `secret-keys` additive for add-ons) rather than work around it; nothing is built yet, so there is
   time.
 - Requirements change: changing a provider key moves from an in-app action (`payment-settings`) to an
