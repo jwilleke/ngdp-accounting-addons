@@ -1,6 +1,6 @@
 # Requirements: ngdp-accounting-addons
 
-**Status:** draft for review, 2026-10-03. Nothing here is built.
+__Status:__ draft for review, 2026-10-03. Nothing here is built.
 
 This document describes a suite of ngdpbase add-ons for small organizations: clubs first, then churches and associations. Where it refers to ngdpbase, it cites files on `main` of [jwilleke/ngdpbase](https://github.com/jwilleke/ngdpbase) as of commit `817ca75` (2026-10-03). Where ngdpbase does not yet provide something, it says so.
 
@@ -9,7 +9,7 @@ This document describes a suite of ngdpbase add-ons for small organizations: clu
 ### Goals
 
 - Replace WildApricot for small organizations put off by its price increases and per-contact billing.
-- Keep **board memory**: financial records, giving history and the treasurer's working notes belong to the organization and survive officer changes.
+- Keep __board memory__: financial records, giving history and the treasurer's working notes belong to the organization and survive officer changes.
 - Cover the money tasks a volunteer treasurer does every month: collect dues, take payments and donations, track money by fund, run event sign-ups, report to the board, and hand the numbers to the real books.
 - Keep accounting deliberately small. The books of record stay in QuickBooks or Wave; these add-ons export to them.
 - Protect higher-risk actions (refunds, voids, exports, payment settings, role changes, tax receipts) with stronger sign-in than everyday member actions.
@@ -26,17 +26,17 @@ This document describes a suite of ngdpbase add-ons for small organizations: clu
 
 ### Relationship to earlier ngdpbase plans
 
-ngdpbase already has an open, deferred issue for a generic accounting add-on, [#486](https://github.com/jwilleke/ngdpbase/issues/486), planned in `docs/planning/plan-addon-accounting.md` as a **double-entry** ledger with chart of accounts, AR and AP. `addons/README.md` also points to a double-entry `financial-ledger` add-on in `fairways-gen2-website`. This suite deliberately takes the opposite approach (single-entry, fund-tagged, no AP). Whether #486 is superseded, narrowed, or kept for a later, fuller product is an open question (section 13).
+ngdpbase already has an open, deferred issue for a generic accounting add-on, [#486](https://github.com/jwilleke/ngdpbase/issues/486), planned in `docs/planning/plan-addon-accounting.md` as a __double-entry__ ledger with chart of accounts, AR and AP. `addons/README.md` also points to a double-entry `financial-ledger` add-on in `fairways-gen2-website`. This suite deliberately takes the opposite approach (single-entry, fund-tagged, no AP). Whether #486 is superseded, narrowed, or kept for a later, fuller product is an open question (section 13).
 
 ## 2. Personas
 
 | Persona | Who they are | What they need |
 | --- | --- | --- |
-| **Treasurer** | Volunteer officer, often not an accountant, serving one or two years | Record money quickly, chase lapsed dues, produce a board report and year-end receipts, hand off cleanly |
-| **Board member** | President, secretary, other officers | See fund balances and the monthly summary; approve things; trust the numbers without seeing every donor |
-| **Member** | Pays dues, registers for events | Pay online, see their own status and history, get reminders and receipts |
-| **Donor** | May or may not be a member; may never sign in | Give online or by check, receive a correct year-end giving statement |
-| **Admin** | Runs the ngdpbase site (may be the same person as an officer in a small club) | Install and configure the add-ons, manage roles, set Stripe keys, keep the site secure |
+| __Treasurer__ | Volunteer officer, often not an accountant, serving one or two years | Record money quickly, chase lapsed dues, produce a board report and year-end receipts, hand off cleanly |
+| __Board member__ | President, secretary, other officers | See fund balances and the monthly summary; approve things; trust the numbers without seeing every donor |
+| __Member__ | Pays dues, registers for events | Pay online, see their own status and history, get reminders and receipts |
+| __Donor__ | May or may not be a member; may never sign in | Give online or by check, receive a correct year-end giving statement |
+| __Admin__ | Runs the ngdpbase site (may be the same person as an officer in a small club) | Install and configure the add-ons, manage roles, set Stripe keys, keep the site secure |
 
 ## 3. Architecture in ngdpbase terms
 
@@ -100,18 +100,18 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### Rules
 
-- **Posted transactions are not edited in place.** A correction voids the original (with a required reason) and posts a replacement, linked both ways. Small non-financial fixes (memo, attachment) are allowed and audited.
-- **Nothing financial is hard-deleted.** Voided transactions stay visible in history and exports.
-- **Audit trail.** Every create, post, void, edit, refund, export and settings change is recorded with actor, time, before and after values, and reason. Use ngdpbase's audit path (`recordAuditEvent` in `src/utils/auditEvents.ts`, `docs/guides/audit-developer-guide.md`) and also keep the ledger's own append-only change history, so the record survives with the add-on's data.
-- **Processing fees.** Stripe fees are recorded so deposits reconcile (proposed: gross amount as income, fee as a separate `out` transaction in the same fund; see open questions).
-- **Period lock (optional).** The treasurer can lock a month after the board report; posting into a locked month needs the high-assurance void and adjust permission.
-- **No double entry.** There are no accounts, debits or credits. The export carries enough detail for the real books to do that.
+- __Posted transactions are not edited in place.__ A correction voids the original (with a required reason) and posts a replacement, linked both ways. Small non-financial fixes (memo, attachment) are allowed and audited.
+- __Nothing financial is hard-deleted.__ Voided transactions stay visible in history and exports.
+- __Audit trail.__ Every create, post, void, edit, refund, export and settings change is recorded with actor, time, before and after values, and reason. Use ngdpbase's audit path (`recordAuditEvent` in `src/utils/auditEvents.ts`, `docs/guides/audit-developer-guide.md`) and also keep the ledger's own append-only change history, so the record survives with the add-on's data.
+- __Processing fees.__ Stripe fees are recorded so deposits reconcile (proposed: gross amount as income, fee as a separate `out` transaction in the same fund; see open questions).
+- __Period lock (optional).__ The treasurer can lock a month after the board report; posting into a locked month needs the high-assurance void and adjust permission.
+- __No double entry.__ There are no accounts, debits or credits. The export carries enough detail for the real books to do that.
 
 ## 5. Module requirements
 
 ### 5.1 Dues and invoicing (Phase 1)
 
-**Requirements:**
+__Requirements:__
 
 - Define membership tiers: name, price, term (annual, semiannual, monthly, lifetime), optional proration and grace period.
 - Each membership links a Person to a tier, with a start date, renewal date and status: `active`, `due`, `grace`, `lapsed`, `cancelled`.
@@ -120,7 +120,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - Show members their own status, invoices and payment history; let them pay online.
 - Show the treasurer a roster filtered by status, with bulk reminder sending.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] A treasurer can create tiers and assign members to them.
 - [ ] Status moves from active to due, grace and lapsed on the configured dates without manual work.
@@ -130,7 +130,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.2 Payments (Phase 1)
 
-**Requirements:**
+__Requirements:__
 
 - Take card and ACH payments through Stripe, using a Stripe-hosted payment page or Stripe-hosted fields so card and bank details never reach the ngdpbase server.
 - Receive payment results by Stripe webhook, verify the signature, and process each event once.
@@ -139,7 +139,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - Refund a Stripe payment fully or partly; record a manual refund for cash or check. A refund posts an `out` transaction linked to the original.
 - Treat ACH as pending until Stripe reports it settled; handle a failed ACH by reverting the paid status and notifying the treasurer.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] A test-mode card payment and a test-mode ACH payment each produce exactly one posted transaction, even when Stripe delivers the webhook more than once.
 - [ ] A webhook with a missing or invalid signature is rejected and logged, and changes nothing.
@@ -149,7 +149,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.3 Donations and giving statements (Phase 1)
 
-**Requirements:**
+__Requirements:__
 
 - Take one-time and recurring donations online (via Payments) and record offline gifts (cash, check, in-kind).
 - Each gift has a donor, date, amount, fund, deductible amount, and the value of any goods or services received.
@@ -158,7 +158,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - Email statements in bulk, or download them, and keep a copy of each issued statement.
 - Reissue a corrected statement, keeping the original and marking it superseded.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] Statement totals equal the sum of that donor's posted, non-voided gifts for the year.
 - [ ] Issuing, reissuing or bulk-sending statements requires the high-assurance receipt permission.
@@ -167,14 +167,14 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.4 Fund tracking (Phase 1)
 
-**Requirements:**
+__Requirements:__
 
 - Funds are defined by the treasurer (general, building, youth, a specific event) and flagged restricted or unrestricted.
 - Every transaction carries exactly one fund; each module has a default fund per item (tier, event, donation form).
 - Move money between funds with a linked pair of transfer entries (out of one, into the other), with a reason.
 - Show each fund's balance, with income and expense for a chosen period.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] A transaction without a fund cannot be posted.
 - [ ] Fund balances match the sum of their posted transactions plus the opening balance.
@@ -183,7 +183,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.5 Event fees and registrations (Phase 1)
 
-**Requirements:**
+__Requirements:__
 
 - Define a paid event: name, date, price options (member and non-member prices, early-bird dates), capacity, and fund.
 - Registration form collects attendee details and payment; free events work without payment.
@@ -192,7 +192,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - Roster and check-in list for organizers.
 - Integrate with the ngdpbase `calendar` add-on (`addons/calendar/`) and `forms` add-on (`addons/forms/`, which offers `registerHandler` for other add-ons) where it helps, but do not require them. Whether to build on them is an open question.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] A paid registration produces one registration record and one posted transaction tagged to the event's fund.
 - [ ] Capacity is enforced, including when two people register at once.
@@ -200,7 +200,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.6 Treasurer reports and export (Phase 1)
 
-**Requirements:**
+__Requirements:__
 
 - Monthly summary for board meetings: income and expense by category and by fund, fund balances at start and end, and a list of large or unusual items. Printable and exportable as PDF or as a wiki page.
 - Year-to-date and custom period versions of the same report.
@@ -209,7 +209,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - Export in formats QuickBooks and Wave can import (section 10).
 - Each export is logged with who ran it, when, the period, and a hash of the file.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] The monthly report's totals reconcile with the ledger for the same period.
 - [ ] Board members can view the report; only treasurer-level users can export transaction detail.
@@ -218,14 +218,14 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.7 Expense reimbursements (Phase 2)
 
-**Requirements:**
+__Requirements:__
 
 - A member or officer submits a request: amount, date, purpose, fund, receipt images.
 - The treasurer (and optionally a second approver above a configurable amount) approves or rejects with a comment.
 - Marking a request paid records the payment method and reference and posts an `out` transaction.
 - The requester sees the status of their own requests.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] A requester cannot approve their own request.
 - [ ] Approval and marking paid require the high-assurance permission.
@@ -233,14 +233,14 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 
 ### 5.8 Treasurer handover (Phase 2)
 
-**Requirements:**
+__Requirements:__
 
 - A handover record created when the treasurer changes: date, outgoing and incoming treasurer, fund balances and bank balances at handover, open items (unpaid invoices, pending reimbursements, upcoming renewals), accounts and services the treasurer controls (bank, Stripe, QuickBooks or Wave; names only, never passwords), recurring tasks and calendar, and free-form notes.
 - Both treasurers acknowledge the record; it then becomes read-only and is kept as part of board memory.
 - Role change checklist: grant the incoming treasurer the role, remove it from the outgoing one, and remind the admin to rotate shared credentials outside ngdpbase.
 - The record is readable by board members and later treasurers.
 
-**Acceptance criteria:**
+__Acceptance criteria:__
 
 - [ ] Fund balances in the record match the ledger on the handover date.
 - [ ] After both acknowledgements, the record cannot be edited, only annotated.
@@ -255,7 +255,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 - Roles are declared in configuration, not code: `ngdpbase.roles.definitions` in `config/app-default-config.json`, overridable in `app-custom-config.json`. Shipped roles: `admin`, `user-admin`, `editor`, `contributor`, `demo-admin`, `vault-owner`, `reader`, `anonymous`. There is no `treasurer`, `board` or `member` role.
 - Group membership records exist as schema.org `OrganizationRole` files (`src/types/Role.ts`) that list who holds a role in an organization; they carry no start or end dates today.
 
-**Consequence:** a `treasurer` role does **not** need a change to `Policy.ts`. A deployment adds `treasurer` (and `board`, `member` if wanted) to `ngdpbase.roles.definitions` in its `app-custom-config.json`, and the add-ons' policies grant their permissions to those roles. What `Policy.ts` and the evaluator cannot express today is **assurance**: there is no way to say "this permission only when the sign-in reached AAL2". That is section 7.
+__Consequence:__ a `treasurer` role does __not__ need a change to `Policy.ts`. A deployment adds `treasurer` (and `board`, `member` if wanted) to `ngdpbase.roles.definitions` in its `app-custom-config.json`, and the add-ons' policies grant their permissions to those roles. What `Policy.ts` and the evaluator cannot express today is __assurance__: there is no way to say "this permission only when the sign-in reached AAL2". That is section 7.
 
 ### Proposed permissions
 
@@ -272,14 +272,14 @@ Each add-on declares these in its `config/default-config.json`. Names are propos
 | `ledger-read` | Transaction detail, including names | | | | yes | optional | no |
 | `ledger-record` | Record manual payments and gifts, create invoices, manage registrations | | | | yes | | no |
 | `accounting-settings` | Tiers, funds, categories, reminder schedule, statement wording | | | | yes | yes | no (funds: open question) |
-| `ledger-adjust` | Edit or void posted transactions, post into a locked period, fund transfers | | | | yes | | **yes** |
-| `payment-refund` | Refund payments | | | | yes | | **yes** |
-| `ledger-export` | CSV, QuickBooks and Wave export, donor lists | | | | yes | | **yes** |
-| `receipt-issue` | Issue, reissue or bulk-send tax statements | | | | yes | | **yes** |
-| `payment-settings` | Stripe keys, webhook secret, payment methods | | | | | yes | **yes** |
-| `reimbursement-approve` (Phase 2) | Approve, reject, mark paid | | | | yes | | **yes** |
-| `handover-manage` (Phase 2) | Create and finalize a handover | | | | yes | yes | **yes** (finalize) |
-| Role changes (core) | Grant or remove roles, including treasurer | | | | | yes (`admin`, `user-admin`) | **yes** (core) |
+| `ledger-adjust` | Edit or void posted transactions, post into a locked period, fund transfers | | | | yes | | __yes__ |
+| `payment-refund` | Refund payments | | | | yes | | __yes__ |
+| `ledger-export` | CSV, QuickBooks and Wave export, donor lists | | | | yes | | __yes__ |
+| `receipt-issue` | Issue, reissue or bulk-send tax statements | | | | yes | | __yes__ |
+| `payment-settings` | Stripe keys, webhook secret, payment methods | | | | | yes | __yes__ |
+| `reimbursement-approve` (Phase 2) | Approve, reject, mark paid | | | | yes | | __yes__ |
+| `handover-manage` (Phase 2) | Create and finalize a handover | | | | yes | yes | __yes__ (finalize) |
+| Role changes (core) | Grant or remove roles, including treasurer | | | | | yes (`admin`, `user-admin`) | __yes__ (core) |
 
 Notes:
 
@@ -293,25 +293,25 @@ Notes:
 
 Checked against the code on 2026-10-03; `docs/planning/authentication.md` has the same status table.
 
-- **Providers** (`src/providers/`): password, magic link (`MagicLinkAuthProvider`), Google OIDC (`GoogleOIDCProvider`), passkey / WebAuthn (`PasskeyAuthProvider`), Cloudflare Access, Authentik bearer, agent tokens.
-- **Assurance is computed per sign-in.** Each provider declares `amr`, `aal` and `acr` (`src/providers/*`), configurable via `ngdpbase.auth.factors`, and `AuthManager.assess()` (`src/managers/AuthManager.ts`) combines them by NIST SP 800-63B. The session keeps a sign-in record (`req.session.signIn`, typed in `src/types/express.d.ts`) with `acr` as one of `phrh`, `phr`, `aal1`, `aal2`, `aal3`.
-- **Levels by provider:** magic link `amr: ["email"]`, AAL1, and email never lifts a sign-in above AAL1. Google OIDC is AAL1 with no `amr` unless configured to trust Google's reported values. Passkey `amr: ["swk","user"]`, AAL2, `acr: "phr"` (phishing-resistant).
-- **Per-role required level is built.** Each role in `ngdpbase.roles.definitions` can set `required-aal` (1 to 3); `admin` and `user-admin` ship at 2. In a session signed in below a role's level, that role **steps down**: the person acts without it, and a banner offers passkey sign-in or enrolment (`AuthManager.rolesAtSignIn`, applied in `src/app.ts`). A level set in `app-custom-config.json` that no enabled factor can reach refuses to boot; a shipped or add-on default degrades instead (`RoleManager.operatorRequiredAal`, `src/managers/RoleManager.ts`).
-- **Not built:** TOTP ([#421](https://github.com/jwilleke/ngdpbase/issues/421); the credentials store has a `totp` kind in `src/providers/BaseCredentialsProvider.ts`, but there is no `TotpAuthProvider`), the second-factor sign-in flow (part of [#1523](https://github.com/jwilleke/ngdpbase/issues/1523)), and **step-up re-authentication** ([#1525](https://github.com/jwilleke/ngdpbase/issues/1525), open). The planned design is a fresh-factor check for listed permissions (`ngdpbase.auth.step-up`, default 5 minutes, in `docs/planning/authentication.md`); the issue body describes a `requireFreshAuth(maxAge)` guard. Neither exists yet.
+- __Providers__ (`src/providers/`): password, magic link (`MagicLinkAuthProvider`), Google OIDC (`GoogleOIDCProvider`), passkey / WebAuthn (`PasskeyAuthProvider`), Cloudflare Access, Authentik bearer, agent tokens.
+- __Assurance is computed per sign-in.__ Each provider declares `amr`, `aal` and `acr` (`src/providers/*`), configurable via `ngdpbase.auth.factors`, and `AuthManager.assess()` (`src/managers/AuthManager.ts`) combines them by NIST SP 800-63B. The session keeps a sign-in record (`req.session.signIn`, typed in `src/types/express.d.ts`) with `acr` as one of `phrh`, `phr`, `aal1`, `aal2`, `aal3`.
+- __Levels by provider:__ magic link `amr: ["email"]`, AAL1, and email never lifts a sign-in above AAL1. Google OIDC is AAL1 with no `amr` unless configured to trust Google's reported values. Passkey `amr: ["swk","user"]`, AAL2, `acr: "phr"` (phishing-resistant).
+- __Per-role required level is built.__ Each role in `ngdpbase.roles.definitions` can set `required-aal` (1 to 3); `admin` and `user-admin` ship at 2. In a session signed in below a role's level, that role __steps down__: the person acts without it, and a banner offers passkey sign-in or enrolment (`AuthManager.rolesAtSignIn`, applied in `src/app.ts`). A level set in `app-custom-config.json` that no enabled factor can reach refuses to boot; a shipped or add-on default degrades instead (`RoleManager.operatorRequiredAal`, `src/managers/RoleManager.ts`).
+- __Not built:__ TOTP ([#421](https://github.com/jwilleke/ngdpbase/issues/421); the credentials store has a `totp` kind in `src/providers/BaseCredentialsProvider.ts`, but there is no `TotpAuthProvider`), the second-factor sign-in flow (part of [#1523](https://github.com/jwilleke/ngdpbase/issues/1523)), and __step-up re-authentication__ ([#1525](https://github.com/jwilleke/ngdpbase/issues/1525), open). The planned design is a fresh-factor check for listed permissions (`ngdpbase.auth.step-up`, default 5 minutes, in `docs/planning/authentication.md`); the issue body describes a `requireFreshAuth(maxAge)` guard. Neither exists yet.
 - ngdpbase is not yet an OpenID Connect provider; that is the planned `OidcManager` epic ([#1578](https://github.com/jwilleke/ngdpbase/issues/1578)).
 
 ### Requirements
 
-- **Low assurance (AAL1):** magic link and Google sign-in stay sufficient for members, donors and board members: paying, giving, registering, viewing own history, viewing board summaries.
-- **High assurance:** the actions marked "High assurance" in section 6 require a sign-in at AAL2 or above (`acr` of `aal2`, `aal3`, `phr` or `phrh`): refunds; editing or voiding posted transactions and posting into a locked period; exports; changing Stripe keys and payment settings; role changes; issuing or reissuing tax receipts; approving and paying reimbursements; finalizing a handover.
-- **Stage 1 (works with today's ngdpbase):** define `treasurer` with `required-aal: 2` in `app-custom-config.json`. A treasurer signed in by magic link or Google steps down to their other roles and cannot reach treasurer actions until they sign in with a passkey. This is coarse (all treasurer work needs a passkey, not only high-risk actions), but needs no core change.
-- **Stage 2 (needs #1525):** the treasurer role can drop to AAL1 for routine work, and only the high-assurance permissions require a fresh AAL2 factor within a short window. The add-ons must be able to add their own permissions to the step-up list from their `config/default-config.json`.
+- __Low assurance (AAL1):__ magic link and Google sign-in stay sufficient for members, donors and board members: paying, giving, registering, viewing own history, viewing board summaries.
+- __High assurance:__ the actions marked "High assurance" in section 6 require a sign-in at AAL2 or above (`acr` of `aal2`, `aal3`, `phr` or `phrh`): refunds; editing or voiding posted transactions and posting into a locked period; exports; changing Stripe keys and payment settings; role changes; issuing or reissuing tax receipts; approving and paying reimbursements; finalizing a handover.
+- __Stage 1 (works with today's ngdpbase):__ define `treasurer` with `required-aal: 2` in `app-custom-config.json`. A treasurer signed in by magic link or Google steps down to their other roles and cannot reach treasurer actions until they sign in with a passkey. This is coarse (all treasurer work needs a passkey, not only high-risk actions), but needs no core change.
+- __Stage 2 (needs #1525):__ the treasurer role can drop to AAL1 for routine work, and only the high-assurance permissions require a fresh AAL2 factor within a short window. The add-ons must be able to add their own permissions to the step-up list from their `config/default-config.json`.
 - Delegated credentials (agent tokens, share links) never satisfy a high-assurance permission; #1525 already states this for step-up.
 - Each step-up prompt, success and refusal is audited.
 
 ### TOTP caveat
 
-Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the planned configuration) reaches AAL2 only when combined with a factor of another type, such as a password. Magic link plus TOTP stays at AAL1 (both are "have" factors, and email never lifts). For organizations that sign in by magic link or Google, **passkeys are the practical high-assurance factor**, and passkeys require an explicit HTTPS base URL.
+Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the planned configuration) reaches AAL2 only when combined with a factor of another type, such as a password. Magic link plus TOTP stays at AAL1 (both are "have" factors, and email never lifts). For organizations that sign in by magic link or Google, __passkeys are the practical high-assurance factor__, and passkeys require an explicit HTTPS base URL.
 
 ## 8. Data retention and board memory
 
@@ -324,16 +324,16 @@ Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the pl
 
 ## 9. Privacy and security
 
-- **PII:** names, emails, addresses, phone numbers, membership status. Shown only to people with the matching permission; board summaries are aggregate by default.
-- **Donor data:** individual gifts are sensitive. Support anonymous gifts. Donor-level views and exports need `ledger-read` or `ledger-export`.
-- **No card or bank data stored.** Payments go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
-- **Stripe webhooks:** verify every event's signature with the endpoint's signing secret before acting, reject on failure, process each event id once, and fetch the authoritative object from Stripe where it matters. Follow Stripe's current webhook documentation.
-- **Secrets:** Stripe secret key and webhook secret come from environment variables, referenced in configuration in `$VAR` form so `ConfigurationManager` masks them (`getMaskedProperty`, `ngdpbase.config.secret-keys` in `src/managers/ConfigurationManager.ts`). Never log them. Changing them is a high-assurance action.
-- **Outbound HTTP** to Stripe goes through `guardedFetch` (`addons/README.md`); the egress policy must allow it.
-- **CSRF:** every browser POST carries the CSRF token. The webhook route is the only exception and is protected by the signature instead; this needs core support (section 11).
-- **Encryption at rest:** if the ledger uses `DatabaseManager` with SQLCipher, data is encrypted when `NGDPBASE_DATABASE_KEY` is set. JSON files under `dataPath` are not encrypted by ngdpbase. Choice is an open question.
-- **Audit:** all high-assurance actions, exports, settings changes and failed webhook verifications are audited.
-- **Least privilege:** the admin role does not get donor-level detail by default.
+- __PII:__ names, emails, addresses, phone numbers, membership status. Shown only to people with the matching permission; board summaries are aggregate by default.
+- __Donor data:__ individual gifts are sensitive. Support anonymous gifts. Donor-level views and exports need `ledger-read` or `ledger-export`.
+- __No card or bank data stored.__ Payments go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
+- __Stripe webhooks:__ verify every event's signature with the endpoint's signing secret before acting, reject on failure, process each event id once, and fetch the authoritative object from Stripe where it matters. Follow Stripe's current webhook documentation.
+- __Secrets:__ Stripe secret key and webhook secret come from environment variables, referenced in configuration in `$VAR` form so `ConfigurationManager` masks them (`getMaskedProperty`, `ngdpbase.config.secret-keys` in `src/managers/ConfigurationManager.ts`). Never log them. Changing them is a high-assurance action.
+- __Outbound HTTP__ to Stripe goes through `guardedFetch` (`addons/README.md`); the egress policy must allow it.
+- __CSRF:__ every browser POST carries the CSRF token. The webhook route is the only exception and is protected by the signature instead; this needs core support (section 11).
+- __Encryption at rest:__ if the ledger uses `DatabaseManager` with SQLCipher, data is encrypted when `NGDPBASE_DATABASE_KEY` is set. JSON files under `dataPath` are not encrypted by ngdpbase. Choice is an open question.
+- __Audit:__ all high-assurance actions, exports, settings changes and failed webhook verifications are audited.
+- __Least privilege:__ the admin role does not get donor-level detail by default.
 
 ## 10. Integration notes
 
@@ -380,23 +380,23 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 
 ## 12. Phasing
 
-- **Phase 1:** `org-ledger` with funds and audit first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Step-up Stage 1 (treasurer at `required-aal: 2`).
-- **Phase 2:** Reimbursements, Treasurer handover, Step-up Stage 2 once #1525 lands.
+- __Phase 1:__ `org-ledger` with funds and audit first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Step-up Stage 1 (treasurer at `required-aal: 2`).
+- __Phase 2:__ Reimbursements, Treasurer handover, Step-up Stage 2 once #1525 lands.
 
 ## 13. Open questions
 
-1. **Prior plans:** supersede, narrow or keep ngdpbase [#486](https://github.com/jwilleke/ngdpbase/issues/486) (double-entry accounting add-on) and the `financial-ledger` add-on mentioned in `addons/README.md`?
-2. **License** for this repository (README TODO). Also, should ngdpbase fix its own `LICENSE` (Apache 2.0) versus `package.json` (`ISC`) mismatch?
-3. **Slugs and layout:** one add-on or several? Final slug names?
-4. **Step-up approach:** start with treasurer at `required-aal: 2` (works today, passkey for all treasurer work), or wait for #1525 for per-action step-up? Should core gain an assurance condition on policies instead?
-5. **Should the add-on ship the `treasurer` role definition** in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
-6. **TOTP:** is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
-7. **Storage:** JSON files under `dataPath` (like calendar) or SQLite through `DatabaseManager` (encrypted with SQLCipher if keyed)?
-8. **Membership tiers and access roles:** should paying dues grant an ngdpbase role (for example `member`) automatically, and remove it when lapsed?
-9. **Admin access to donor detail:** default no? Separation of duties between admin and treasurer?
-10. **Stripe fees:** record gross plus a fee expense, or net?
-11. **Stripe account model:** one Stripe account per organization with keys entered by the admin, or Stripe Connect? (Affects onboarding and any platform fee.)
-12. **Events:** build on the ngdpbase `calendar` and `forms` add-ons, or stand alone?
-13. **Tax receipts:** which countries first (US only?), and who supplies the receipt wording?
-14. **Who files the core issues** in ngdpbase (step-up list contribution, webhook ingress, scheduled jobs)?
-15. **Distribution:** private npm package on GitHub Packages (recommended in `docs/platform/deployment/addon-packaged.md`), or a drop-in directory?
+1. __Prior plans:__ supersede, narrow or keep ngdpbase [#486](https://github.com/jwilleke/ngdpbase/issues/486) (double-entry accounting add-on) and the `financial-ledger` add-on mentioned in `addons/README.md`?
+2. __License__ for this repository (README TODO). Also, should ngdpbase fix its own `LICENSE` (Apache 2.0) versus `package.json` (`ISC`) mismatch?
+3. __Slugs and layout:__ one add-on or several? Final slug names?
+4. __Step-up approach:__ start with treasurer at `required-aal: 2` (works today, passkey for all treasurer work), or wait for #1525 for per-action step-up? Should core gain an assurance condition on policies instead?
+5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
+6. __TOTP:__ is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
+7. __Storage:__ JSON files under `dataPath` (like calendar) or SQLite through `DatabaseManager` (encrypted with SQLCipher if keyed)?
+8. __Membership tiers and access roles:__ should paying dues grant an ngdpbase role (for example `member`) automatically, and remove it when lapsed?
+9. __Admin access to donor detail:__ default no? Separation of duties between admin and treasurer?
+10. __Stripe fees:__ record gross plus a fee expense, or net?
+11. __Stripe account model:__ one Stripe account per organization with keys entered by the admin, or Stripe Connect? (Affects onboarding and any platform fee.)
+12. __Events:__ build on the ngdpbase `calendar` and `forms` add-ons, or stand alone?
+13. __Tax receipts:__ which countries first (US only?), and who supplies the receipt wording?
+14. __Who files the core issues__ in ngdpbase (step-up list contribution, webhook ingress, scheduled jobs)?
+15. __Distribution:__ private npm package on GitHub Packages (recommended in `docs/platform/deployment/addon-packaged.md`), or a drop-in directory?
