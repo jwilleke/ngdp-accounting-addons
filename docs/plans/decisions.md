@@ -19,6 +19,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-003](#d-003-learn-payment-outcomes-by-asking-not-by-webhook) | 2026-10-04 | Learn payment outcomes by asking the service, not by inbound webhook | Accepted |
 | [D-004](#d-004-paymentmanager-with-configurable-providers) | 2026-10-04 | `PaymentManager` with configurable, capability-declaring providers | Accepted |
 | [D-005](#d-005-where-paymentmanager-lives) | 2026-10-04 | Where `PaymentManager` lives | Proposed |
+| [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -146,3 +147,49 @@ add-on-specific code in the core repo (section 10). A payments manager written f
 the first; moving it to core would need it to be general first.
 
 __Decision:__ Pending.
+
+## D-006: Every add-on runs on bare metal, Docker and Kubernetes
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-04
+- __Links:__ ngdpbase `docs/platform/deployment/` (`direct-install.md`, `docker-compose.md`,
+  `kubernetes.md`, `addon-packaged.md`), `docs/platform/addon-architecture.md` (Distribution Models),
+  `docker/HEADLESS-DEPLOYMENT-NOTES.md`, `docker/k8s/`
+
+__Context:__ ngdpbase is deployed three ways: direct install on a host (`./server.sh`, optionally
+under pm2), Docker Compose, and Kubernetes. Organizations using these add-ons will use all three.
+
+__Decision:__ Every add-on must install and run unchanged on all three. The same code and the same
+configuration keys; no deployment-specific code paths.
+
+__Consequences:__
+
+- __Distribution:__ the add-on must be shippable in a form each target can load. ngdpbase loads the
+  same add-on directory from a drop-in path (`addons-path`), an npm package
+  (`node_modules:@jwilleke/*-addon` in `addons-path`), or a wrapper image built
+  `FROM ghcr.io/jwilleke/ngdpbase:<version>`. Bare metal uses the directory or the package; Docker and
+  Kubernetes use the wrapper image (ngdpbase's recommended production path for containers). Which
+  artifacts we publish is still requirements.md open question 15, now narrowed to formats that cover
+  all three.
+- __State:__ everything the add-ons keep lives under their `dataPath` inside ngdpbase's data
+  directory (`FAST_STORAGE` on a host, the data volume in Compose, the data PVC in Kubernetes).
+  Nothing is written beside the code, into the image, or to temporary directories that do not
+  survive a restart. ngdpbase's backup guidance is "back up the data directory"; the add-ons must
+  not need anything more.
+- __Secrets:__ only from environment variables, referenced as `$VAR` (`.env` on a host and in
+  Compose, a Kubernetes Secret in a cluster), and declared environment-owned in
+  `ngdpbase.config.env-keys` so the admin screen does not offer edits that cannot take effect.
+- __More than one process:__ ngdpbase's Kubernetes starter runs `replicas: 1` but rolls updates with
+  `maxSurge: 1, maxUnavailable: 0`, so two pods share the data directory during every rollout. Any
+  timer or scheduled job can therefore run twice. This makes the per-slot idempotency in D-002 and
+  the `provider` plus `externalId` uniqueness in D-004 required, not optional.
+- __Network:__ D-003 needs outbound HTTPS only and no inbound route, so no target needs extra
+  ingress. In Kubernetes, outbound calls from Alpine-based images can hit the `ndots:5` DNS problem
+  (`HEADLESS-DEPLOYMENT-NOTES.md` section 5); the add-ons' install notes must point to the fix.
+- __Containers run as a non-root user__ (UID 1000); the add-ons must not need root or write outside
+  the data directory.
+- __Runtime:__ Node 24 or later on bare metal, matching ngdpbase.
+- __Release check:__ before a release, each add-on is installed and smoke-tested on all three
+  targets.
+- ngdpbase's own documents disagree on the npm-package model: `addon-architecture.md` says it is
+  implemented (#673), `kubernetes.md` still says it is not shipped. Confirm before relying on it.

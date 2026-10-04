@@ -53,6 +53,8 @@ ngdpbase already has an open, deferred issue for a generic accounting add-on, [#
 - Add-on code runs in the ngdpbase process under the same rules as core: outbound HTTP only through `src/http/guardedFetch` (imported from `dist/`), CSRF tokens on browser POSTs, an `ActorContext` on every acting call, no imports from host `src/`. Lint checks enforce these over `addons/` (`addons/README.md`, "Security Notes").
 - A separate repository is supported. During development, add its `addons/` directory to `ngdpbase.managers.addons-manager.addons-path`. For production, the recommended model is an npm package (`@jwilleke/<slug>-addon`, with `ngdpbase.slug` in `package.json`), published to GitHub Packages for a private add-on (`docs/platform/deployment/addon-packaged.md`). Slug rules are in `docs/platform/addon-identity-contract.md`.
 
+- Every add-on must run unchanged on bare metal, Docker and Kubernetes ([D-006](plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)).
+
 ### Proposed add-on layout (to confirm)
 
 One repository with several add-ons, each with its own slug, permissions and routes, all depending on a shared ledger add-on:
@@ -402,4 +404,4 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 12. __Events:__ build on the ngdpbase `calendar` and `forms` add-ons, or stand alone?
 13. __Tax receipts:__ which countries first (US only?), and who supplies the receipt wording?
 14. __Who files the core issues__ in ngdpbase (step-up list contribution; scheduled jobs is filed as ngdpbase#1611)?
-15. __Distribution:__ private npm package on GitHub Packages (recommended in `docs/platform/deployment/addon-packaged.md`), or a drop-in directory?
+15. __Distribution:__ private npm package on GitHub Packages (recommended in `docs/platform/deployment/addon-packaged.md`), or a drop-in directory? Whatever is chosen must cover bare metal, Docker and Kubernetes ([D-006](plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)).
