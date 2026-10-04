@@ -20,6 +20,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-004](#d-004-paymentmanager-with-configurable-providers) | 2026-10-04 | `PaymentManager` with configurable, capability-declaring providers | Accepted |
 | [D-005](#d-005-where-paymentmanager-lives) | 2026-10-04 | Where `PaymentManager` lives | Proposed |
 | [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
+| [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -176,9 +177,7 @@ __Consequences:__
   Nothing is written beside the code, into the image, or to temporary directories that do not
   survive a restart. ngdpbase's backup guidance is "back up the data directory"; the add-ons must
   not need anything more.
-- __Secrets:__ only from environment variables, referenced as `$VAR` (`.env` on a host and in
-  Compose, a Kubernetes Secret in a cluster), and declared environment-owned in
-  `ngdpbase.config.env-keys` so the admin screen does not offer edits that cannot take effect.
+- __Configuration and secrets:__ see [D-007](#d-007-configuration-lives-in-config-files).
 - __More than one process:__ ngdpbase's Kubernetes starter runs `replicas: 1` but rolls updates with
   `maxSurge: 1, maxUnavailable: 0`, so two pods share the data directory during every rollout. Any
   timer or scheduled job can therefore run twice. This makes the per-slot idempotency in D-002 and
@@ -193,3 +192,34 @@ __Consequences:__
   targets.
 - ngdpbase's own documents disagree on the npm-package model: `addon-architecture.md` says it is
   implemented (#673), `kubernetes.md` still says it is not shipped. Confirm before relying on it.
+
+## D-007: Configuration lives in config files
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-04
+- __Links:__ [D-004](#d-004-paymentmanager-with-configurable-providers),
+  [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes); ngdpbase
+  `docs/guides/configuration-developer-guide.md`, `docs/platform/deployment/kubernetes.md`
+
+__Context:__ With three deployment targets (D-006) it is tempting to configure each through its own
+mechanism: `.env` on a host, `environment:` in Compose, ConfigMaps in Kubernetes. That splits one
+site's settings across places that differ by target.
+
+__Decision:__ Add-on configuration is handled in configuration files. Each add-on ships its
+defaults, permissions and policies in its own `config/default-config.json` (the add-on merge layer).
+An operator overrides them in the instance's `app-custom-config.json`, which lives in the data
+directory and can be edited through `/admin/configuration`. All keys are under
+`ngdpbase.addons.<slug>.*`.
+
+__Consequences:__
+
+- The same files configure a bare-metal, Docker or Kubernetes site. Deployment manifests carry
+  infrastructure only (image, replicas, volume, ingress, secrets), as ngdpbase's Kubernetes guide
+  already advises.
+- Add-on code reads settings only through the `config` passed to `register()` or
+  `ConfigurationManager`, never from `process.env` directly.
+- Secret values (payment provider keys) are the one exception to keeping values in the file: the
+  config file holds the key with a `$VAR` reference, so `ConfigurationManager` masks it and the value
+  is supplied by the environment (`.env`, Compose, or a Kubernetes Secret). The setting is still
+  declared in the config file; only the secret value comes from outside. Such keys are listed in
+  `ngdpbase.config.env-keys` so the admin screen does not offer edits that cannot take effect.
