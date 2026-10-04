@@ -310,8 +310,8 @@ Checked against the code on 2026-10-03; `docs/planning/authentication.md` has th
 
 - __Low assurance (AAL1):__ magic link and Google sign-in stay sufficient for members, donors and board members: paying, giving, registering, viewing own history, viewing board summaries.
 - __High assurance:__ the actions marked "High assurance" in section 6 require a sign-in at AAL2 or above (`acr` of `aal2`, `aal3`, `phr` or `phrh`): refunds; editing or voiding posted transactions and posting into a locked period; exports; changing Stripe keys and payment settings; role changes; issuing or reissuing tax receipts; approving and paying reimbursements; finalizing a handover.
-- __Stage 1 (works with today's ngdpbase):__ define `treasurer` with `required-aal: 2` in `app-custom-config.json`. A treasurer signed in by magic link or Google steps down to their other roles and cannot reach treasurer actions until they sign in with a passkey. This is coarse (all treasurer work needs a passkey, not only high-risk actions), but needs no core change.
-- __Stage 2 (step-up built in [#1525](https://github.com/jwilleke/ngdpbase/issues/1525); add-on extension in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613)):__ the treasurer role can drop to AAL1 for routine work, and only the high-assurance permissions require a fresh AAL2 factor within a short window. Each add-on adds its high-assurance permissions in its `config/default-config.json` as `"ngdpbase.auth.step-up": { "permissions": { "<permission>": true } }`; this adds to core's set and never replaces it.
+- __Decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)):__ the `treasurer` role has `required-aal: 2`, the same as ngdpbase's `admin` and `user-admin`. A treasurer signed in below AAL2 (magic link, Google) steps down to their other roles until they sign in at AAL2. Any factor combination ngdpbase rates AAL2 qualifies: a passkey today, password plus TOTP once available.
+- __Optional on top (not decided):__ put the high-assurance permissions on ngdpbase's step-up list ([#1525](https://github.com/jwilleke/ngdpbase/issues/1525)), so they also need a recent factor within `max-age-minutes`. An add-on adds them in its `config/default-config.json` as `"ngdpbase.auth.step-up": { "permissions": { "<permission>": true } }`, which adds to core's set ([ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613)). The treasurer role does not drop to AAL1.
 - Delegated credentials (agent tokens, share links) never satisfy a high-assurance permission; #1525 already states this for step-up.
 - Each step-up prompt, success and refusal is audited.
 
@@ -373,11 +373,11 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Need | Status in ngdpbase | Needed for |
 | --- | --- | --- |
 | `treasurer`, `board`, `member` roles | Possible today through `ngdpbase.roles.definitions` in configuration; no code change | All modules |
-| Assurance-gated permissions (step-up) | Built: [#1525](https://github.com/jwilleke/ngdpbase/issues/1525), closed 2026-10-04 | Stage 2 of section 7 |
-| Add-ons can add permissions to the step-up list | Fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): `ngdpbase.auth.step-up.permissions` becomes a set that every layer extends | Stage 2 |
+| Assurance-gated permissions (step-up) | Built: [#1525](https://github.com/jwilleke/ngdpbase/issues/1525), closed 2026-10-04 | Optional recent-factor check (section 7) |
+| Add-ons can add permissions to the step-up list | Fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): `ngdpbase.auth.step-up.permissions` becomes a set that every layer extends | Optional recent-factor check (section 7) |
 | Alternative: an assurance condition on policies (`Policy.ts`, `PolicyEvaluator`) | Not built; only `role` subjects are matched | Only if step-up is not the chosen mechanism |
 | TOTP | Not built: [#421](https://github.com/jwilleke/ngdpbase/issues/421) | A second high-assurance option (password plus TOTP only) |
-| Passkeys | Built ([#448](https://github.com/jwilleke/ngdpbase/issues/448)); needs an explicit HTTPS base URL | Stage 1 |
+| Passkeys | Built ([#448](https://github.com/jwilleke/ngdpbase/issues/448)); needs an explicit HTTPS base URL | Treasurer AAL2 ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)) |
 | `PaymentManager` with payment providers, off by default | Requested: [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614) ([D-005](plans/decisions.md#d-005-paymentmanager-lives-in-ngdpbase-core)) | Payments, and so dues, donations and events |
 | Webhook ingress for add-ons | Not needed: payments are polled, not pushed ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)) | n/a |
 | Add-ons can add keys to `ngdpbase.config.secret-keys` | Bug [ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612); fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): becomes a set that every layer extends ([D-008](plans/decisions.md#d-008-where-secret-values-live)) | Payment provider keys |
@@ -388,15 +388,15 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 
 ## 12. Phasing
 
-- __Phase 1:__ `org-ledger` with funds and audit first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Step-up Stage 1 (treasurer at `required-aal: 2`).
-- __Phase 2:__ Reimbursements, Treasurer handover. Step-up Stage 2 is available now ([ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) merged); it no longer has to wait for Phase 2.
+- __Phase 1:__ `org-ledger` with funds and audit first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Treasurer at `required-aal: 2` ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)).
+- __Phase 2:__ Reimbursements, Treasurer handover.
 
 ## 13. Open questions
 
 1. __Prior plans:__ supersede, narrow or keep ngdpbase [#486](https://github.com/jwilleke/ngdpbase/issues/486) (double-entry accounting add-on) and the `financial-ledger` add-on mentioned in `addons/README.md`?
 2. __License__ for this repository (README TODO). Also, should ngdpbase fix its own `LICENSE` (Apache 2.0) versus `package.json` (`ISC`) mismatch?
 3. __Slugs and layout:__ one add-on or several? Final slug names?
-4. __Step-up approach:__ step-up is built ([#1525](https://github.com/jwilleke/ngdpbase/issues/1525)). Use Stage 2 (per-action step-up, available since [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) merged) from the start, or keep Stage 1 (treasurer at `required-aal: 2`) for Phase 1? Should core still gain an assurance condition on policies?
+4. __Step-up approach:__ treasurer at `required-aal: 2` is decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)). Remaining: also put the high-assurance permissions on ngdpbase's step-up list for a recent factor? Should core still gain an assurance condition on policies?
 5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
 6. __TOTP:__ is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
 7. __Storage:__ JSON files under `dataPath` (like calendar) or SQLite through `DatabaseManager` (encrypted with SQLCipher if keyed)?

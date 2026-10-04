@@ -22,6 +22,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
 | [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
+| [D-009](#d-009-treasurer-requires-aal2-like-admin-roles) | 2026-10-04 | Treasurer role requires AAL2, like admin roles | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -307,3 +308,30 @@ __Recommendation: B.__
   and their non-secret settings.
 
 __Decision:__ Pending.
+
+## D-009: Treasurer requires AAL2, like admin roles
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-04
+- __Links:__ requirements.md section 7 and open question 4;
+  [#1](https://github.com/jwilleke/ngdp-accounting-addons/issues/1); ngdpbase
+  `config/app-default-config.json` (`ngdpbase.roles.definitions`), `AuthManager.rolesAtSignIn`
+
+__Context:__ Treasurer actions move money and expose donor data. ngdpbase lets each role set
+`required-aal`; `admin` and `user-admin` ship at 2. The alternative considered was letting the
+treasurer role work at AAL1 and asking for a fresh factor only on high-risk actions (step-up).
+
+__Decision:__ The `treasurer` role has `required-aal: 2`, the same as ngdpbase's admin roles. The
+requirement is the assurance level, not a particular factor.
+
+__Consequences:__
+
+- A treasurer signed in below AAL2 (magic link, Google) steps down to their other roles and is
+  offered a stronger sign-in, exactly as an admin is today.
+- Any factor combination that ngdpbase rates AAL2 qualifies: a passkey today; password plus TOTP or
+  another second factor once ngdpbase supports it (ngdpbase#421, ngdpbase#1523).
+- The option of letting the treasurer work at AAL1 and stepping up only for high-risk actions is not taken.
+- Not decided here: whether high-risk permissions (refund, adjust, export, receipt issue) are also
+  put on ngdpbase's step-up list, which would ask for a recent factor (within
+  `max-age-minutes`) even in an AAL2 session. Who ships the `treasurer` role definition is
+  requirements.md open question 5.
