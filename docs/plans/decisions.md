@@ -266,4 +266,31 @@ __Options:__
   needs ngdpbase to make `secret-keys` additive for add-ons (for example a map, as `env-keys`
   already is), or the add-on's keys added to core's list.
 
+__Facts from the owner:__ `.env` is not in backups.
+
+__Recommendation: B.__
+
+- Backups of the data directory travel further (off-site copies, Velero, S3) and are kept longer
+  than the running site; a payment key should not travel with them. `.env` is not backed up, so B
+  keeps keys out of every backup.
+- It matches how ngdpbase already treats its own secrets (session secret, OIDC client secret), and
+  `ConfigurationManager`'s own error for an unset `$VAR` tells the operator to set it in `.env` or a
+  Kubernetes Secret.
+- One mechanism covers D-006: `.env` on bare metal, `env_file` or `environment:` in Compose, a
+  Kubernetes Secret (SOPS-encrypted in GitOps) in a cluster. D-007 still holds: the key is declared
+  in the add-on's config file; only its value is outside.
+- Each secret key is declared in `env-keys`, so the admin screen never saves a key that cannot take
+  effect. Rotating a key is: change the environment, restart.
+- A provider whose `$VAR` is unset must not take the add-on down: catch the error at `register()`,
+  leave that provider disabled, and report it in `status()`.
+- Keep the secret count small: a Stripe restricted key with only the permissions the provider uses,
+  separate test and live keys, and no webhook secret (D-003).
+- Masking is still needed (the resolved value must not render on the admin screen), so the
+  `secret-keys` gap is a blocker for shipping any provider with a secret. Fix it in ngdpbase (make
+  `secret-keys` additive for add-ons) rather than work around it; nothing is built yet, so there is
+  time.
+- Requirements change: changing a provider key moves from an in-app action (`payment-settings`) to an
+  operator action in the environment. `payment-settings` still covers which providers are enabled
+  and their non-secret settings.
+
 __Decision:__ Pending.
