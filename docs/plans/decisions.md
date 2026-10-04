@@ -21,6 +21,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-005](#d-005-where-paymentmanager-lives) | 2026-10-04 | Where `PaymentManager` lives | Proposed |
 | [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
+| [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -218,8 +219,51 @@ __Consequences:__
   already advises.
 - Add-on code reads settings only through the `config` passed to `register()` or
   `ConfigurationManager`, never from `process.env` directly.
-- Secret values (payment provider keys) are the one exception to keeping values in the file: the
-  config file holds the key with a `$VAR` reference, so `ConfigurationManager` masks it and the value
-  is supplied by the environment (`.env`, Compose, or a Kubernetes Secret). The setting is still
-  declared in the config file; only the secret value comes from outside. Such keys are listed in
-  `ngdpbase.config.env-keys` so the admin screen does not offer edits that cannot take effect.
+- Where secret values (payment provider keys) live is not settled by this entry; see
+  [D-008](#d-008-where-secret-values-live).
+- Correction, 2026-10-04: this entry first said a `$VAR` reference makes `ConfigurationManager` mask
+  a value. It does not. `$VAR` only resolves the value from the environment; masking comes solely
+  from naming the key in `ngdpbase.config.secret-keys`.
+
+## D-008: Where secret values live
+
+- __Status:__ Proposed
+- __Date:__ 2026-10-04
+- __Links:__ [D-007](#d-007-configuration-lives-in-config-files); ngdpbase
+  `src/managers/ConfigurationManager.ts` (`resolveEnvRef`, `getMaskedProperty`),
+  `src/utils/auditConfigChange.ts` (`isSecretKey`), `src/utils/configEnvKeys.ts`,
+  `docs/guides/configuration-developer-guide.md`
+
+__Context:__ Payment providers need secret values (for example a Stripe secret key). How ngdpbase
+treats a secret, checked on `master` at `9b0da38`:
+
+- __Masking:__ a key named in `ngdpbase.config.secret-keys` is masked on the Admin Configuration
+  screen until an admin with `admin-system` reveals it, and is stripped server-side for a read-only
+  admin. Matching is by exact key. This works whether the value is in the file or comes from the
+  environment.
+- __`$VAR` values:__ a config value of the bare form `$STRIPE_SECRET_KEY` is read from the
+  environment; if the variable is unset, reading the key throws. `$VAR` does not mask anything by
+  itself.
+- __`ngdpbase.config.env-keys`__ declares keys owned by the environment, so the admin screen does
+  not save edits that cannot take effect. It is a map, so an add-on can add entries without
+  disturbing core's.
+- __Gap:__ `ngdpbase.config.secret-keys` is a plain array, and the add-on merge layer replaces plain
+  arrays wholesale. An add-on that lists its own secret keys in its `config/default-config.json`
+  replaces core's list and unmasks core secrets (session secret, SMTP password, OIDC client secret).
+  An operator can add keys in `app-custom-config.json` only by restating the whole list. Core
+  currently lists one add-on key itself (`ngdpbase.addons.demo.admin-account.password`).
+
+__Options:__
+
+- __A. Value in the config file:__ the secret is stored in `app-custom-config.json` in the data
+  directory and masked through `secret-keys`. One place for everything, the same on every target;
+  the secret is then in the data directory and its backups.
+- __B. Value from the environment:__ the config file holds `$VAR`, the value comes from `.env`, the
+  Compose environment or a Kubernetes Secret, and the key is declared in `env-keys` and
+  `secret-keys`. Keeps secrets out of the data directory and its backups; needs one more place set
+  per target.
+- Either way, the add-on's secret keys must reach `secret-keys` without replacing core's list. That
+  needs ngdpbase to make `secret-keys` additive for add-ons (for example a map, as `env-keys`
+  already is), or the add-on's keys added to core's list.
+
+__Decision:__ Pending.
