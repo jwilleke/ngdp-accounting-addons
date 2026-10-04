@@ -89,6 +89,7 @@ payments, donations, fund tracking, event fees and treasurer reports. Planning s
 
 - What and why: [README.md](README.md)
 - Goals, personas, modules, ledger model, roles, open questions: [docs/requirements.md](docs/requirements.md)
+- Decisions log (record every confirmed decision here): [docs/plans/decisions.md](docs/plans/decisions.md)
 - Add-on contract (`AddonModule`, `register(engine, config)`): ngdpbase `docs/guides/addons-developer-guide.md`
 
 No build, test or run commands exist yet.

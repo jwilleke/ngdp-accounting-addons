@@ -4,6 +4,8 @@ __Status:__ draft for review, 2026-10-03. Nothing here is built.
 
 This document describes a suite of ngdpbase add-ons for small organizations: clubs first, then churches and associations. Where it refers to ngdpbase, it cites files on `main` of [jwilleke/ngdpbase](https://github.com/jwilleke/ngdpbase) as of commit `817ca75` (2026-10-03). Where ngdpbase does not yet provide something, it says so.
 
+Decisions made since this draft are recorded in [docs/plans/decisions.md](plans/decisions.md) and take precedence over this document where they differ.
+
 ## 1. Goals and non-goals
 
 ### Goals
@@ -59,7 +61,7 @@ One repository with several add-ons, each with its own slug, permissions and rou
 | --- | --- | --- | --- |
 | `org-ledger` | 1 | Transaction ledger, funds, audit trail, shared settings, base permissions | none |
 | `org-dues` | 1 | Tiers, memberships, invoices, reminders | `org-ledger` |
-| `org-payments` | 1 | Stripe integration, manual cash and check entry, refunds | `org-ledger` |
+| `org-payments` | 1 | `PaymentManager` and payment providers (Stripe, manual cash and check, others), refunds | `org-ledger` |
 | `org-donations` | 1 | Donations, giving statements, tax receipts | `org-ledger`, `org-payments` |
 | `org-events` | 1 | Paid registrations | `org-ledger`, `org-payments` |
 | `org-reports` | 1 | Treasurer reports, CSV and QuickBooks/Wave export | `org-ledger` |
@@ -132,8 +134,9 @@ __Acceptance criteria:__
 
 __Requirements:__
 
+- All payments go through a `PaymentManager` whose providers are chosen by configuration ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers)). Stripe is the first online provider; manual cash and check is always available.
 - Take card and ACH payments through Stripe, using a Stripe-hosted payment page or Stripe-hosted fields so card and bank details never reach the ngdpbase server.
-- Receive payment results by Stripe webhook, verify the signature, and process each event once.
+- Learn payment results by asking the provider on a schedule and when a payer returns from the hosted page; no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)). Process each event once.
 - Record cash and check payments manually: amount, date, payer, check number, fund, and a link to the invoice, donation or registration it pays.
 - Record deposits of cash and checks as a batch (optional in Phase 1).
 - Refund a Stripe payment fully or partly; record a manual refund for cash or check. A refund posts an `out` transaction linked to the original.
@@ -141,8 +144,8 @@ __Requirements:__
 
 __Acceptance criteria:__
 
-- [ ] A test-mode card payment and a test-mode ACH payment each produce exactly one posted transaction, even when Stripe delivers the webhook more than once.
-- [ ] A webhook with a missing or invalid signature is rejected and logged, and changes nothing.
+- [ ] A test-mode card payment and a test-mode ACH payment each produce exactly one posted transaction, even when the same event is synced more than once.
+- [ ] Switching or adding a payment provider is a configuration change only.
 - [ ] No card number, CVC or bank account number is stored or logged anywhere.
 - [ ] A refund requires the high-assurance refund permission and appears in the audit trail.
 - [ ] A treasurer can record a check in under a minute.
@@ -276,7 +279,7 @@ Each add-on declares these in its `config/default-config.json`. Names are propos
 | `payment-refund` | Refund payments | | | | yes | | __yes__ |
 | `ledger-export` | CSV, QuickBooks and Wave export, donor lists | | | | yes | | __yes__ |
 | `receipt-issue` | Issue, reissue or bulk-send tax statements | | | | yes | | __yes__ |
-| `payment-settings` | Stripe keys, webhook secret, payment methods | | | | | yes | __yes__ |
+| `payment-settings` | Payment provider selection, provider keys, payment methods | | | | | yes | __yes__ |
 | `reimbursement-approve` (Phase 2) | Approve, reject, mark paid | | | | yes | | __yes__ |
 | `handover-manage` (Phase 2) | Create and finalize a handover | | | | yes | yes | __yes__ (finalize) |
 | Role changes (core) | Grant or remove roles, including treasurer | | | | | yes (`admin`, `user-admin`) | __yes__ (core) |
@@ -327,12 +330,12 @@ Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the pl
 - __PII:__ names, emails, addresses, phone numbers, membership status. Shown only to people with the matching permission; board summaries are aggregate by default.
 - __Donor data:__ individual gifts are sensitive. Support anonymous gifts. Donor-level views and exports need `ledger-read` or `ledger-export`.
 - __No card or bank data stored.__ Payments go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
-- __Stripe webhooks:__ verify every event's signature with the endpoint's signing secret before acting, reject on failure, process each event id once, and fetch the authoritative object from Stripe where it matters. Follow Stripe's current webhook documentation.
-- __Secrets:__ Stripe secret key and webhook secret come from environment variables, referenced in configuration in `$VAR` form so `ConfigurationManager` masks them (`getMaskedProperty`, `ngdpbase.config.secret-keys` in `src/managers/ConfigurationManager.ts`). Never log them. Changing them is a high-assurance action.
+- __Provider events:__ fetch events from the provider over an authenticated outbound call (`guardedFetch`), process each event id once, and fetch the authoritative object from the provider where it matters. There is no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
+- __Secrets:__ Payment provider keys (for example the Stripe secret key) come from environment variables, referenced in configuration in `$VAR` form so `ConfigurationManager` masks them (`getMaskedProperty`, `ngdpbase.config.secret-keys` in `src/managers/ConfigurationManager.ts`). Never log them. Changing them is a high-assurance action.
 - __Outbound HTTP__ to Stripe goes through `guardedFetch` (`addons/README.md`); the egress policy must allow it.
-- __CSRF:__ every browser POST carries the CSRF token. The webhook route is the only exception and is protected by the signature instead; this needs core support (section 11).
+- __CSRF:__ every browser POST carries the CSRF token. There are no exceptions; payments need no inbound route ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
 - __Encryption at rest:__ if the ledger uses `DatabaseManager` with SQLCipher, data is encrypted when `NGDPBASE_DATABASE_KEY` is set. JSON files under `dataPath` are not encrypted by ngdpbase. Choice is an open question.
-- __Audit:__ all high-assurance actions, exports, settings changes and failed webhook verifications are audited.
+- __Audit:__ all high-assurance actions, exports, settings changes and failed provider syncs are audited.
 - __Least privilege:__ the admin role does not get donor-level detail by default.
 
 ## 10. Integration notes
@@ -342,7 +345,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 ### Stripe
 
 - Use a Stripe-hosted payment flow (for example Stripe Checkout) for cards and US bank accounts (ACH), so the server never handles card or bank details.
-- Webhooks are the source of truth for payment success, failure, ACH settlement, refunds and disputes.
+- Stripe's Events API, polled on a schedule, is the source of truth for payment success, failure, ACH settlement, refunds and disputes ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
 - Use Stripe test mode in development and acceptance tests.
 - Record Stripe's processing fees so payouts can be reconciled (how to obtain fee amounts is to be confirmed in Stripe's documentation).
 - Open: whether to use the Stripe Node SDK or call Stripe's REST API through `guardedFetch`. The SDK makes its own HTTP requests, which may conflict with ngdpbase's `lint:http` boundary check (`addons/README.md`).
@@ -372,8 +375,8 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Alternative: an assurance condition on policies (`Policy.ts`, `PolicyEvaluator`) | Not built; only `role` subjects are matched | Only if step-up is not the chosen mechanism |
 | TOTP | Not built: [#421](https://github.com/jwilleke/ngdpbase/issues/421) | A second high-assurance option (password plus TOTP only) |
 | Passkeys | Built ([#448](https://github.com/jwilleke/ngdpbase/issues/448)); needs an explicit HTTPS base URL | Stage 1 |
-| Webhook ingress for add-ons: raw request body, CSRF-exempt, unauthenticated route verified by signature | Not available. `express.json()` is applied globally in `src/app.ts` before add-ons load, and `src/middleware/csrf.ts` exempts only bearer requests and one search path | Payments (Stripe webhooks) |
-| Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, ACH follow-up |
+| Webhook ingress for add-ons | Not needed: payments are polled, not pushed ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)) | n/a |
+| Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, payment sync. Tracked in [ngdpbase#1611](https://github.com/jwilleke/ngdpbase/issues/1611) and [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) ([D-002](plans/decisions.md#d-002-recurring-jobs-come-from-ngdpbase-core)) |
 | Add-on-owned system-category and vault | Planned, [#1507](https://github.com/jwilleke/ngdpbase/issues/1507) | Board memory pages (Phase 2) |
 | Add-on use of `DatabaseManager` tables and migrations | Not documented | Ledger storage, if SQLite is chosen |
 | Add-on audit event names | To confirm in `docs/guides/audit-developer-guide.md` | Audit trail |
@@ -398,5 +401,5 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 11. __Stripe account model:__ one Stripe account per organization with keys entered by the admin, or Stripe Connect? (Affects onboarding and any platform fee.)
 12. __Events:__ build on the ngdpbase `calendar` and `forms` add-ons, or stand alone?
 13. __Tax receipts:__ which countries first (US only?), and who supplies the receipt wording?
-14. __Who files the core issues__ in ngdpbase (step-up list contribution, webhook ingress, scheduled jobs)?
+14. __Who files the core issues__ in ngdpbase (step-up list contribution; scheduled jobs is filed as ngdpbase#1611)?
 15. __Distribution:__ private npm package on GitHub Packages (recommended in `docs/platform/deployment/addon-packaged.md`), or a drop-in directory?
