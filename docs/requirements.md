@@ -389,7 +389,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Add-on tables and migrations in `DatabaseManager` | Not supported or documented. To be worked out on the one path, `DatabaseManager` → `SqliteDatabaseProvider` ([#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13), [D-011](plans/decisions.md#d-011-one-path-to-the-database)) | Ledger storage |
 | Consistent database backup and restore | Not ported from yourPHR ([ngdpbase#1536](https://github.com/jwilleke/ngdpbase/issues/1536), open) | Ledger backups ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)) |
 | Changing the database key; encrypting an existing plain database | Not supported ([#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14)) | Key rotation, for example at a handover |
-| Add-on audit event names | Not possible: `AuditManager` puts the site into maintenance mode when an enabled event is not in core's built-in list (`src/utils/auditEventNames.ts`), so an add-on cannot declare its own events ([D-014](plans/decisions.md#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record)) | Audit trail; blocks the MVP |
+| Add-on audit event names | Not possible: `AuditManager` puts the site into maintenance mode when an enabled event is not in core's built-in list (`src/utils/auditEventNames.ts`), so an add-on cannot declare its own events ([#16](https://github.com/jwilleke/ngdp-accounting-addons/issues/16), [D-014](plans/decisions.md#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record)) | Audit trail; blocks the MVP |
 
 ## 12. Phasing
 

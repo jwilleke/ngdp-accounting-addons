@@ -492,4 +492,6 @@ __Consequences:__
   (`src/managers/AuditManager.ts`, around line 277) puts the site into maintenance mode when an
   enabled event is not in core's built-in list (`src/utils/auditEventNames.ts`). An add-on that
   declares its own event in its config would therefore stop the site. ngdpbase needs a way for an
-  add-on to register its event names; this blocks the MVP.
+  add-on to register its event names; this blocks the MVP. Tracked in
+  [#16](https://github.com/jwilleke/ngdp-accounting-addons/issues/16); proposed fix: accept an event
+  named after a declared permission.
