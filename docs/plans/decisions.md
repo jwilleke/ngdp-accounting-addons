@@ -24,6 +24,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
 | [D-009](#d-009-treasurer-requires-aal2-like-admin-roles) | 2026-10-04 | Treasurer role requires AAL2, like admin roles | Accepted |
 | [D-010](#d-010-ledger-data-lives-in-ngdpbases-database) | 2026-10-05 | Ledger data lives in ngdpbase's database, through `DatabaseManager` | Accepted |
+| [D-011](#d-011-one-path-to-the-database) | 2026-10-05 | One path to the database: `DatabaseManager` → `SqliteDatabaseProvider` | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -365,16 +366,14 @@ __Consequences:__
 - A site using the accounting add-ons sets `ngdpbase.database.provider` to `sqlite` and puts
   `NGDPBASE_DATABASE_KEY` in `.env` (or a Kubernetes Secret). The add-on checks `isEnabled()` in
   `register()`; without a database it does not register its routes and says why in `status()`.
-- __Migrations:__ core's own list (`src/providers/databaseMigrations.ts`) is a core file, and the
-  add-on guide forbids add-on-specific code in core, so the ledger's tables do not go there. But
-  ngdpbase's `runMigrations(db, registry, ledgerTable)` (`src/providers/sqliteMigrations.ts`) already
-  takes its own record table, so a second migration list can live in the same database (yourphr#784).
-  The add-on runs its own list on the shared handle from `register()`, with its own record table
-  (for example `org_ledger_migrations`) and tables prefixed by its slug, importing `runMigrations`
-  from `dist/`. Each list keeps its own once-only, in-order and newer-build checks. What ngdpbase
-  lacks is only a documented, supported way to do this: confirm with ngdpbase before relying on it.
-- Correction, 2026-10-05: this entry first said ngdpbase needs a new mechanism for add-on
-  migrations. `runMigrations` already accepts a separate record table.
+- __Migrations:__ how the ledger's tables are created is worked out in
+  [#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13), within
+  [D-011](#d-011-one-path-to-the-database). Core's own list (`src/providers/databaseMigrations.ts`)
+  is not used for add-on tables. `runMigrations(db, registry, ledgerTable)` already takes its own
+  record table, so the provider can run a second list in the same database.
+- Correction, 2026-10-05: this entry first said ngdpbase needs a new mechanism. It then said the
+  add-on could call `runMigrations` on the handle itself. That would be a second code path, ruled
+  out by D-011.
 - __Backups:__ SQLite must not be copied as a plain file while it is being written. The encrypted
   file-level backup and staged restore from yourPHR are not ported yet (ngdpbase#1536). Until they
   are, a backup of the data directory may not hold a consistent copy of the ledger. Financial data
@@ -389,3 +388,22 @@ __Consequences:__
   ledger must close its statements in its own `shutdown()` (DatabaseManager.md, "Not yet").
 - Nothing in core stores rows yet; the first planned user is the database audit provider
   (ngdpbase#1537). The ledger may be the first add-on user.
+
+## D-011: One path to the database
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [D-010](#d-010-ledger-data-lives-in-ngdpbases-database),
+  [#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13),
+  [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14)
+
+__Decision:__ There is exactly one manager-to-provider path to the database:
+`DatabaseManager` → `SqliteDatabaseProvider` → the one database instance. Never two code paths.
+
+__Consequences:__
+
+- The add-ons never open a database file, never run schema changes on the raw handle, and never call
+  `runMigrations` themselves. Their migrations are handed to `DatabaseManager`, and the provider runs
+  them (#13).
+- Anything the database needs that is missing, such as add-on migrations (#13) or key changes (#14),
+  is built on that one path in ngdpbase. It is worked out here first, then sent back as a PR.
