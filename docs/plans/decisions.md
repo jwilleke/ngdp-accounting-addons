@@ -21,7 +21,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-005](#d-005-paymentmanager-lives-in-ngdpbase-core) | 2026-10-04 | `PaymentManager` lives in ngdpbase core, off by default | Superseded by D-017 |
 | [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
-| [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
+| [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Secret values come from the environment, never a JSON file (option B) | Accepted 2026-10-05 |
 | [D-009](#d-009-treasurer-requires-aal2-like-admin-roles) | 2026-10-04 | Treasurer role requires AAL2, like admin roles | Accepted |
 | [D-010](#d-010-ledger-data-lives-in-ngdpbases-database) | 2026-10-05 | Ledger data lives in ngdpbase's database, through `DatabaseManager` | Partly superseded by D-012 |
 | [D-011](#d-011-one-path-to-the-database) | 2026-10-05 | One path to the database: `DatabaseManager` → `SqliteDatabaseProvider` | Accepted |
@@ -33,6 +33,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-017](#d-017-paymentmanager-lives-in-the-accounting-add-on) | 2026-10-05 | `PaymentManager` lives in the `accounting` add-on; providers configured like `ngdpbase.auth.factors` | Accepted |
 | [D-018](#d-018-use-published-standards-schemaorg-and-uncefact-payment-means) | 2026-10-05 | Use published standards: schema.org names and UN/CEFACT payment means codes | Accepted |
 | [D-019](#d-019-apache-license-20-the-same-as-ngdpbase) | 2026-10-05 | Apache License 2.0, the same as ngdpbase | Accepted |
+| [D-020](#d-020-follow-ngdpbases-guides-where-we-can) | 2026-10-05 | Follow ngdpbase's guides where we can | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -251,7 +252,7 @@ __Consequences:__
 
 ## D-008: Where secret values live
 
-- __Status:__ Proposed
+- __Status:__ Accepted 2026-10-05 (option B)
 - __Date:__ 2026-10-04
 - __Links:__ [D-007](#d-007-configuration-lives-in-config-files); ngdpbase
   `src/managers/ConfigurationManager.ts` (`resolveEnvRef`, `getMaskedProperty`),
@@ -325,7 +326,13 @@ __Recommendation: B.__
   operator action in the environment. `payment-settings` still covers which providers are enabled
   and their non-secret settings.
 
-__Decision:__ Pending.
+__Decision:__ Option B, following ngdpbase's add-on guide. A secret value (a payment provider key,
+for example) is an environment variable, never a literal in a JSON config file. The config file holds
+a bare `$VAR` reference (`"secret-key": "$STRIPE_SECRET_KEY"`); the value comes from `.env` (bare
+metal, Docker) or a Kubernetes Secret. If the variable is unset, ngdpbase omits that key with a
+warning and the add-on still loads: the provider treats it as not configured, stays off, and says so
+in `status()`. Secret keys are named in `ngdpbase.config.secret-keys` (an add-to set since
+ngdpbase#1613) so the admin screen masks them.
 
 ## D-009: Treasurer requires AAL2, like admin roles
 
@@ -656,3 +663,21 @@ __Consequences:__
 - Each add-on's `package.json`, when written, says `"license": "Apache-2.0"`.
 - ngdpbase's own `package.json` still says `"license": "ISC"`, which contradicts its `LICENSE`. That
   is ngdpbase's to fix.
+
+## D-020: Follow ngdpbase's guides where we can
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ ngdpbase `docs/guides/` (add-ons, security, audit, configuration, managers),
+  `docs/security-posture.md`, `docs/audit-posture.md`
+
+__Decision:__ Where ngdpbase's developer guides give a direction, these add-ons follow it, unless
+there is a stated reason not to. A departure is recorded here as its own decision, with the reason.
+
+__Consequences:__
+
+- Before designing something, read the relevant ngdpbase guide on `master` (D-008 is the first
+  decision settled this way).
+- Where a guide is silent or cannot serve an accounting need (for example add-on audit events, #16,
+  or per-permission sign-in strength, #17), the gap is worked out here and offered back to ngdpbase
+  as a PR, not worked around.
