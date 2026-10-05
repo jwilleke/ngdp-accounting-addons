@@ -62,7 +62,7 @@ One repository with a required base add-on and optional module add-ons. Each mod
 
 | Add-on | Phase | Contents | Depends on |
 | --- | --- | --- | --- |
-| `accounting` | 1 (MVP) | Funds, ledger, audit trail, monthly summary and CSV export, hand-off from ngdpbase `PaymentManager`, the accounting database, base permissions | none |
+| `accounting` | 1 (MVP) | Funds, ledger, audit trail, monthly summary and CSV export, `PaymentManager` and payment providers ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), the accounting database, base permissions | none |
 | `accounting-dues` | 1 | Tiers, memberships, invoices, reminders | `accounting` |
 | `accounting-donations` | 1 | Donations, giving statements, tax receipts | `accounting` |
 | `accounting-events` | 1 | Paid registrations | `accounting` |
@@ -89,7 +89,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 | `category` | Income or expense category: dues, donation, event fee, processing fee, refund, supplies, and so on (configurable list) |
 | `party` | Who paid or was paid: a reference to an ngdpbase Person (`PersonManager`, `src/managers/PersonManager.ts`), or a free-text name |
 | `method` | How the money moved: `card`, `ach`, `cash`, `check`, `bank-transfer`, `other` |
-| `provider` | The ngdpbase payment provider that recorded it (`manual`, `stripe`, ...), or empty for an entry made directly in the ledger ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers), [D-005](plans/decisions.md#d-005-paymentmanager-lives-in-ngdpbase-core)) |
+| `provider` | The payment provider that recorded it (`manual`, `stripe`, ...), or empty for an entry made directly in the ledger ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers), [D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)) |
 | `externalId` | The provider's own id for the payment. `provider` plus `externalId` is unique, so a payment delivered twice is posted once |
 | `reference` | Check number or other human reference |
 | `source` | Link to what created it: `{ type: dues-invoice, donation, event-registration, reimbursement, manual, adjustment; id }` |
@@ -139,7 +139,7 @@ __Acceptance criteria:__
 
 __Requirements:__
 
-- All payments go through ngdpbase's `PaymentManager` ([D-005](plans/decisions.md#d-005-paymentmanager-lives-in-ngdpbase-core)), whose providers are chosen by configuration ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers)). Stripe is the first online provider; manual cash and check is always available.
+- All payments go through the `accounting` add-on's `PaymentManager` ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), whose providers are chosen by configuration ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers)). Stripe is the first online provider; manual cash and check is always available.
 - Take card and ACH payments through Stripe, using a Stripe-hosted payment page or Stripe-hosted fields so card and bank details never reach the ngdpbase server.
 - Learn payment results by asking the provider on a schedule and when a payer returns from the hosted page; no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)). Process each event once.
 - Record cash and check payments manually: amount, date, payer, check number, fund, and a link to the invoice, donation or registration it pays.
@@ -381,7 +381,6 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Alternative: an assurance condition on policies (`Policy.ts`, `PolicyEvaluator`) | Not built; only `role` subjects are matched | Only if step-up is not the chosen mechanism |
 | TOTP | Not built: [#421](https://github.com/jwilleke/ngdpbase/issues/421) | A second high-assurance option (password plus TOTP only) |
 | Passkeys | Built ([#448](https://github.com/jwilleke/ngdpbase/issues/448)); needs an explicit HTTPS base URL | Treasurer AAL2 ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)) |
-| `PaymentManager` with payment providers, off by default | Requested: [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614) ([D-005](plans/decisions.md#d-005-paymentmanager-lives-in-ngdpbase-core)) | Payments, and so dues, donations and events |
 | Webhook ingress for add-ons | Not needed: payments are polled, not pushed ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)) | n/a |
 | Add-ons can add keys to `ngdpbase.config.secret-keys` | Bug [ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612); fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): becomes a set that every layer extends ([D-008](plans/decisions.md#d-008-where-secret-values-live)) | Payment provider keys |
 | Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, payment sync. Tracked in [ngdpbase#1611](https://github.com/jwilleke/ngdpbase/issues/1611) and [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) ([D-002](plans/decisions.md#d-002-recurring-jobs-come-from-ngdpbase-core)) |

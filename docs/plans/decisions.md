@@ -18,7 +18,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-002](#d-002-recurring-jobs-come-from-ngdpbase-core) | 2026-10-04 | Recurring jobs come from ngdpbase core, not a private scheduler | Accepted |
 | [D-003](#d-003-learn-payment-outcomes-by-asking-not-by-webhook) | 2026-10-04 | Learn payment outcomes by asking the service, not by inbound webhook | Accepted |
 | [D-004](#d-004-paymentmanager-with-configurable-providers) | 2026-10-04 | `PaymentManager` with configurable, capability-declaring providers | Accepted |
-| [D-005](#d-005-paymentmanager-lives-in-ngdpbase-core) | 2026-10-04 | `PaymentManager` lives in ngdpbase core, off by default | Accepted |
+| [D-005](#d-005-paymentmanager-lives-in-ngdpbase-core) | 2026-10-04 | `PaymentManager` lives in ngdpbase core, off by default | Superseded by D-017 |
 | [D-006](#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes) | 2026-10-04 | Every add-on runs on bare metal, Docker and Kubernetes | Accepted |
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
 | [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
@@ -30,6 +30,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record) | 2026-10-05 | Every action is a permission with one audited door; no money moves without a record | Accepted |
 | [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice) | 2026-10-05 | Sign-in strength belongs to permissions and is the operator's choice; money actions ship at AAL2 | Accepted |
 | [D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons) | 2026-10-05 | One repository: base `accounting` add-on plus optional module add-ons; the MVP is `accounting` | Accepted |
+| [D-017](#d-017-paymentmanager-lives-in-the-accounting-add-on) | 2026-10-05 | `PaymentManager` lives in the `accounting` add-on; providers configured like `ngdpbase.auth.factors` | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -122,9 +123,8 @@ __Consequences:__
 
 - Several providers can be active at once (for example Stripe online plus cash at the door), unlike
   ngdpbase's usual single `ngdpbase.<capability>.provider`, so providers are a map keyed by provider
-  name, not a list (plain arrays are replaced wholesale on merge). Since D-005 the keys are core keys
-  (proposed `ngdpbase.payment.providers.<name>.enabled` and `.<name>.*`; final names are set in
-  [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614)).
+  name, not a list (plain arrays are replaced wholesale on merge). Since D-017 the configuration is
+  `ngdpbase.addons.accounting.paymentproviders`, shaped like `ngdpbase.auth.factors`.
 - Correction, 2026-10-04: this entry first named the key `ngdpbase.payment.providers` (a list), then
   `ngdpbase.addons.<slug>.providers` while the manager was planned for this repository. D-005 moved it
   to core.
@@ -139,7 +139,7 @@ __Consequences:__
 
 ## D-005: PaymentManager lives in ngdpbase core
 
-- __Status:__ Accepted
+- __Status:__ Superseded by [D-017](#d-017-paymentmanager-lives-in-the-accounting-add-on) on 2026-10-05
 - __Date:__ 2026-10-04
 - __Links:__ [D-004](#d-004-paymentmanager-with-configurable-providers), [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614),
   [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3)
@@ -549,7 +549,7 @@ events present on every site.
 
 __Decision:__ This repository holds all accounting for ngdpbase, as several add-ons. `accounting` is
 the required base: funds, the ledger, audit, the monthly summary and CSV export, the hand-off from
-ngdpbase's `PaymentManager` (D-005), and the accounting database (D-012). Each optional feature is
+`PaymentManager` and its providers (D-017), and the accounting database (D-012). Each optional feature is
 its own add-on that depends on `accounting`: `accounting-dues`, `accounting-donations`,
 `accounting-events`, `accounting-loyalty` (#18), and later others such as `accounting-reimbursements`
 and `accounting-handover`. The MVP is the `accounting` add-on alone.
@@ -565,4 +565,41 @@ __Consequences:__
   `accounting` means this repository is ngdpbase's accounting; what happens to
   [ngdpbase#486](https://github.com/jwilleke/ngdpbase/issues/486) (a double-entry accounting add-on)
   is requirements.md open question 1.
-- Payments stay in ngdpbase core (D-005), not a module here.
+- Payments live in `accounting` itself (D-017), so every site that enables accounting can take money.
+
+## D-017: PaymentManager lives in the accounting add-on
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Supersedes:__ [D-005](#d-005-paymentmanager-lives-in-ngdpbase-core)
+- __Links:__ [D-004](#d-004-paymentmanager-with-configurable-providers),
+  [D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons),
+  [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3)
+
+__Decision:__ `PaymentManager`, `BasePaymentProvider` and the payment providers live in the base
+`accounting` add-on, registered with `engine.registerManager`, not in ngdpbase core. Providers are
+configured like `ngdpbase.auth.factors`: a list of provider entries under
+`ngdpbase.addons.accounting.paymentproviders`, each with its identifier, `enabled`, and its own
+settings.
+
+```json
+"ngdpbase.addons.accounting.paymentproviders": [
+  { "id": "manual", "enabled": true },
+  { "id": "stripe", "enabled": false, "secret-key": "$STRIPE_SECRET_KEY" }
+]
+```
+
+__Consequences:__
+
+- A site takes payments by enabling `accounting`; other ngdpbase add-ons that want to take money
+  depend on `accounting`.
+- No ngdpbase core change for payments; [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614)
+  is no longer needed.
+- Merging: ngdpbase merges a list of objects entry by entry only when the entries share `id` or
+  `authproviderid` (`IDENTITY_FIELDS`, `src/utils/configFiles.ts`). The sketch uses `id`, which works
+  today. A `paymentproviderid` field, matching `authproviderid`, would need that one-line core
+  change; to be decided when building.
+- D-003 (fetch outcomes, no webhooks), D-004 (providers declare capabilities; `provider` plus
+  `externalId` unique) and D-008 (where secret values live) still apply.
+- The manager's registered name (`PaymentManager` or an accounting-specific name) is decided when
+  building, to avoid a clash if ngdpbase ever adds one.
