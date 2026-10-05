@@ -434,8 +434,9 @@ __Consequences:__
   into the shared `ngdpbase.db` later is open.
 - `DatabaseManager` must be able to open a second, named instance for an add-on. How that works is
   #13, built here first and sent back to ngdpbase as a PR.
-- Open: whether the accounting file uses `NGDPBASE_DATABASE_KEY` or its own key, and its file name
-  and location (proposed: in `FAST_STORAGE`, beside `ngdpbase.db`).
+- Key: shared `NGDPBASE_DATABASE_KEY` for now (operator, 2026-10-05). A separate key can come later
+  with #14.
+- Open: the file's name and location (proposed: in `FAST_STORAGE`, beside `ngdpbase.db`).
 - Everything else in D-010 still applies: SQLCipher encryption from an environment key, no NFS or SMB,
   consistent backups needed before release (ngdpbase#1536), and closing statements on shutdown.
 - A separate file keeps the accounting schema and backups apart from core's, and lets the add-on be
