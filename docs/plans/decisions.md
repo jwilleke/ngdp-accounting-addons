@@ -336,6 +336,7 @@ __Consequences:__
 - Any factor combination that ngdpbase rates AAL2 qualifies: a passkey today; password plus TOTP or
   another second factor once ngdpbase supports it (ngdpbase#421, ngdpbase#1523).
 - The option of letting the treasurer work at AAL1 and stepping up only for high-risk actions is not taken.
+- Confirmed by the operator 2026-10-05: D-009 decides only the role's sign-in strength.
 - Not decided here: whether high-risk permissions (refund, adjust, export, receipt issue) are also
   put on ngdpbase's step-up list, which would ask for a recent factor (within
   `max-age-minutes`) even in an AAL2 session. Who ships the `treasurer` role definition is
@@ -484,6 +485,8 @@ it cannot be. Details are worked out during implementation.
 
 __Consequences:__
 
+- A role is only a collection of permissions (actions). Only permissions decide access and which
+  audit event is recorded; a role name never does (operator, 2026-10-05; ngdpbase P2).
 - Routes ask `requirePermission` for the permission the action is; no role names in code. The
   context is forwarded, never rebuilt (P1, P2).
 - Event names are `{target}-{action}`, declared in `ngdpbase.audit.events` and emitted through
