@@ -23,8 +23,10 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
 | [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
 | [D-009](#d-009-treasurer-requires-aal2-like-admin-roles) | 2026-10-04 | Treasurer role requires AAL2, like admin roles | Accepted |
-| [D-010](#d-010-ledger-data-lives-in-ngdpbases-database) | 2026-10-05 | Ledger data lives in ngdpbase's database, through `DatabaseManager` | Accepted |
+| [D-010](#d-010-ledger-data-lives-in-ngdpbases-database) | 2026-10-05 | Ledger data lives in ngdpbase's database, through `DatabaseManager` | Partly superseded by D-012 |
 | [D-011](#d-011-one-path-to-the-database) | 2026-10-05 | One path to the database: `DatabaseManager` → `SqliteDatabaseProvider` | Accepted |
+| [D-012](#d-012-mvp-accounting-has-its-own-database-file) | 2026-10-05 | MVP: accounting has its own database file, opened through the same path | Accepted |
+| [D-013](#d-013-docs-live-here-until-v100-in-their-target-formats) | 2026-10-05 | Docs live here until v1.0.0, in their target formats | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -340,7 +342,8 @@ __Consequences:__
 
 ## D-010: Ledger data lives in ngdpbase's database
 
-- __Status:__ Accepted
+- __Status:__ Accepted; the "one file, never a second SQLite file" part is superseded for the MVP by
+  [D-012](#d-012-mvp-accounting-has-its-own-database-file)
 - __Date:__ 2026-10-05
 - __Links:__ [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5); requirements.md
   open question 7; ngdpbase `docs/managers/DatabaseManager.md`,
@@ -397,13 +400,63 @@ __Consequences:__
   [#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13),
   [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14)
 
-__Decision:__ There is exactly one manager-to-provider path to the database:
-`DatabaseManager` → `SqliteDatabaseProvider` → the one database instance. Never two code paths.
+__Decision:__ Database access goes through one manager-to-provider path:
+`DatabaseManager` → `SqliteDatabaseProvider` → a database instance. Try hard to use that same code
+path for everything, including migrations; never write a second implementation of what it already
+does (the DRY principle).
 
 __Consequences:__
 
-- The add-ons never open a database file, never run schema changes on the raw handle, and never call
-  `runMigrations` themselves. Their migrations are handed to `DatabaseManager`, and the provider runs
-  them (#13).
+- Add-ons may have migrations. They reuse ngdpbase's migration code (`runMigrations` with its own
+  record table) through `DatabaseManager` and `SqliteDatabaseProvider`, rather than opening files or
+  running schema changes on their own (#13).
+- Amended 2026-10-05: the first wording ("never two code paths", add-ons never call `runMigrations`)
+  was stricter than intended. The rule is to try for the same code path and never duplicate it.
 - Anything the database needs that is missing, such as add-on migrations (#13) or key changes (#14),
   is built on that one path in ngdpbase. It is worked out here first, then sent back as a PR.
+
+## D-012: MVP accounting has its own database file
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [D-010](#d-010-ledger-data-lives-in-ngdpbases-database),
+  [D-011](#d-011-one-path-to-the-database),
+  [#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13)
+
+__Decision:__ For the MVP, accounting data lives in its own SQLite database file, a separate
+database instance opened through the same path as ngdpbase's: `DatabaseManager` →
+`SqliteDatabaseProvider` → the accounting database instance. It uses the same provider code, the same
+migration code with its own record table, and the same startup checks.
+
+__Consequences:__
+
+- This supersedes D-010's "never open a second SQLite file" for the MVP. Whether accounting moves
+  into the shared `ngdpbase.db` later is open.
+- `DatabaseManager` must be able to open a second, named instance for an add-on. How that works is
+  #13, built here first and sent back to ngdpbase as a PR.
+- Open: whether the accounting file uses `NGDPBASE_DATABASE_KEY` or its own key, and its file name
+  and location (proposed: in `FAST_STORAGE`, beside `ngdpbase.db`).
+- Everything else in D-010 still applies: SQLCipher encryption from an environment key, no NFS or SMB,
+  consistent backups needed before release (ngdpbase#1536), and closing statements on shutdown.
+- A separate file keeps the accounting schema and backups apart from core's, and lets the add-on be
+  removed without touching `ngdpbase.db`.
+
+## D-013: Docs live here until v1.0.0, in their target formats
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+
+__Decision:__ Until this project's v1.0.0 semver release, all documentation stays in this
+repository, including documentation for anything that will move into ngdpbase. Each document is
+written in the format it will have at its destination.
+
+__Consequences:__
+
+- Documents bound for ngdpbase follow ngdpbase's conventions. A manager page goes under
+  `docs/managers/<Name>.md` with frontmatter `name`, `description`, `dateModified`, `category`,
+  `code`, as `DatabaseManager.md` has. A guide goes under `docs/guides/` with `name`, `description`,
+  `dateModified`, `category`, `relatedModules`. Each guide ends with "How you know you are done" and
+  "Known gaps" sections.
+- Moving them to ngdpbase at v1.0.0 is then a copy, not a rewrite.
+- Documents that belong to this repository (requirements, decisions, the add-on's own README) keep
+  this repository's format.

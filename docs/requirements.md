@@ -404,7 +404,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 4. __Step-up approach:__ treasurer at `required-aal: 2` is decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)). Remaining: also put the high-assurance permissions on ngdpbase's step-up list for a recent factor? Should core still gain an assurance condition on policies?
 5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
 6. __TOTP:__ is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
-7. __Storage:__ decided: ngdpbase's database through `DatabaseManager` ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)). Remaining: should the add-on's default config turn `ngdpbase.database.provider` to `sqlite`, or must the operator do it?
+7. __Storage:__ decided: for the MVP, accounting has its own SQLite database file, opened through `DatabaseManager` → `SqliteDatabaseProvider` ([D-012](plans/decisions.md#d-012-mvp-accounting-has-its-own-database-file)). Open: its key and file location.
 8. __Membership tiers and access roles:__ should paying dues grant an ngdpbase role (for example `member`) automatically, and remove it when lapsed?
 9. __Admin access to donor detail:__ default no? Separation of duties between admin and treasurer?
 10. __Stripe fees:__ record gross plus a fee expense, or net?
