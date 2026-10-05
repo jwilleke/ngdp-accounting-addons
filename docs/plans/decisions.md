@@ -28,6 +28,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-012](#d-012-mvp-accounting-has-its-own-database-file) | 2026-10-05 | MVP: accounting has its own database file, opened through the same path | Accepted |
 | [D-013](#d-013-docs-live-here-until-v100-in-their-target-formats) | 2026-10-05 | Docs live here until v1.0.0, in their target formats | Accepted |
 | [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record) | 2026-10-05 | Every action is a permission with one audited door; no money moves without a record | Accepted |
+| [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice) | 2026-10-05 | Sign-in strength belongs to permissions and is the operator's choice; money actions ship at AAL2 | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -498,3 +499,35 @@ __Consequences:__
   add-on to register its event names; this blocks the MVP. Tracked in
   [#16](https://github.com/jwilleke/ngdp-accounting-addons/issues/16); proposed fix: accept an event
   named after a declared permission.
+
+## D-015: Sign-in strength belongs to permissions and is the operator's choice
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [#17](https://github.com/jwilleke/ngdp-accounting-addons/issues/17),
+  [D-009](#d-009-treasurer-requires-aal2-like-admin-roles), [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record),
+  [#1](https://github.com/jwilleke/ngdp-accounting-addons/issues/1) (item 3)
+
+__Context:__ ngdpbase sets `required-aal` only on roles. Access comes from permissions, and a role is
+only a collection of permissions (D-014), so any other role granted the same permissions bypasses
+the treasurer role's AAL2 (D-009). Sites also differ: a family on a closed network, a two-person condo
+association or a partnership may want no extra sign-in strength, while a club with a rotating
+treasurer may want it on every money action.
+
+__Decision:__ Sign-in strength can be set per permission (`required-aal` on the permission's entry
+in `ngdpbase.permissions.definitions`), checked at the permission's one door whichever role granted
+it. Every level is the operator's choice in configuration. The add-on ships secure defaults:
+`required-aal: 2` on money-moving permissions (`ledger-adjust`, `payment-refund`, `ledger-export`,
+`receipt-issue`).
+
+__Consequences:__
+
+- Needs an ngdpbase change (#17), worked out here and sent back as a PR.
+- Shipped levels follow ngdpbase's existing rule for roles: a shipped or add-on level that no enabled
+  sign-in method can reach is lowered, so the smallest sites keep working; a level the operator set
+  that cannot be reached refuses to boot with the reason.
+- Changes are `config-change` audit events and belong in the security posture view.
+- D-009 stays: roles keep `required-aal`, and a permission's level is a floor.
+- Future, not decided: instance profiles for regulated settings (for example HIPAA, SOX, personal
+  health records) that ship different default levels. To be reconciled with ngdpbase
+  security-posture.md D7, which removed `ngdpbase.security.profile`.
