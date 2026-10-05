@@ -340,7 +340,7 @@ Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the pl
 - __Secrets:__ payment provider keys are masked on the Admin Configuration screen by naming them in `ngdpbase.config.secret-keys`; never log them; changing them is a high-assurance action. Whether the values live in the config file or come from the environment is pending ([D-008](plans/decisions.md#d-008-where-secret-values-live)).
 - __Outbound HTTP__ to Stripe goes through `guardedFetch` (`addons/README.md`); the egress policy must allow it.
 - __CSRF:__ every browser POST carries the CSRF token. There are no exceptions; payments need no inbound route ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
-- __Encryption at rest:__ if the ledger uses `DatabaseManager` with SQLCipher, data is encrypted when `NGDPBASE_DATABASE_KEY` is set. JSON files under `dataPath` are not encrypted by ngdpbase. Choice is an open question.
+- __Encryption at rest:__ the ledger lives in ngdpbase's database ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)), encrypted with SQLCipher when `NGDPBASE_DATABASE_KEY` is set in the environment. Without the key it is plain SQLite and boot warns.
 - __Audit:__ all high-assurance actions, exports, settings changes and failed provider syncs are audited.
 - __Least privilege:__ the admin role does not get donor-level detail by default.
 
@@ -386,7 +386,8 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Add-ons can add keys to `ngdpbase.config.secret-keys` | Bug [ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612); fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): becomes a set that every layer extends ([D-008](plans/decisions.md#d-008-where-secret-values-live)) | Payment provider keys |
 | Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, payment sync. Tracked in [ngdpbase#1611](https://github.com/jwilleke/ngdpbase/issues/1611) and [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) ([D-002](plans/decisions.md#d-002-recurring-jobs-come-from-ngdpbase-core)) |
 | Add-on-owned system-category and vault | Planned, [#1507](https://github.com/jwilleke/ngdpbase/issues/1507) | Board memory pages (Phase 2) |
-| Add-on use of `DatabaseManager` tables and migrations | Not supported (checked 2026-10-04): the migration ledger is one core file (`src/providers/databaseMigrations.ts`), the database is off by default (`ngdpbase.database.provider: none`), and nothing in core stores rows yet (`docs/managers/DatabaseManager.md`) | Ledger storage, if SQLite is chosen |
+| Add-on tables and migrations in `DatabaseManager` | Not supported: the migration ledger is one core file (`src/providers/databaseMigrations.ts`); an add-on cannot add its own migrations ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)) | Ledger storage |
+| Consistent database backup and restore | Not ported from yourPHR ([ngdpbase#1536](https://github.com/jwilleke/ngdpbase/issues/1536), open) | Ledger backups ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)) |
 | Add-on audit event names | Partly: an add-on can declare events in its config, because `ngdpbase.audit.events` is a map. But emitted names are typed by core's `AUDIT_EVENT` (`src/utils/auditEventNames.ts`), so add-on code needs a cast, and `npm run lint:audit` covers only add-ons inside the ngdpbase repository | Audit trail |
 
 ## 12. Phasing
@@ -402,7 +403,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 4. __Step-up approach:__ treasurer at `required-aal: 2` is decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)). Remaining: also put the high-assurance permissions on ngdpbase's step-up list for a recent factor? Should core still gain an assurance condition on policies?
 5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
 6. __TOTP:__ is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
-7. __Storage:__ JSON files under `dataPath` (like calendar) or SQLite through `DatabaseManager`? Today only JSON files are supported: add-ons cannot add database migrations (section 11). With JSON files, writes must be atomic (write a temporary file, then rename), and two pods share the data directory during a rolling update ([D-006](plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)), so the ledger needs one writer at a time.
+7. __Storage:__ decided: ngdpbase's database through `DatabaseManager` ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)). Remaining: should the add-on's default config turn `ngdpbase.database.provider` to `sqlite`, or must the operator do it?
 8. __Membership tiers and access roles:__ should paying dues grant an ngdpbase role (for example `member`) automatically, and remove it when lapsed?
 9. __Admin access to donor detail:__ default no? Separation of duties between admin and treasurer?
 10. __Stripe fees:__ record gross plus a fee expense, or net?

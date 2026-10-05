@@ -23,6 +23,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-007](#d-007-configuration-lives-in-config-files) | 2026-10-04 | Configuration lives in config files | Accepted |
 | [D-008](#d-008-where-secret-values-live) | 2026-10-04 | Where secret values (payment provider keys) live | Proposed |
 | [D-009](#d-009-treasurer-requires-aal2-like-admin-roles) | 2026-10-04 | Treasurer role requires AAL2, like admin roles | Accepted |
+| [D-010](#d-010-ledger-data-lives-in-ngdpbases-database) | 2026-10-05 | Ledger data lives in ngdpbase's database, through `DatabaseManager` | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -335,3 +336,50 @@ __Consequences:__
   put on ngdpbase's step-up list, which would ask for a recent factor (within
   `max-age-minutes`) even in an AAL2 session. Who ships the `treasurer` role definition is
   requirements.md open question 5.
+
+## D-010: Ledger data lives in ngdpbase's database
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5); requirements.md
+  open question 7; ngdpbase `docs/managers/DatabaseManager.md`,
+  [ngdpbase#1536](https://github.com/jwilleke/ngdpbase/issues/1536),
+  [ngdpbase#1537](https://github.com/jwilleke/ngdpbase/issues/1537)
+
+__Context:__ The ledger needs durable, consistent storage that survives two processes during a rolling
+update (D-006). ngdpbase has a `DatabaseManager`: `ngdpbase.database.provider` is `none` by default
+or `sqlite`; the file is `ngdpbase.database.file` (default `${FAST_STORAGE}/ngdpbase.db`); with
+`NGDPBASE_DATABASE_KEY` set in the environment or instance `.env` (never config) it is encrypted with
+SQLCipher, without it it is plain SQLite and boot warns. Callers take the connection with
+`engine.getManager('DatabaseManager').getHandle()`; `isEnabled()` says whether one is open.
+Migrations are a dated ledger in `src/providers/databaseMigrations.ts`, each run once in its own
+transaction. Boot refuses a schema from a newer build, a failed migration, a failed integrity check,
+or a database on NFS or SMB.
+
+__Decision:__ The ledger's data lives in ngdpbase's database through `DatabaseManager`, using its
+handle and its migration ledger. The add-ons never open a second SQLite file and never keep ledger
+data in JSON files.
+
+__Consequences:__
+
+- A site using the accounting add-ons sets `ngdpbase.database.provider` to `sqlite` and puts
+  `NGDPBASE_DATABASE_KEY` in `.env` (or a Kubernetes Secret). The add-on checks `isEnabled()` in
+  `register()`; without a database it does not register its routes and says why in `status()`.
+- __Core gap:__ the migration ledger is one file in ngdpbase core, and the add-on guide forbids
+  add-on-specific code in core, so this repository cannot add its tables there. ngdpbase needs a way
+  for an add-on to register its own migrations into the same database and ledger (ids namespaced by
+  add-on slug, tables prefixed by slug, run in order with core's). Not yet requested.
+- __Backups:__ SQLite must not be copied as a plain file while it is being written. The encrypted
+  file-level backup and staged restore from yourPHR are not ported yet (ngdpbase#1536). Until they
+  are, a backup of the data directory may not hold a consistent copy of the ledger. Financial data
+  needs this before release.
+- __Deployment (D-006):__ a database on NFS or SMB refuses to boot, so a Kubernetes data volume on an
+  NFS-backed storage class will not work. Install notes must say the data volume needs a local or
+  block storage class. Two pods during a rolling update share one file through SQLite's locking,
+  which JSON files could not do safely.
+- __Encryption at rest__ comes from SQLCipher when the key is set. Like the payment keys in D-008,
+  the database key lives only in the environment, never in config.
+- __Shutdown order:__ ngdpbase may close the database before managers registered later finish; the
+  ledger must close its statements in its own `shutdown()` (DatabaseManager.md, "Not yet").
+- Nothing in core stores rows yet; the first planned user is the database audit provider
+  (ngdpbase#1537). The ledger may be the first add-on user.
