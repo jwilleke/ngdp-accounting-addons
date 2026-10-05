@@ -365,10 +365,16 @@ __Consequences:__
 - A site using the accounting add-ons sets `ngdpbase.database.provider` to `sqlite` and puts
   `NGDPBASE_DATABASE_KEY` in `.env` (or a Kubernetes Secret). The add-on checks `isEnabled()` in
   `register()`; without a database it does not register its routes and says why in `status()`.
-- __Core gap:__ the migration ledger is one file in ngdpbase core, and the add-on guide forbids
-  add-on-specific code in core, so this repository cannot add its tables there. ngdpbase needs a way
-  for an add-on to register its own migrations into the same database and ledger (ids namespaced by
-  add-on slug, tables prefixed by slug, run in order with core's). Not yet requested.
+- __Migrations:__ core's own list (`src/providers/databaseMigrations.ts`) is a core file, and the
+  add-on guide forbids add-on-specific code in core, so the ledger's tables do not go there. But
+  ngdpbase's `runMigrations(db, registry, ledgerTable)` (`src/providers/sqliteMigrations.ts`) already
+  takes its own record table, so a second migration list can live in the same database (yourphr#784).
+  The add-on runs its own list on the shared handle from `register()`, with its own record table
+  (for example `org_ledger_migrations`) and tables prefixed by its slug, importing `runMigrations`
+  from `dist/`. Each list keeps its own once-only, in-order and newer-build checks. What ngdpbase
+  lacks is only a documented, supported way to do this: confirm with ngdpbase before relying on it.
+- Correction, 2026-10-05: this entry first said ngdpbase needs a new mechanism for add-on
+  migrations. `runMigrations` already accepts a separate record table.
 - __Backups:__ SQLite must not be copied as a plain file while it is being written. The encrypted
   file-level backup and staged restore from yourPHR are not ported yet (ngdpbase#1536). Until they
   are, a backup of the data directory may not hold a consistent copy of the ledger. Financial data
