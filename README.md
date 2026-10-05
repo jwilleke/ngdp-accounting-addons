@@ -46,4 +46,4 @@ These are ngdpbase add-ons: each one exports an `AddonModule` with a `register(e
 
 ## License
 
-TODO: not decided. This repository is private. Choose between keeping it proprietary while private, matching ngdpbase, or another license. Note that ngdpbase itself is inconsistent today: its `LICENSE` file is Apache License 2.0, but its `package.json` says `"license": "ISC"`.
+[Apache License 2.0](LICENSE), the same as ngdpbase ([D-019](docs/plans/decisions.md#d-019-apache-license-20-the-same-as-ngdpbase)).

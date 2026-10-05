@@ -32,6 +32,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons) | 2026-10-05 | One repository: base `accounting` add-on plus optional module add-ons; the MVP is `accounting` | Accepted |
 | [D-017](#d-017-paymentmanager-lives-in-the-accounting-add-on) | 2026-10-05 | `PaymentManager` lives in the `accounting` add-on; providers configured like `ngdpbase.auth.factors` | Accepted |
 | [D-018](#d-018-use-published-standards-schemaorg-and-uncefact-payment-means) | 2026-10-05 | Use published standards: schema.org names and UN/CEFACT payment means codes | Accepted |
+| [D-019](#d-019-apache-license-20-the-same-as-ngdpbase) | 2026-10-05 | Apache License 2.0, the same as ngdpbase | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -55,7 +56,8 @@ __Consequences:__
   emit a matching slug and real seed-page UUIDs. ngdpbase requires Node `>=24.0.0` and npm `>=11.0.0`.
 - Updated 2026-10-05: `ngdpbase-addon-template` is retired; `create:addon --repo` replaces it
   (ngdpbase `docs/guides/addons-developer-guide.md`, "A whole repository"). Its generated `LICENSE`
-  is Apache-2.0; this repository's licence is still open (requirements.md question 2).
+  is Apache-2.0, which matches this repository's licence
+  ([D-019](#d-019-apache-license-20-the-same-as-ngdpbase)).
 
 ## D-002: Recurring jobs come from ngdpbase core
 
@@ -639,3 +641,18 @@ __Consequences:__
 - Exports to QuickBooks and Wave map the codes to their own payment-method names.
 - The standards in use are listed in requirements.md section 1a; add to that list rather than
   restating it.
+
+## D-019: Apache License 2.0, the same as ngdpbase
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+
+__Decision:__ This repository and every add-on in it use the Apache License 2.0, the same licence as
+ngdpbase's `LICENSE` file and the one `npm run create:addon --repo` generates.
+
+__Consequences:__
+
+- `LICENSE` at the repository root is the Apache 2.0 text, copied from ngdpbase.
+- Each add-on's `package.json`, when written, says `"license": "Apache-2.0"`.
+- ngdpbase's own `package.json` still says `"license": "ISC"`, which contradicts its `LICENSE`. That
+  is ngdpbase's to fix.
