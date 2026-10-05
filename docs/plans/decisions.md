@@ -31,6 +31,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice) | 2026-10-05 | Sign-in strength belongs to permissions and is the operator's choice; money actions ship at AAL2 | Accepted |
 | [D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons) | 2026-10-05 | One repository: base `accounting` add-on plus optional module add-ons; the MVP is `accounting` | Accepted |
 | [D-017](#d-017-paymentmanager-lives-in-the-accounting-add-on) | 2026-10-05 | `PaymentManager` lives in the `accounting` add-on; providers configured like `ngdpbase.auth.factors` | Accepted |
+| [D-018](#d-018-use-published-standards-schemaorg-and-uncefact-payment-means) | 2026-10-05 | Use published standards: schema.org names and UN/CEFACT payment means codes | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -132,7 +133,7 @@ __Consequences:__
   `manualEntry`), and the interface offers only what the configured providers support. Zelle, for
   instance, has no API for small organizations, so it is record-or-import only.
 - The manual provider is always available, so payments work with nothing configured.
-- Every payment carries `provider` and the service's `externalId`, unique together, so a repeated
+- Every payment carries `provider` and the service's `confirmationNumber` (renamed from `externalId` by D-018), unique together, so a repeated
   sync or import is recorded once; ledger transactions keep both. The ledger knows nothing about any
   one service.
 - Toast's API access and refund support are unverified.
@@ -155,7 +156,7 @@ default and not loaded until enabled. Requested as [ngdpbase#1614](https://githu
 __Consequences:__
 
 - Core stays general (ngdpbase's add-on guide, section 10: no add-on-specific code in core). Core
-  starts payments, syncs outcomes, refunds, keeps sync cursors and `provider` plus `externalId`, and
+  starts payments, syncs outcomes, refunds, keeps sync cursors and `provider` plus `confirmationNumber`, and
   hands each outcome to the add-on that registered for it, with an opaque `reference` the add-on
   supplied (as forms hands off submissions with `registerHandler`). Core knows nothing about funds,
   invoices or the ledger.
@@ -200,7 +201,7 @@ __Consequences:__
 - __More than one process:__ ngdpbase's Kubernetes starter runs `replicas: 1` but rolls updates with
   `maxSurge: 1, maxUnavailable: 0`, so two pods share the data directory during every rollout. Any
   timer or scheduled job can therefore run twice. This makes the per-slot idempotency in D-002 and
-  the `provider` plus `externalId` uniqueness in D-004 required, not optional.
+  the `provider` plus `confirmationNumber` uniqueness in D-004 required, not optional.
 - __Network:__ D-003 needs outbound HTTPS only and no inbound route, so no target needs extra
   ingress. In Kubernetes, outbound calls from Alpine-based images can hit the `ndots:5` DNS problem
   (`HEADLESS-DEPLOYMENT-NOTES.md` section 5); the add-ons' install notes must point to the fix.
@@ -600,6 +601,33 @@ __Consequences:__
   today. A `paymentproviderid` field, matching `authproviderid`, would need that one-line core
   change; to be decided when building.
 - D-003 (fetch outcomes, no webhooks), D-004 (providers declare capabilities; `provider` plus
-  `externalId` unique) and D-008 (where secret values live) still apply.
+  `confirmationNumber` unique) and D-008 (where secret values live) still apply.
 - The manager's registered name (`PaymentManager` or an accounting-specific name) is decided when
   building, to avoid a clash if ngdpbase ever adds one.
+
+## D-018: Use published standards: schema.org and UN/CEFACT payment means
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5); requirements.md
+  sections 1a and 4; [schema.org Invoice](https://schema.org/Invoice),
+  [schema.org PaymentMethod](https://schema.org/PaymentMethod),
+  [UNCL 4461](https://edifactory.de/edifact/directory/D00A/data-element/4461)
+
+__Decision:__ Where a published standard names a thing, use its name and codes instead of inventing
+our own. For payments: field names from schema.org (`paymentMethod`, `confirmationNumber`,
+`paymentMethodId`, `provider`, `paymentStatus`) and `paymentMethod` values from the UN/CEFACT
+payment means code list (UNCL 4461), which schema.org recommends.
+
+__Consequences:__
+
+- The ledger transaction's `method`, `externalId` and `reference` fields are renamed
+  `paymentMethod`, `confirmationNumber` and `paymentMethodId`. `provider` plus `confirmationNumber`
+  is unique.
+- `paymentMethod` stores the code (for example `10` in cash, `20` cheque, `48` bank card) with a
+  readable label. Codes confirmed in the EDIFACT D00A version: 1, 10, 20, 30, 31, 42, 48, 49, 97,
+  ZZZ. Newer codes used in e-invoicing (54 credit card, 55 debit card, and others) are checked
+  against the current list before use.
+- Exports to QuickBooks and Wave map the codes to their own payment-method names.
+- The standards in use are listed in requirements.md section 1a; add to that list rather than
+  restating it.

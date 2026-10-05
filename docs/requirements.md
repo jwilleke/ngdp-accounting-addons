@@ -30,6 +30,15 @@ Decisions made since this draft are recorded in [docs/plans/decisions.md](plans/
 
 ngdpbase already has an open, deferred issue for a generic accounting add-on, [#486](https://github.com/jwilleke/ngdpbase/issues/486), planned in `docs/planning/plan-addon-accounting.md` as a __double-entry__ ledger with chart of accounts, AR and AP. `addons/README.md` also points to a double-entry `financial-ledger` add-on in `fairways-gen2-website`. This suite deliberately takes the opposite approach (single-entry, fund-tagged, no AP). Whether #486 is superseded, narrowed, or kept for a later, fuller product is an open question (section 13).
 
+## 1a. Standards we follow
+
+Where a published standard names a thing, these add-ons use its name and codes rather than inventing their own ([D-018](plans/decisions.md#d-018-use-published-standards-schemaorg-and-uncefact-payment-means)).
+
+| Standard | Used for |
+| --- | --- |
+| [schema.org](https://schema.org/) (`Invoice`, `Order`, `PaymentMethod`, `PaymentStatusType`) | Field names for payments: `paymentMethod`, `confirmationNumber`, `paymentMethodId`, `provider`, `paymentStatus`. ngdpbase already uses schema.org for people and organizations |
+| UN/CEFACT payment means codes ([UNCL 4461](https://edifactory.de/edifact/directory/D00A/data-element/4461)) | Values of `paymentMethod` (schema.org recommends them). Codes are checked against the current list before use |
+
 ## 2. Personas
 
 | Persona | Who they are | What they need |
@@ -88,10 +97,10 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 | `fund` | Required fund id; defaults to `general` |
 | `category` | Income or expense category: dues, donation, event fee, processing fee, refund, supplies, and so on (configurable list) |
 | `party` | Who paid or was paid: a reference to an ngdpbase Person (`PersonManager`, `src/managers/PersonManager.ts`), or a free-text name |
-| `method` | How the money moved: `card`, `ach`, `cash`, `check`, `bank-transfer`, `other` |
+| `paymentMethod` | How the money moved, as a UN/CEFACT payment means code (UNCL 4461) with a readable label: `10` in cash, `20` cheque, `30` credit transfer, `42` payment to bank account, `48` bank card, `49` direct debit, ... ([D-018](plans/decisions.md#d-018-use-published-standards-schemaorg-and-uncefact-payment-means)) |
 | `provider` | The payment provider that recorded it (`manual`, `stripe`, ...), or empty for an entry made directly in the ledger ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers), [D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)) |
-| `externalId` | The provider's own id for the payment. `provider` plus `externalId` is unique, so a payment delivered twice is posted once |
-| `reference` | Check number or other human reference |
+| `confirmationNumber` | The provider's own id confirming the payment (schema.org `confirmationNumber`). `provider` plus `confirmationNumber` is unique, so a payment delivered twice is posted once |
+| `paymentMethodId` | Check number or other identifier of the payment instrument a person reads (schema.org `paymentMethodId`) |
 | `source` | Link to what created it: `{ type: dues-invoice, donation, event-registration, reimbursement, manual, adjustment; id }` |
 | `status` | `pending` (for example ACH not yet settled), `posted`, `voided` |
 | `deductible` | For donations: the tax-deductible amount, and the value of goods or services received, if any |
