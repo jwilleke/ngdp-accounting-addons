@@ -27,6 +27,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-011](#d-011-one-path-to-the-database) | 2026-10-05 | One path to the database: `DatabaseManager` → `SqliteDatabaseProvider` | Accepted |
 | [D-012](#d-012-mvp-accounting-has-its-own-database-file) | 2026-10-05 | MVP: accounting has its own database file, opened through the same path | Accepted |
 | [D-013](#d-013-docs-live-here-until-v100-in-their-target-formats) | 2026-10-05 | Docs live here until v1.0.0, in their target formats | Accepted |
+| [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record) | 2026-10-05 | Every action is a permission with one audited door; no money moves without a record | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -466,3 +467,29 @@ __Consequences:__
   Docs for work in progress live on this repository's `main`. A PR to ngdpbase documents only what
   that PR itself completes; for #13 that is the `DatabaseManager` change, never the accounting
   add-on.
+
+## D-014: Every action is a permission with one audited door; no money moves without a record
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5); ngdpbase
+  `docs/security-posture.md` (P1, P2), `docs/audit-posture.md`, `docs/guides/security-developer-guide.md`,
+  `docs/guides/audit-developer-guide.md`
+
+__Decision:__ The add-ons follow ngdpbase's security and audit posture. Every action is a permission,
+performed through exactly one door (the manager method for it), and that door records an audit event.
+No money moves without a record: every financial write (post, void, refund, transfer, period lock,
+export) uses `on-failure: refuse`, so the record is written first and the action does not happen if
+it cannot be. Details are worked out during implementation.
+
+__Consequences:__
+
+- Routes ask `requirePermission` for the permission the action is; no role names in code. The
+  context is forwarded, never rebuilt (P1, P2).
+- Event names are `{target}-{action}`, declared in `ngdpbase.audit.events` and emitted through
+  `recordAuditEvent` at the manager door.
+- __Core gap, found 2026-10-05:__ an add-on cannot have audit events today. `AuditManager`
+  (`src/managers/AuditManager.ts`, around line 277) puts the site into maintenance mode when an
+  enabled event is not in core's built-in list (`src/utils/auditEventNames.ts`). An add-on that
+  declares its own event in its config would therefore stop the site. ngdpbase needs a way for an
+  add-on to register its event names; this blocks the MVP.
