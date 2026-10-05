@@ -461,3 +461,8 @@ __Consequences:__
 - Moving them to ngdpbase at v1.0.0 is then a copy, not a rewrite.
 - Documents that belong to this repository (requirements, decisions, the add-on's own README) keep
   this repository's format.
+- Clarified 2026-10-05 by the operator. Nothing describing an incomplete feature goes onto
+  ngdpbase's `master`: no developer docs, and above all no end-user wiki pages (required pages).
+  Docs for work in progress live on this repository's `main`. A PR to ngdpbase documents only what
+  that PR itself completes; for #13 that is the `DatabaseManager` change, never the accounting
+  add-on.

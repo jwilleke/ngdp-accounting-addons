@@ -15,3 +15,12 @@ Read with `work-alone.md`; these rules are part of the command in this repositor
 
 Because the file is cleared after each review, a new run starts with no earlier sessions to check
 for duplicates; search the issues instead.
+
+## Standing permission: docs to this repository's `main`
+
+Docs-only changes (`docs/`, `README.md`) in __this repository__ (ngdp-accounting-addons) may be
+committed and pushed to its `main` without a PR. Code still goes through a branch and a PR.
+
+This does not extend to ngdpbase. Never push to ngdpbase's `master`. Never document an incomplete
+feature there, and never add end-user wiki pages (required pages) there for one
+([D-013](../../docs/plans/decisions.md#d-013-docs-live-here-until-v100-in-their-target-formats)).
