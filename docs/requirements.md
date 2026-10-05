@@ -407,7 +407,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 ## 13. Open questions
 
 1. __Prior plans:__ supersede, narrow or keep ngdpbase [#486](https://github.com/jwilleke/ngdpbase/issues/486) (double-entry accounting add-on) and the `financial-ledger` add-on mentioned in `addons/README.md`?
-2. __License:__ decided: Apache License 2.0, the same as ngdpbase ([D-019](plans/decisions.md#d-019-apache-license-20-the-same-as-ngdpbase)). Still open for ngdpbase: its `package.json` says `"license": "ISC"` while its `LICENSE` is Apache 2.0.
+2. __License:__ decided: Apache License 2.0, the same as ngdpbase ([D-019](plans/decisions.md#d-019-apache-license-20-the-same-as-ngdpbase)).
 3. __Slugs and layout:__ decided: base `accounting` plus `accounting-<module>` add-ons ([D-016](plans/decisions.md#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons)).
 4. __Step-up approach:__ treasurer at `required-aal: 2` is decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)). Remaining: also put the high-assurance permissions on ngdpbase's step-up list for a recent factor? Should core still gain an assurance condition on policies?
 5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.

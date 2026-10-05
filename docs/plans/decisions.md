@@ -661,8 +661,8 @@ __Consequences:__
 
 - `LICENSE` at the repository root is the Apache 2.0 text, copied from ngdpbase.
 - Each add-on's `package.json`, when written, says `"license": "Apache-2.0"`.
-- ngdpbase's own `package.json` still says `"license": "ISC"`, which contradicts its `LICENSE`. That
-  is ngdpbase's to fix.
+- ngdpbase's `package.json` said `"license": "ISC"`, contradicting its `LICENSE`; fixed to
+  `Apache-2.0` in ngdpbase `b795ead2` (2026-10-05).
 
 ## D-020: Follow ngdpbase's guides where we can
 
