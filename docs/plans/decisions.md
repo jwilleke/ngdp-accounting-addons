@@ -50,9 +50,12 @@ __Consequences:__
 
 - Kit-managed files are updated by `kit-sync` pull requests; fix kit files upstream, never here.
 - When the first add-on is built, take the code scaffolding from ngdpbase's own tooling, not this kit:
-  [`jwilleke/ngdpbase-addon-template`](https://github.com/jwilleke/ngdpbase-addon-template) (repository
-  with Dockerfile and Renovate wiring) or `npm run create:addon` (one add-on directory). Both emit a
-  matching slug and real seed-page UUIDs. ngdpbase requires Node 24+.
+  `npm run create:addon -- --id accounting --repo` for the repository pieces (wrapper `Dockerfile`,
+  Renovate, CI) and `npm run create:addon -- --id accounting-<module>` for each module add-on. Both
+  emit a matching slug and real seed-page UUIDs. ngdpbase requires Node `>=24.0.0` and npm `>=11.0.0`.
+- Updated 2026-10-05: `ngdpbase-addon-template` is retired; `create:addon --repo` replaces it
+  (ngdpbase `docs/guides/addons-developer-guide.md`, "A whole repository"). Its generated `LICENSE`
+  is Apache-2.0; this repository's licence is still open (requirements.md question 2).
 
 ## D-002: Recurring jobs come from ngdpbase core
 
@@ -286,6 +289,11 @@ __Options:__
   already is), or the add-on's keys added to core's list.
 
 __Facts from the owner:__ `.env` is not in backups.
+
+__ngdpbase guidance (2026-10-05):__ the add-on developer guide, section "Secrets", now says "A secret
+is an environment variable, not a literal in either JSON file." The config key holds a bare `$VAR`
+reference; if the variable is unset, that one key is omitted with a warning and the add-on still
+loads, so the add-on treats the missing key as "not configured". This is option B.
 
 __Recommendation: B.__
 
