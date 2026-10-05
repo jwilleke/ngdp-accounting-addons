@@ -518,6 +518,11 @@ __Consequences:__
   add-on to register its event names; this blocks the MVP. Tracked in
   [#16](https://github.com/jwilleke/ngdp-accounting-addons/issues/16); proposed fix: accept an event
   named after a declared permission.
+- Update 2026-10-05: superseded by [ngdpbase#1638](https://github.com/jwilleke/ngdpbase/issues/1638)
+  (P0): every audit event becomes a permission, and the permission's entry in
+  `ngdpbase.permissions.definitions` carries `audit` (`enabled`, `on-failure`) and `step-up`. The
+  add-ons get their audit events by declaring permissions in their `config/default-config.json`. #16
+  is on hold until #1638 lands; ngdpbase builds it.
 
 ## D-015: Sign-in strength belongs to permissions and is the operator's choice
 
@@ -541,7 +546,9 @@ it. Every level is the operator's choice in configuration. The add-on ships secu
 
 __Consequences:__
 
-- Needs an ngdpbase change (#17), worked out here and sent back as a PR.
+- Needs an ngdpbase change (#17). Update 2026-10-05: it becomes a `required-aal` field on the
+  permission entry that [ngdpbase#1638](https://github.com/jwilleke/ngdpbase/issues/1638) introduces;
+  the shape was requested as a comment on #1638, not a PR. #17 is on hold.
 - Shipped levels follow ngdpbase's existing rule for roles: a shipped or add-on level that no enabled
   sign-in method can reach is lowered, so the smallest sites keep working; a level the operator set
   that cannot be reached refuses to boot with the reason.
