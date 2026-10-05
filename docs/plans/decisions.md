@@ -29,6 +29,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-013](#d-013-docs-live-here-until-v100-in-their-target-formats) | 2026-10-05 | Docs live here until v1.0.0, in their target formats | Accepted |
 | [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record) | 2026-10-05 | Every action is a permission with one audited door; no money moves without a record | Accepted |
 | [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice) | 2026-10-05 | Sign-in strength belongs to permissions and is the operator's choice; money actions ship at AAL2 | Accepted |
+| [D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons) | 2026-10-05 | One repository: base `accounting` add-on plus optional module add-ons; the MVP is `accounting` | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -164,8 +165,8 @@ __Consequences:__
 - One more core dependency: payments wait on an ngdpbase release, and the minimum ngdpbase version
   rises with it. Suggested order in [ngdpbase#1614](https://github.com/jwilleke/ngdpbase/issues/1614): manager, manual provider and hand-off first; Stripe
   next; others later. Sync depends on D-002 (ngdpbase#1611).
-- The proposed `org-payments` add-on shrinks to the payment screens and the hand-off handler, or folds
-  into `org-ledger`; that is part of requirements.md open question 3 (layout and slugs).
+- The payment screens and the hand-off handler live in the base `accounting` add-on
+  ([D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons)).
 
 ## D-006: Every add-on runs on bare metal, Docker and Kubernetes
 
@@ -531,3 +532,37 @@ __Consequences:__
 - Future, not decided: instance profiles for regulated settings (for example HIPAA, SOX, personal
   health records) that ship different default levels. To be reconciled with ngdpbase
   security-posture.md D7, which removed `ngdpbase.security.profile`.
+
+## D-016: One repository, a base accounting add-on, and optional module add-ons
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-05
+- __Links:__ [#15](https://github.com/jwilleke/ngdp-accounting-addons/issues/15),
+  [#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13),
+  [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18); requirements.md section 3
+
+__Context:__ Organizations differ: a restaurant needs no dues or donations; a club needs both.
+ngdpbase switches features on and off per add-on: an add-on's `config/default-config.json`
+(permissions, policies, audit events) is merged only while that add-on is enabled, and its seed
+pages come with it. Module flags inside one add-on would leave every module's permissions and audit
+events present on every site.
+
+__Decision:__ This repository holds all accounting for ngdpbase, as several add-ons. `accounting` is
+the required base: funds, the ledger, audit, the monthly summary and CSV export, the hand-off from
+ngdpbase's `PaymentManager` (D-005), and the accounting database (D-012). Each optional feature is
+its own add-on that depends on `accounting`: `accounting-dues`, `accounting-donations`,
+`accounting-events`, `accounting-loyalty` (#18), and later others such as `accounting-reimbursements`
+and `accounting-handover`. The MVP is the `accounting` add-on alone.
+
+__Consequences:__
+
+- A site enables only what it needs: a restaurant enables `accounting` (and perhaps
+  `accounting-loyalty`); a club adds dues, donations and events.
+- `accounting` owns the one accounting database file. A module add-on runs its own migration list
+  in that same file, with its own record table, which `runMigrations` already supports. #13 must let
+  an add-on that depends on `accounting` use its database.
+- Add-on ids are hard to rename (ngdpbase `docs/platform/addon-identity-contract.md`). Taking
+  `accounting` means this repository is ngdpbase's accounting; what happens to
+  [ngdpbase#486](https://github.com/jwilleke/ngdpbase/issues/486) (a double-entry accounting add-on)
+  is requirements.md open question 1.
+- Payments stay in ngdpbase core (D-005), not a module here.

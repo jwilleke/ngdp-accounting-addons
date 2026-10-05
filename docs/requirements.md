@@ -55,22 +55,22 @@ ngdpbase already has an open, deferred issue for a generic accounting add-on, [#
 
 - Every add-on must run unchanged on bare metal, Docker and Kubernetes ([D-006](plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)).
 
-### Proposed add-on layout (to confirm)
+### Add-on layout ([D-016](plans/decisions.md#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons))
 
-One repository with several add-ons, each with its own slug, permissions and routes, all depending on a shared ledger add-on:
+One repository with a required base add-on and optional module add-ons. Each module depends on
+`accounting`; a site enables only what it needs.
 
-| Slug (proposed) | Phase | Contents | Depends on |
+| Add-on | Phase | Contents | Depends on |
 | --- | --- | --- | --- |
-| `org-ledger` | 1 | Transaction ledger, funds, audit trail, shared settings, base permissions | none |
-| `org-dues` | 1 | Tiers, memberships, invoices, reminders | `org-ledger` |
-| `org-payments` | 1 | Payment screens and the handler that turns ngdpbase `PaymentManager` outcomes into ledger transactions ([D-005](plans/decisions.md#d-005-paymentmanager-lives-in-ngdpbase-core)); may fold into `org-ledger` | `org-ledger` |
-| `org-donations` | 1 | Donations, giving statements, tax receipts | `org-ledger`, `org-payments` |
-| `org-events` | 1 | Paid registrations | `org-ledger`, `org-payments` |
-| `org-reports` | 1 | Treasurer reports, CSV and QuickBooks/Wave export | `org-ledger` |
-| `org-reimbursements` | 2 | Expense reimbursement requests and approvals | `org-ledger` |
-| `org-handover` | 2 | Treasurer handover record | `org-ledger` |
+| `accounting` | 1 (MVP) | Funds, ledger, audit trail, monthly summary and CSV export, hand-off from ngdpbase `PaymentManager`, the accounting database, base permissions | none |
+| `accounting-dues` | 1 | Tiers, memberships, invoices, reminders | `accounting` |
+| `accounting-donations` | 1 | Donations, giving statements, tax receipts | `accounting` |
+| `accounting-events` | 1 | Paid registrations | `accounting` |
+| `accounting-loyalty` | to be decided | Loyalty members and gift cards ([#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18)) | `accounting` |
+| `accounting-reimbursements` | 2 | Expense reimbursement requests and approvals | `accounting` |
+| `accounting-handover` | 2 | Treasurer handover record | `accounting` |
 
-The slugs are placeholders. Slugs are hard to rename later (`docs/platform/addon-identity-contract.md`, "Renaming"), so choosing them is an open question.
+QuickBooks and Wave export may live in `accounting` or a module; to be decided.
 
 ## 4. Shared ledger model
 
@@ -393,14 +393,14 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 
 ## 12. Phasing
 
-- __Phase 1:__ `org-ledger` with funds and audit first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Treasurer at `required-aal: 2` ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)).
+- __Phase 1:__ the `accounting` add-on (MVP: funds, ledger, audit, monthly summary and CSV) first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Treasurer at `required-aal: 2` ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)).
 - __Phase 2:__ Reimbursements, Treasurer handover.
 
 ## 13. Open questions
 
 1. __Prior plans:__ supersede, narrow or keep ngdpbase [#486](https://github.com/jwilleke/ngdpbase/issues/486) (double-entry accounting add-on) and the `financial-ledger` add-on mentioned in `addons/README.md`?
 2. __License__ for this repository (README TODO). Also, should ngdpbase fix its own `LICENSE` (Apache 2.0) versus `package.json` (`ISC`) mismatch?
-3. __Slugs and layout:__ one add-on or several? Final slug names?
+3. __Slugs and layout:__ decided: base `accounting` plus `accounting-<module>` add-ons ([D-016](plans/decisions.md#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons)).
 4. __Step-up approach:__ treasurer at `required-aal: 2` is decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)). Remaining: also put the high-assurance permissions on ngdpbase's step-up list for a recent factor? Should core still gain an assurance condition on policies?
 5. __Should the add-on ship the `treasurer` role definition__ in its `config/default-config.json`, or leave it to each deployment? A role level shipped by an add-on degrades silently when no factor can reach it; one set by the operator refuses to boot.
 6. __TOTP:__ is passkey-only acceptable for high assurance until TOTP lands, given that TOTP with magic link stays at AAL1?
