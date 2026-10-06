@@ -1,0 +1,35 @@
+{
+  "ngdpbase.addons.accounting.enabled": false,
+  "ngdpbase.addons.accounting.dataPath": "./data/accounting",
+  "ngdpbase.permissions.definitions": {
+    "accounting-manage": {
+      "description": "Manage the Accounting addon: refresh its data and change its settings",
+      "icon": "gear",
+      "color": "#0d6efd"
+    }
+  },
+  "ngdpbase.access.policies": [
+    {
+      "id": "accounting-manage-access",
+      "name": "Accounting management",
+      "description": "Who may manage the Accounting addon",
+      "priority": 90,
+      "effect": "allow",
+      "subjects": [
+        {
+          "type": "role",
+          "value": "admin"
+        }
+      ],
+      "resources": [
+        {
+          "type": "page",
+          "pattern": "*"
+        }
+      ],
+      "actions": [
+        "accounting-manage"
+      ]
+    }
+  ]
+}
