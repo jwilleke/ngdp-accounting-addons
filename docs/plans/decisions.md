@@ -523,6 +523,11 @@ __Consequences:__
   `ngdpbase.permissions.definitions` carries `audit` (`enabled`, `on-failure`) and `step-up`. The
   add-ons get their audit events by declaring permissions in their `config/default-config.json`. #16
   is on hold until #1638 lands; ngdpbase builds it.
+- Update 2026-10-06: slice 1 is [ngdpbase#1653](https://github.com/jwilleke/ngdpbase/pull/1653) (open).
+  An add-on declares its event under `ngdpbase.audit.events` in its `config/default-config.json` and
+  emits it with `addonAuditEventName('<name>')` and a string literal. Not yet confirmed: `lint:audit`
+  for external (non-bundled) add-ons, and core's flush-before-act guarantee for an add-on event
+  declared `on-failure: refuse`.
 
 ## D-015: Sign-in strength belongs to permissions and is the operator's choice
 
