@@ -34,6 +34,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-018](#d-018-use-published-standards-schemaorg-and-uncefact-payment-means) | 2026-10-05 | Use published standards: schema.org names and UN/CEFACT payment means codes | Accepted |
 | [D-019](#d-019-apache-license-20-the-same-as-ngdpbase) | 2026-10-05 | Apache License 2.0, the same as ngdpbase | Accepted |
 | [D-020](#d-020-follow-ngdpbases-guides-where-we-can) | 2026-10-05 | Follow ngdpbase's guides where we can | Accepted |
+| [D-021](#d-021-mvp-roles-and-report-pages-treasurer-only-reports-use-page-audience) | 2026-10-06 | MVP roles and report pages: `treasurer` only; reports use page `audience`; no vault yet | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -699,3 +700,34 @@ __Consequences:__
 - Where a guide is silent or cannot serve an accounting need (for example add-on audit events, #16,
   or per-permission sign-in strength, #17), the gap is worked out here and offered back to ngdpbase
   as a PR, not worked around.
+
+## D-021: MVP roles and report pages: treasurer only, reports use page audience
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-06
+- __Links:__ [D-009](#d-009-treasurer-requires-aal2-like-admin-roles),
+  [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record),
+  [D-020](#d-020-follow-ngdpbases-guides-where-we-can), requirements.md open question 5;
+  ngdpbase `docs/architecture/Access-Control.md` (page-level `audience`),
+  [ngdpbase#1507](https://github.com/jwilleke/ngdpbase/issues/1507)
+
+__Decision:__
+
+- The `accounting` add-on ships one role, `treasurer`, with `required-aal: 2`, in its
+  `config/default-config.json` (`ngdpbase.roles.definitions` merges per entry). No `board` role yet.
+  This settles requirements.md open question 5: the add-on ships the role, and the operator can
+  change or remove it.
+- Reports the add-on writes are pages whose front matter `audience: [...]` names who may read them
+  (roles or usernames). ngdpbase checks a page's `audience` as its own allow-list, so the board
+  reads the monthly report without a role of its own.
+- No vault for report pages yet.
+
+__Consequences:__
+
+- A shipped role level is lowered to what the site can reach if no sign-in method reaches AAL2, and
+  ngdpbase marks sign-in degraded with the fix named; an operator-set level that cannot be reached
+  refuses to start (D-015).
+- Departure from ngdpbase's add-on guide (D-020): the guide says pages an add-on generates go in its
+  own category and vault. Not for the MVP, because the operator does not want vaults yet and an
+  add-on cannot yet declare its own system category (ngdpbase#1507). Revisit when #1507 lands.
+- A `member` role, if needed, comes with `accounting-dues`.
