@@ -525,9 +525,15 @@ __Consequences:__
   is on hold until #1638 lands; ngdpbase builds it.
 - Update 2026-10-06: slice 1 is [ngdpbase#1653](https://github.com/jwilleke/ngdpbase/pull/1653) (open).
   An add-on declares its event under `ngdpbase.audit.events` in its `config/default-config.json` and
-  emits it with `addonAuditEventName('<name>')` and a string literal. Not yet confirmed: `lint:audit`
-  for external (non-bundled) add-ons, and core's flush-before-act guarantee for an add-on event
-  declared `on-failure: refuse`.
+  emits it with `addonAuditEventName('<name>')` and a string literal.
+- Confirmed 2026-10-06 (answer on ngdpbase#1638, test `7838a068` on #1653): an add-on event declared
+  `on-failure: refuse` gets core's guarantee: refused if the sink cannot flush, flushed before the
+  action continues, and `recordAuditEvent` throws when the write fails. "No money moves without a
+  record" holds.
+- Not yet available: `lint:audit` cannot check external add-ons (it scans only ngdpbase, and the
+  `-devtools` image lacks the script). Proposed for a later slice of #1638: `lint:audit --addon <dir>`
+  in `-devtools`, plus a CI step written by `create:addon --repo`. Until then, this repository's own
+  tests must prove every declared event has an emitter.
 
 ## D-015: Sign-in strength belongs to permissions and is the operator's choice
 
