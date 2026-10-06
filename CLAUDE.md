@@ -18,7 +18,7 @@ treasurer reports). See [README.md](README.md) and [docs/requirements.md](docs/r
 
 ## Build / run
 
-None yet: planning stage, no code.
+See the Development section of [AGENTS.md](AGENTS.md).
 
 ## Architecture
 

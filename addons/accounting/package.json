@@ -9,11 +9,18 @@
     "node": ">=24"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "typescript": "^5.0.0"
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.19.1",
+    "typescript": "^6.0.3"
   },
   "ngdpbase": {
     "slug": "accounting",
     "type": "additive"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "express": "^5.2.1"
   }
 }

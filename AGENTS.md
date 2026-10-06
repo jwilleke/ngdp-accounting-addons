@@ -92,4 +92,19 @@ payments, donations, fund tracking, event fees and treasurer reports. Planning s
 - Decisions log (record every confirmed decision here): [docs/plans/decisions.md](docs/plans/decisions.md)
 - Add-on contract (`AddonModule`, `register(engine, config)`): ngdpbase `docs/guides/addons-developer-guide.md`
 
-No build, test or run commands exist yet.
+## Development
+
+Add-ons live under `addons/<slug>/` and load into a local ngdpbase as a drop-in.
+
+- __Local ngdpbase:__ a separate clone at `../ngdpbase-accounting` (`npm ci`, `npm run build`). Its
+  instance runs on port 3003 with its own `data/` folder; its `.env` (git-ignored) holds
+  `PROJECT_NAME=ngdpbase-accounting`, `NGDPBASE_SYSTEM_USER`, the admin password and
+  `NGDPBASE_DATABASE_KEY`. Its `data/config/app-custom-config.json` sets the base URL, turns the
+  database on (`sqlite`), adds this repository's `addons/` to `addons-path`, and enables the add-ons.
+  Never use the operator's main ngdpbase checkout or its instances.
+- __Host imports:__ add-on code imports host code as `../../dist/src/...`. A git-ignored `dist` link
+  at this repository's root points at `../ngdpbase-accounting/dist`, so those paths resolve here.
+- __Build an add-on:__ `cd addons/<slug> && npm install && npm run build` (compiles `.ts` to `.js`
+  in place; the `.js` is git-ignored).
+- __Run:__ `cd ../ngdpbase-accounting && ./server.sh restart`, then check `data/logs/app.log` for
+  `Add-on loaded: <slug>`. The site is <http://localhost:3003>.

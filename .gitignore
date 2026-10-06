@@ -5,3 +5,15 @@ private/
 .kit-check/
 .continue/
 .agents/
+
+# Link to a local ngdpbase build, so addons/*/ can import ../../dist/src/... during development (not committed)
+/dist
+
+# Add-on build output, compiled in place from .ts (as in ngdpbase)
+addons/*/**/*.js
+!addons/*/public/**/*.js
+addons/*/**/*.js.map
+!addons/*/public/**/*.js.map
+addons/*/index.js
+addons/*/.tsbuildinfo
+addons/*/node_modules/
