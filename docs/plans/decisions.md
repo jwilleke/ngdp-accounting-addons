@@ -531,10 +531,14 @@ __Consequences:__
   `on-failure: refuse` gets core's guarantee: refused if the sink cannot flush, flushed before the
   action continues, and `recordAuditEvent` throws when the write fails. "No money moves without a
   record" holds.
-- Not yet available: `lint:audit` cannot check external add-ons (it scans only ngdpbase, and the
-  `-devtools` image lacks the script). Proposed for a later slice of #1638: `lint:audit --addon <dir>`
-  in `-devtools`, plus a CI step written by `create:addon --repo`. Until then, this repository's own
-  tests must prove every declared event has an emitter.
+- Update 2026-10-07 (ngdpbase [#1681](https://github.com/jwilleke/ngdpbase/pull/1681) and
+  [#1672](https://github.com/jwilleke/ngdpbase/pull/1672), both merged): every audit event is now a
+  permission entry in `ngdpbase.permissions.definitions` with an `audit` block, and
+  `ngdpbase.audit.events` ships empty. An event that is a pure record, not an action anyone is
+  granted, is a permission entry with `"grantable": false`. The add-ons follow that house pattern
+  (D-020). An external add-on's declarations are checked against its emitters with
+  `node dist/scripts/audit-coverage.js --check --addon <dir>` (`lint:audit --addon`), so this
+  repository can run the same check as ngdpbase.
 
 ## D-015: Sign-in strength belongs to permissions and is the operator's choice
 
