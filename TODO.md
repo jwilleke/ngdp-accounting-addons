@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-06"
+last_updated: "2026-10-08"
 ---
 
 # TODO
@@ -35,7 +35,6 @@ last_updated: "2026-10-06"
 ## 🟠 P1
 
 - [#17](https://github.com/jwilleke/ngdp-accounting-addons/issues/17) — Sign-in strength on permissions, not only roles (required-aal per permission)
-- [#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13) — Add-on database instance and migrations through DatabaseManager → SqliteDatabaseProvider
 - [#7](https://github.com/jwilleke/ngdp-accounting-addons/issues/7) — Treasurer reports and CSV / QuickBooks / Wave export
 - [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5) — Fund tracking and the shared single-entry ledger
 - [#1](https://github.com/jwilleke/ngdp-accounting-addons/issues/1) — Core: treasurer role and step-up (acr) authentication in ngdpbase
@@ -55,7 +54,7 @@ last_updated: "2026-10-06"
 <!-- Issues labeled `in-review` — shipped and pushed, awaiting the operator's decision to close. -->
 <!-- This band outranks an issue's priority, so finished work surfaces as "ready for your call". -->
 
-- [#16](https://github.com/jwilleke/ngdp-accounting-addons/issues/16) — Add-on audit events: let an add-on register its event names (blocked by AuditManager's startup check)
+*None.*
 
 ## ⏸ Deferred
 
