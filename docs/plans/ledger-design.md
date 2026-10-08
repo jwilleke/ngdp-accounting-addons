@@ -23,7 +23,7 @@ MVP. It implements requirements.md section 4 (the ledger model) within the decis
   be written.
 
 Not in the MVP: online payments, dues, donations, events, scheduled jobs, QuickBooks and Wave
-formats, and the month lock (see [Open questions](#open-questions)). The monthly summary and CSV
+formats, and the period lock (see [Open questions](#open-questions)). The monthly summary and CSV
 export are designed with the reports work, on top of this ledger.
 
 ## Storage
@@ -181,8 +181,9 @@ the unique `provider` plus `confirmation_number` index.
 
 ## Open questions
 
-1. __Month lock:__ lock a month after the board report, so changes need a void and a recorded reason?
-   Proposed: not in the MVP.
+1. __Period lock:__ decided 2026-10-08: not in the MVP. Later, a __period__ lock whose length each site sets
+   (monthly, quarterly, semi-annual, annual), because many condos and small entities do not report monthly
+   ([#19](https://github.com/jwilleke/ngdp-accounting-addons/issues/19)).
 2. __Categories:__ decided 2026-10-08: categories follow the Unified Chart of Accounts (UCOA) model, each a
    UCOA account code with a label, kept in the site's configuration
    ([D-023](decisions.md#d-023-categories-follow-the-unified-chart-of-accounts-ucoa)). Still open: the default code set the add-on ships.

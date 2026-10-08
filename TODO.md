@@ -40,6 +40,7 @@ last_updated: "2026-10-08"
 
 ## 🟡 P2
 
+- [#19](https://github.com/jwilleke/ngdp-accounting-addons/issues/19) — Period lock: lock a reporting period after the board report (monthly, quarterly, semi-annual, annual)
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
 - [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled jobs from ngdpbase core (blocked by jwilleke/ngdpbase#1611)
