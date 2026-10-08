@@ -406,6 +406,8 @@ __Consequences:__
   file-level backup and staged restore from yourPHR are not ported yet (ngdpbase#1536). Until they
   are, a backup of the data directory may not hold a consistent copy of the ledger. Financial data
   needs this before release.
+  Tracked as [ngdpbase#1723](https://github.com/jwilleke/ngdpbase/issues/1723) (P1, 2026-10-08):
+  `DatabaseManager` has no `backup()`, so today no database is in ngdpbase backups at all.
 - __Deployment (D-006):__ a database on NFS or SMB refuses to boot, so a Kubernetes data volume on an
   NFS-backed storage class will not work. Install notes must say the data volume needs a local or
   block storage class. Two pods during a rolling update share one file through SQLite's locking,
