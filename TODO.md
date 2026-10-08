@@ -34,7 +34,6 @@ last_updated: "2026-10-08"
 
 ## 🟠 P1
 
-- [#17](https://github.com/jwilleke/ngdp-accounting-addons/issues/17) — Sign-in strength on permissions, not only roles (required-aal per permission)
 - [#7](https://github.com/jwilleke/ngdp-accounting-addons/issues/7) — Treasurer reports and CSV / QuickBooks / Wave export
 - [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5) — Fund tracking and the shared single-entry ledger
 - [#1](https://github.com/jwilleke/ngdp-accounting-addons/issues/1) — Core: treasurer role and step-up (acr) authentication in ngdpbase
