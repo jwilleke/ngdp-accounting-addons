@@ -1,34 +1,71 @@
 {
+  "_comment_accounting": "Accounting add-on defaults (docs/plans/ledger-design.md). Merged into the site's configuration only while ngdpbase.addons.accounting.enabled is true; the site's app-custom-config.json overrides any entry. Every action is a permission whose entry carries its audit rule; money actions refuse when their audit record cannot be written, and the riskiest ask for a fresh sign-in (step-up).",
   "ngdpbase.addons.accounting.enabled": false,
-  "ngdpbase.addons.accounting.dataPath": "./data/accounting",
+
   "ngdpbase.permissions.definitions": {
-    "accounting-manage": {
-      "description": "Manage the Accounting addon: refresh its data and change its settings",
-      "icon": "gear",
-      "color": "#0d6efd"
+    "ledger-summary-read": {
+      "description": "See fund balances, without names",
+      "icon": "scale-balanced",
+      "color": "#6c757d",
+      "audit": { "on-failure": "continue", "enabled": false, "description": "Fund balances read" }
+    },
+    "ledger-read": {
+      "description": "See ledger entries, including who paid or was paid",
+      "icon": "book-open",
+      "color": "#6c757d",
+      "audit": { "on-failure": "continue", "enabled": false, "description": "Ledger entries read" }
+    },
+    "ledger-record": {
+      "description": "Record money in or out of a fund",
+      "icon": "pen",
+      "color": "#198754",
+      "audit": { "on-failure": "refuse", "description": "Ledger entry posted; no money moves without a record" }
+    },
+    "ledger-adjust": {
+      "description": "Void a posted entry and post its replacement, or move money between funds",
+      "icon": "pen-to-square",
+      "color": "#fd7e14",
+      "audit": { "on-failure": "refuse", "description": "Ledger entry voided or replaced, or money moved between funds" },
+      "step-up": true
+    },
+    "fund-manage": {
+      "description": "Create, rename and close funds",
+      "icon": "piggy-bank",
+      "color": "#0d6efd",
+      "audit": { "on-failure": "refuse", "description": "Fund created, changed or closed" }
     }
   },
+
+  "ngdpbase.roles.definitions": {
+    "treasurer": {
+      "name": "treasurer",
+      "required-aal": 2,
+      "displayname": "Treasurer",
+      "description": "Records and corrects the organization's money",
+      "icon": "coins",
+      "color": "#198754"
+    }
+  },
+
   "ngdpbase.access.policies": [
     {
-      "id": "accounting-manage-access",
-      "name": "Accounting management",
-      "description": "Who may manage the Accounting addon",
+      "id": "accounting-treasurer",
+      "name": "Treasurer keeps the ledger",
+      "description": "The treasurer role holds every accounting permission. Grant ledger-summary-read to other roles in the site's own policy.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
-        {
-          "type": "role",
-          "value": "admin"
-        }
+        { "type": "role", "value": "treasurer" }
       ],
       "resources": [
-        {
-          "type": "page",
-          "pattern": "*"
-        }
+        { "type": "page", "pattern": "*" }
       ],
       "actions": [
-        "accounting-manage"
+        "ledger-summary-read",
+        "ledger-read",
+        "ledger-record",
+        "ledger-adjust",
+        "fund-manage"
       ]
     }
   ]

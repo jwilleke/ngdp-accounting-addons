@@ -8,7 +8,8 @@ last_updated: "2026-10-08"
 
 The design for the shared ledger in the base `accounting` add-on: the first working piece of the
 MVP. It implements requirements.md section 4 (the ledger model) within the decisions in
-[decisions.md](decisions.md). Status: __draft for the operator's review__; nothing here is built.
+[decisions.md](decisions.md). Status: __reviewed; the ledger core is built__ (funds, entries, voids,
+transfers, balances, audit, permissions and the treasurer role). The CSV export comes with the reports work.
 
 ## What the MVP ledger does
 

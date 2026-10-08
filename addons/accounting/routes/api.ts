@@ -1,54 +1,58 @@
 /**
  * Accounting API — mounted at /api/accounting by index.ts.
  *
- * Every decision here is ctx.requirePermission('accounting-manage') on the
- * request's own subject (ApiContext forwards it, token and share ceilings
- * included). Never a role name, never isAuthenticated: allow and deny come from
- * policy (#1198), and this addon's config/default-config.json is where the
- * permission and the policy that grants it are declared.
+ * Routes only parse the request, call LedgerManager (the one door, which asks
+ * for each action's permission on the request's own ApiContext), and shape the
+ * reply. No permission, role or audit decision is made here.
  *
- * The host is imported through `dist/`, never `src/`. A value import of host
- * source pulls it into this addon's compilation and emits a `.js` beside it —
- * which exists on a developer's machine and does not exist in the container,
- * where the image carries `dist/` and `addons/` but no `src/` (#1192).
+ * The host is imported through `dist/`, never `src/` (#1192).
  */
 import { Router, type Request, type Response } from 'express';
 import { ApiContext, ApiError } from '../../../dist/src/context/ApiContext.js';
-import type AccountingManager from '../managers/AccountingManager.js';
+import type LedgerManager from '../managers/LedgerManager.js';
+import { LedgerError } from '../managers/LedgerManager.js';
 
-interface Engine { getManager<T = unknown>(name: string): T | null }
+interface Engine { getManager<T = unknown>(name: string): T | null | undefined }
+
+type Handler = (ctx: ApiContext, ledger: LedgerManager, req: Request) => Promise<unknown>;
 
 export default function apiRoutes(engine: Engine): Router {
   const router = Router();
 
-  /** Status, for the addon dashboard and the admin view. */
-  router.get('/status', async (req: Request, res: Response) => {
+  const handle = (status: number, fn: Handler) => async (req: Request, res: Response): Promise<void> => {
     try {
+      const ledger = engine.getManager<LedgerManager>('LedgerManager');
+      if (!ledger) { res.status(503).json({ ok: false, error: 'the ledger is not available on this site' }); return; }
       const ctx = ApiContext.from(req, engine as never);
-      await ctx.requirePermission('accounting-manage');
-      const manager = engine.getManager<AccountingManager>('AccountingManager');
-      res.json({ ok: true, status: manager?.status() ?? null });
+      const result = await fn(ctx, ledger, req);
+      res.status(status).json({ ok: true, result });
     } catch (err) {
-      if (err instanceof ApiError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
+      if (err instanceof ApiError || err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
       res.status(500).json({ ok: false, error: 'internal error' });
     }
-  });
+  };
 
-  /** Refresh from the configured source — a mutating request, so the view sends the CSRF token. */
-  router.post('/refresh', async (req: Request, res: Response) => {
-    try {
-      const ctx = ApiContext.from(req, engine as never);
-      await ctx.requirePermission('accounting-manage');
-      const manager = engine.getManager<AccountingManager>('AccountingManager');
-      const source = typeof req.body?.source === 'string' ? req.body.source : '';
-      if (!manager || !source) { res.status(400).json({ ok: false, error: 'source is required' }); return; }
-      const count = await manager.refresh(source);
-      res.json({ ok: true, count });
-    } catch (err) {
-      if (err instanceof ApiError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
-      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : 'internal error' });
-    }
-  });
+  const body = (req: Request): Record<string, unknown> => (req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {});
+  const query = (req: Request, key: string): string | undefined => (typeof req.query[key] === 'string' ? req.query[key] as string : undefined);
+
+  // Funds
+  router.get('/funds', handle(200, (ctx, ledger) => ledger.listFunds(ctx)));
+  router.post('/funds', handle(201, (ctx, ledger, req) => ledger.createFund(ctx, body(req) as never)));
+  router.patch('/funds/:id', handle(200, (ctx, ledger, req) => ledger.updateFund(ctx, String(req.params.id), body(req) as never)));
+  router.post('/funds/:id/close', handle(200, (ctx, ledger, req) => ledger.closeFund(ctx, String(req.params.id), body(req).reason as string | undefined)));
+  router.get('/balances', handle(200, (ctx, ledger) => ledger.fundBalances(ctx)));
+
+  // Entries
+  router.get('/transactions', handle(200, (ctx, ledger, req) => ledger.listTransactions(ctx, {
+    fundId: query(req, 'fund'), from: query(req, 'from'), to: query(req, 'to'), includeVoided: query(req, 'voided') === 'true'
+  })));
+  router.get('/transactions/:id', handle(200, (ctx, ledger, req) => ledger.getTransaction(ctx, String(req.params.id))));
+  router.post('/transactions', handle(201, (ctx, ledger, req) => ledger.postTransaction(ctx, body(req) as never)));
+  router.post('/transactions/:id/void', handle(200, (ctx, ledger, req) => {
+    const b = body(req);
+    return ledger.voidTransaction(ctx, String(req.params.id), b.reason as string, b.replacement as never);
+  }));
+  router.post('/transfers', handle(201, (ctx, ledger, req) => ledger.transferBetweenFunds(ctx, body(req) as never)));
 
   return router;
 }

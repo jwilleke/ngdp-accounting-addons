@@ -1,100 +1,86 @@
 /**
- * Accounting addon for ngdpbase.
+ * Accounting add-on for ngdpbase: the base add-on, holding the shared ledger
+ * (docs/plans/ledger-design.md, decision D-016).
  *
- * Addon code runs in the ngdpbase process. Every check that enforces a
- * runtime property of src/ applies here identically (this addon's README.md,
- * "Rules an addon lives under"): outbound HTTP goes through the host's
- * guardedFetch (built once below and injected), a permission decision is
- * ctx.requirePermission on a forwarded subject, and a mutating browser
- * request carries the CSRF token. The generated route, view and manager
- * already do all three — keep it that way.
+ * register() opens the accounting database through ngdpbase's DatabaseManager
+ * (the one path to a database), builds the audit door on ngdpbase's
+ * recordAuditEvent, registers LedgerManager, and mounts the API. When the site
+ * has not turned the database on, the add-on mounts nothing and says why in
+ * status().
  *
- * Configuration keys (in app-custom-config.json):
- *   ngdpbase.addons.accounting.enabled   — true/false (REQUIRED; defaults to false)
- *   ngdpbase.addons.accounting.dataPath  — override the data directory
+ * Configuration keys:
+ *   ngdpbase.addons.accounting.enabled — true/false (defaults to false)
+ *   ngdpbase.default.currency          — ISO 4217 code read from ngdpbase; USD until ngdpbase ships it
  *
- * The exported `name` below MUST equal the `ngdpbase.slug` in package.json.
- * AddonsManager treats the manifest slug as authoritative and warns loudly on a
- * mismatch, because the config key follows the slug, not this label (#927).
+ * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
-
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { guardedFetch } from '../../dist/src/http/guardedFetch.js';
-import { resolveEgressPolicy } from '../../dist/src/http/egressPolicy.js';
+import { recordAuditEvent } from '../../dist/src/utils/auditEvents.js';
+import hostLogger from '../../dist/src/utils/logger.js';
 import apiRoutes from './routes/api.js';
-import AccountingManager from './managers/AccountingManager.js';
-import AccountingPlugin from './plugins/AccountingPlugin.js';
+import LedgerManager, { type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
+import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/**
+ * ngdpbase's logger. Its declared type comes from winston, which this
+ * repository does not install, so name the two calls used here.
+ */
+const logger = hostLogger as unknown as { info(message: string): void; warn(message: string): void };
+
+/** Until ngdpbase ships a site-wide currency (ngdpbase#1711). */
+const FALLBACK_CURRENCY = 'USD';
 
 interface Engine {
-  getManager<T = unknown>(name: string): T | null;
+  getManager<T = unknown>(name: string): T | null | undefined;
   registerManager(name: string, manager: unknown): void;
-  /** The Express app, present once the host has built it; routes and views mount here. */
-  app?: {
-    use(route: string, handler: unknown): void;
-    get(setting: string): unknown;
-    set(setting: string, value: unknown): void;
-  };
+  app?: { use(route: string, handler: unknown): void };
 }
+
+interface DatabaseManagerLike {
+  isEnabled(): boolean;
+  openAddonDatabase<Handle>(owner: string, options: { migrations: unknown[]; ledgerTable: string }): Handle;
+}
+
+let unavailable: string | null = 'not registered yet';
 
 const AccountingAddon = {
   name: 'accounting',
   version: '0.1.0',
-  description: 'Accounting addon for ngdpbase',
-  author: 'ngdpbase',
+  description: 'Accounting for ngdpbase: funds, a single-entry ledger and its audit trail',
+  author: 'jwilleke',
   dependencies: [] as string[],
 
-  async register(engine: Engine, config: Record<string, unknown>): Promise<void> {
-    const cm = engine.getManager<{
-      resolveDataPath(n: string): string;
-      getProperty?(k: string, f?: unknown): unknown;
-    }>('ConfigurationManager');
-
-    // The ONE way this addon reaches the network (#1133): the host's guarded
-    // fetch under the instance's egress policy, read per call so an operator
-    // tightening it is honoured without a restart. The manager is handed this
-    // and has no other door — see AccountingManager's constructor.
-    const readConfig = (key: string, fallback?: unknown): unknown => cm?.getProperty?.(key, fallback) ?? fallback;
-    const fetchJson = async (url: string): Promise<unknown> => {
-      const { policy } = resolveEgressPolicy(readConfig);
-      const res = await guardedFetch(url, { policy });
-      if (res.status < 200 || res.status >= 300) throw new Error(`${url}: HTTP ${res.status}`);
-      return JSON.parse(res.body.toString('utf8')) as unknown;
-    };
-
-    const dataPath = typeof config['dataPath'] === 'string' && config['dataPath'] !== ''
-      ? config['dataPath'] as string
-      : (cm?.resolveDataPath('accounting') ?? './data/accounting');
-
-    const accounting = new AccountingManager(engine, dataPath, fetchJson);
-    await accounting.load();
-    engine.registerManager('AccountingManager', accounting);
-
-    const pluginManager = engine.getManager<{
-      registerPlugin(name: string, plugin: unknown): Promise<void>;
-    }>('PluginManager');
-    if (pluginManager) {
-      await pluginManager.registerPlugin('Accounting', AccountingPlugin);
+  async register(engine: Engine): Promise<void> {
+    const databases = engine.getManager<DatabaseManagerLike>('DatabaseManager');
+    if (!databases?.isEnabled()) {
+      unavailable = "the site's database is off — set ngdpbase.database.provider to 'sqlite' and restart";
+      logger.warn(`[accounting] Not started: ${unavailable}`);
+      return;
     }
 
-    // Views render with the host's layout; routes mount under the addon's own
-    // prefix. Appending to `views` rather than replacing it keeps the host's
-    // own templates — header and footer included — resolvable.
-    const views = (engine.app?.get('views') as string | string[] | undefined) ?? [];
-    engine.app?.set('views', [...[views].flat(), path.join(__dirname, 'views')]);
-    engine.app?.use('/api/accounting', apiRoutes(engine));
+    const db = databases.openAddonDatabase<LedgerDb>('accounting', {
+      migrations: ACCOUNTING_MIGRATIONS,
+      ledgerTable: ACCOUNTING_LEDGER_TABLE
+    });
 
-    // Static assets, if this addon ships any under public/.
-    // engine.app?.use('/addons/accounting', express.static(path.join(__dirname, 'public')));
-    void __dirname;
+    const auditSink = engine.getManager<Parameters<typeof recordAuditEvent>[0]>('AuditManager');
+    const recordAudit: RecordAudit = async (record) => {
+      // A refuse event that cannot be written throws here, and the money action stops.
+      await recordAuditEvent(auditSink, { ...record, result: 'success' });
+    };
+
+    const config = engine.getManager<{ getProperty(key: string, fallback?: unknown): unknown }>('ConfigurationManager');
+    const configured = config?.getProperty('ngdpbase.default.currency', FALLBACK_CURRENCY);
+    const currency = typeof configured === 'string' && configured !== '' ? configured : FALLBACK_CURRENCY;
+
+    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency }));
+    engine.app?.use('/api/accounting', apiRoutes(engine));
+    unavailable = null;
+    logger.info(`[accounting] Ledger ready (currency ${currency})`);
   },
 
-  /** Optional. Surfaced in the admin addon dashboard. */
-  status(): { healthy: boolean } {
-    return { healthy: true };
+  /** Surfaced in the admin add-on dashboard. */
+  status(): { healthy: boolean; message: string } {
+    return unavailable ? { healthy: false, message: `Accounting is off: ${unavailable}` } : { healthy: true, message: 'Ledger ready' };
   }
 };
 

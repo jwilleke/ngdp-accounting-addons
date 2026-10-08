@@ -18,12 +18,14 @@ Accounting addon for [ngdpbase](https://github.com/jwilleke/ngdpbase).
 
 | Path | What it is |
 |---|---|
-| `managers/AccountingManager.ts` | Data layer, registered as `AccountingManager` |
-| `plugins/AccountingPlugin.ts` | Renders `[{Accounting}]` on a page |
-| `routes/api.ts` | Status and refresh, gated by `accounting-manage` |
-| `views/accounting-status.ejs` | Admin view; its POST carries the CSRF token |
+| `managers/LedgerManager.ts` | The ledger: funds, entries, voids, transfers, balances; the one door for each action |
+| `managers/migrations.ts` | The accounting database's tables and the triggers that keep money from changing quietly |
+| `routes/api.ts` | JSON API under `/api/accounting`, calling `LedgerManager` |
+| `config/default-config.json` | Permissions with their audit and step-up rules, the `treasurer` role and its policy |
 | `pages/` | Seed pages copied into the platform on first enable |
-| `config/default-config.json` | Config keys, the permission and its policy |
+| `__tests__/` | Ledger tests against a real encrypted database (`npm test`) |
+
+The design is [docs/plans/ledger-design.md](../../docs/plans/ledger-design.md).
 
 ## Rules an addon lives under
 
