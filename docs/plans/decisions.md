@@ -36,6 +36,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-020](#d-020-follow-ngdpbases-guides-where-we-can) | 2026-10-05 | Follow ngdpbase's guides where we can | Accepted |
 | [D-021](#d-021-mvp-roles-and-report-pages-treasurer-only-reports-use-page-audience) | 2026-10-06 | MVP roles and report pages: `treasurer` only; reports use page `audience`; no vault yet | Accepted |
 | [D-022](#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up) | 2026-10-08 | Sign-in strength stays on roles; money permissions use step-up; no per-permission AAL | Accepted |
+| [D-023](#d-023-categories-follow-the-unified-chart-of-accounts-ucoa) | 2026-10-08 | Categories follow the Unified Chart of Accounts (UCOA) model | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -765,3 +766,21 @@ __Consequences:__
 - D-015's intent, money actions protected by default and the operator's choice, is kept through the
   role's AAL2 and step-up on the money permissions.
 - #17 is closed as not planned.
+
+## D-023: Categories follow the Unified Chart of Accounts (UCOA)
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-08
+- __Links:__ [ledger design](ledger-design.md), open question 2;
+  [D-018](#d-018-use-published-standards-schemaorg-and-uncefact-payment-means)
+
+__Decision:__ Income and expense categories follow the Unified Chart of Accounts (UCOA) as the overall
+model: each category is a UCOA account code with a readable label. Code sets for particular kinds of
+organization, such as nonprofit account codes, fit into that model and are added later.
+
+__Consequences:__
+
+- A ledger entry's `category` holds a UCOA account code, kept in the site's configuration with its
+  label, not in code.
+- The specific default code set the add-on ships is decided separately.
+- UCOA is added to the standards list in requirements.md section 1a.

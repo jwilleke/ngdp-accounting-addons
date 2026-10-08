@@ -61,7 +61,7 @@ export are designed with the reports work, on top of this ledger.
 | `currency` | TEXT | ISO 4217 code, from the site's `ngdpbase.default.currency` |
 | `date` | TEXT | when the money moved |
 | `fund_id` | TEXT | required; references `accounting_funds` (delete restricted) |
-| `category` | TEXT | from the site's category list |
+| `category` | TEXT | a UCOA account code from the site's category list (D-023) |
 | `party_person_id` / `party_name` | TEXT | an ngdpbase Person, or free text |
 | `payment_method` | TEXT | UN/CEFACT payment means code, e.g. `10` cash, `20` cheque |
 | `payment_method_id` | TEXT | check number or similar |
@@ -183,8 +183,9 @@ the unique `provider` plus `confirmation_number` index.
 
 1. __Month lock:__ lock a month after the board report, so changes need a void and a recorded reason?
    Proposed: not in the MVP.
-2. __Categories:__ a default list (dues, donation, event fee, processing fee, refund, supplies,
-   other) that the site edits in its config? Proposed: yes.
+2. __Categories:__ decided 2026-10-08: categories follow the Unified Chart of Accounts (UCOA) model, each a
+   UCOA account code with a label, kept in the site's configuration
+   ([D-023](decisions.md#d-023-categories-follow-the-unified-chart-of-accounts-ucoa)). Still open: the default code set the add-on ships.
 3. __Waiting for a busy database:__ decided 2026-10-08: ngdpbase sets it in the provider, as a default
    configuration setting (`ngdpbase.database.busy-timeout-ms`,
    [ngdpbase#1710](https://github.com/jwilleke/ngdpbase/issues/1710)). The add-on sets nothing.
