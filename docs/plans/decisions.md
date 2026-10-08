@@ -28,13 +28,14 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-012](#d-012-mvp-accounting-has-its-own-database-file) | 2026-10-05 | MVP: accounting has its own database file, opened through the same path | Accepted |
 | [D-013](#d-013-docs-live-here-until-v100-in-their-target-formats) | 2026-10-05 | Docs live here until v1.0.0, in their target formats | Accepted |
 | [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record) | 2026-10-05 | Every action is a permission with one audited door; no money moves without a record | Accepted |
-| [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice) | 2026-10-05 | Sign-in strength belongs to permissions and is the operator's choice; money actions ship at AAL2 | Accepted |
+| [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice) | 2026-10-05 | Sign-in strength belongs to permissions and is the operator's choice; money actions ship at AAL2 | Partly superseded by D-022 |
 | [D-016](#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons) | 2026-10-05 | One repository: base `accounting` add-on plus optional module add-ons; the MVP is `accounting` | Accepted |
 | [D-017](#d-017-paymentmanager-lives-in-the-accounting-add-on) | 2026-10-05 | `PaymentManager` lives in the `accounting` add-on; providers configured like `ngdpbase.auth.factors` | Accepted |
 | [D-018](#d-018-use-published-standards-schemaorg-and-uncefact-payment-means) | 2026-10-05 | Use published standards: schema.org names and UN/CEFACT payment means codes | Accepted |
 | [D-019](#d-019-apache-license-20-the-same-as-ngdpbase) | 2026-10-05 | Apache License 2.0, the same as ngdpbase | Accepted |
 | [D-020](#d-020-follow-ngdpbases-guides-where-we-can) | 2026-10-05 | Follow ngdpbase's guides where we can | Accepted |
 | [D-021](#d-021-mvp-roles-and-report-pages-treasurer-only-reports-use-page-audience) | 2026-10-06 | MVP roles and report pages: `treasurer` only; reports use page `audience`; no vault yet | Accepted |
+| [D-022](#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up) | 2026-10-08 | Sign-in strength stays on roles; money permissions use step-up; no per-permission AAL | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -542,7 +543,7 @@ __Consequences:__
 
 ## D-015: Sign-in strength belongs to permissions and is the operator's choice
 
-- __Status:__ Accepted
+- __Status:__ Partly superseded by [D-022](#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up) on 2026-10-08: the per-permission `required-aal` is not built
 - __Date:__ 2026-10-05
 - __Links:__ [#17](https://github.com/jwilleke/ngdp-accounting-addons/issues/17),
   [D-009](#d-009-treasurer-requires-aal2-like-admin-roles), [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record),
@@ -735,3 +736,32 @@ __Consequences:__
   own category and vault. Not for the MVP, because the operator does not want vaults yet and an
   add-on cannot yet declare its own system category (ngdpbase#1507). Revisit when #1507 lands.
 - A `member` role, if needed, comes with `accounting-dues`.
+
+## D-022: Sign-in strength stays on roles; money permissions use step-up
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-08
+- __Supersedes:__ the per-permission `required-aal` in
+  [D-015](#d-015-sign-in-strength-belongs-to-permissions-and-is-the-operators-choice)
+- __Links:__ [#17](https://github.com/jwilleke/ngdp-accounting-addons/issues/17) (closed, not
+  planned); ngdpbase [#1638](https://github.com/jwilleke/ngdpbase/issues/1638) and
+  [#1657](https://github.com/jwilleke/ngdpbase/pull/1657)
+
+__Context:__ D-015 wanted a minimum sign-in strength on each permission, so that granting a money
+permission to some other role could not bypass the treasurer role's AAL2. ngdpbase's permission
+entries now carry `audit` and `step-up`, but not `required-aal`.
+
+__Decision:__ Do not build per-permission sign-in strength. Sign-in strength stays where ngdpbase
+puts it, on roles: the `treasurer` role ships at `required-aal: 2` (D-021). The add-on's money
+permissions carry `"step-up": true`, so each money action asks for a fresh sign-in within
+`ngdpbase.auth.step-up.max-age-minutes` at the strength the person's roles require.
+
+__Reason (operator):__ granting a money permission to another role is an operator's configuration
+change, and every change saved through the admin screens is recorded as a `config-change` audit
+event. The gap is visible and accountable, so it does not need a new mechanism.
+
+__Consequences:__
+
+- D-015's intent, money actions protected by default and the operator's choice, is kept through the
+  role's AAL2 and step-up on the money permissions.
+- #17 is closed as not planned.
