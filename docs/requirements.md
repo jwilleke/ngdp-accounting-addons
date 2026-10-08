@@ -38,6 +38,7 @@ Where a published standard names a thing, these add-ons use its name and codes r
 | --- | --- |
 | [schema.org](https://schema.org/) (`Invoice`, `Order`, `PaymentMethod`, `PaymentStatusType`) | Field names for payments: `paymentMethod`, `confirmationNumber`, `paymentMethodId`, `provider`, `paymentStatus`. ngdpbase already uses schema.org for people and organizations |
 | UN/CEFACT payment means codes ([UNCL 4461](https://edifactory.de/edifact/directory/D00A/data-element/4461)) | Values of `paymentMethod` (schema.org recommends them). Codes are checked against the current list before use |
+| [ISO 4217](https://www.iso.org/iso-4217-currency-codes.html) currency codes | `currency` on every amount, from the site-wide `ngdpbase.default.currency` ([ngdpbase#1711](https://github.com/jwilleke/ngdpbase/issues/1711)) |
 
 ## 2. Personas
 

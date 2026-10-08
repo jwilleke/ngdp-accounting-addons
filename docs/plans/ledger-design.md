@@ -58,7 +58,7 @@ export are designed with the reports work, on top of this ledger.
 | `id` | TEXT primary key | UUID |
 | `direction` | TEXT | `in` or `out` |
 | `amount` | INTEGER | positive, minor units; never floating point |
-| `currency` | TEXT | one per site, default `USD` |
+| `currency` | TEXT | ISO 4217 code, from the site's `ngdpbase.default.currency` |
 | `date` | TEXT | when the money moved |
 | `fund_id` | TEXT | required; references `accounting_funds` (delete restricted) |
 | `category` | TEXT | from the site's category list |
@@ -185,8 +185,9 @@ the unique `provider` plus `confirmation_number` index.
    Proposed: not in the MVP.
 2. __Categories:__ a default list (dues, donation, event fee, processing fee, refund, supplies,
    other) that the site edits in its config? Proposed: yes.
-3. __Waiting for a busy database:__ ngdpbase's provider sets no `busy_timeout`, so a write waits up to
-   the driver's default of 5 seconds while another copy of the site holds the lock. Proposed: ask
-   ngdpbase to set it in the provider, the one path, rather than in the add-on.
-4. __Currency codes:__ write `USD` and other currency codes per ISO 4217, added to the standards list?
-   Proposed: yes.
+3. __Waiting for a busy database:__ decided 2026-10-08: ngdpbase sets it in the provider, as a default
+   configuration setting (`ngdpbase.database.busy-timeout-ms`,
+   [ngdpbase#1710](https://github.com/jwilleke/ngdpbase/issues/1710)). The add-on sets nothing.
+4. __Currency codes:__ decided 2026-10-08: ISO 4217 codes, taken from a site-wide default in ngdpbase
+   (`ngdpbase.default.currency`, [ngdpbase#1711](https://github.com/jwilleke/ngdpbase/issues/1711)).
+   The add-on ships no currency default of its own.
