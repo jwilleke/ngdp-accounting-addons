@@ -34,6 +34,8 @@ const logger = hostLogger as unknown as { info(message: string): void; warn(mess
 
 interface PolicyDecisionPointLike { permits(subject: unknown, action: string): Promise<boolean> }
 interface PluginManagerLike { registerPlugin(name: string, plugin: unknown): Promise<void> }
+/** ngdpbase's CacheManager; `bump` arrives with ngdpbase #1751 and is skipped before then. */
+interface CacheManagerLike { bump?(topic: string): Promise<unknown> }
 
 /** Until ngdpbase ships a site-wide currency (ngdpbase#1711). */
 const FALLBACK_CURRENCY = 'USD';
@@ -89,7 +91,11 @@ const AccountingAddon = {
       return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, string> : {};
     };
 
-    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, viewerMay, categories }));
+    // After each write, pages showing the ledger re-render on their next read (ngdpbase #1751).
+    const cache = engine.getManager<CacheManagerLike>('CacheManager');
+    const dataChanged = async (): Promise<void> => { await cache?.bump?.('LedgerManager'); };
+
+    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, viewerMay, categories, dataChanged }));
     engine.app?.use('/api/accounting', apiRoutes(engine));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, (m) => logger.info(m));

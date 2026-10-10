@@ -24,6 +24,8 @@ import type { FundBalance, LedgerActor, Transaction } from '../managers/LedgerMa
 interface PluginContext {
   engine: { getManager<T = unknown>(name: string): T | null | undefined };
   userContext?: unknown;
+  /** ngdpbase #1751: this render reads that manager's data; the cached page re-renders after its next write. */
+  dependsOn?: (topic: string) => void;
 }
 type PluginParams = Record<string, string | number | boolean>;
 
@@ -92,6 +94,7 @@ const LedgerPlugin = {
   version: '0.1.0',
 
   async execute(context: PluginContext, params: PluginParams): Promise<string> {
+    context.dependsOn?.('LedgerManager');
     const ledger = context.engine.getManager<LedgerManager>('LedgerManager');
     if (!ledger) return note('The ledger is not available on this site.');
     try {

@@ -73,6 +73,12 @@ describe('LedgerPlugin', () => {
     expect(await render(null, { view: 'balances' })).toContain('You may not see the ledger.');
   });
 
+  test('declares that it reads the ledger, so the cached page follows ledger writes', async () => {
+    const declared: string[] = [];
+    await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: { username: 'board' }, dependsOn: (t) => declared.push(t) }, { view: 'balances' });
+    expect(declared).toEqual(['LedgerManager']);
+  });
+
   test('an unknown view says which views exist', async () => {
     expect(await render('tess', { view: 'secrets' })).toContain('use balances or entries');
   });

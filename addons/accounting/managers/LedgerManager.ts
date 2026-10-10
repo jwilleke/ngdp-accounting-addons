@@ -149,6 +149,12 @@ export interface LedgerOptions {
   viewerMay?: (viewer: unknown, permission: string) => Promise<boolean>;
   /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
   categories?: () => Record<string, string>;
+  /**
+   * Told after every committed write, so readers of the ledger's data can
+   * refresh: index.ts bumps the `LedgerManager` data version in ngdpbase's
+   * CacheManager (ngdpbase #1751), and pages showing the ledger re-render.
+   */
+  dataChanged?: () => Promise<void> | void;
 }
 
 /** A choice in a form dropdown (ngdpbase BaseManager.toFormOptions). */
@@ -241,6 +247,7 @@ export default class LedgerManager {
   private readonly newId: () => string;
   private readonly viewerMay: (viewer: unknown, permission: string) => Promise<boolean>;
   private readonly categories: () => Record<string, string>;
+  private readonly dataChanged: () => Promise<void> | void;
 
   constructor(options: LedgerOptions) {
     if (!CURRENCY.test(options.currency)) throw new Error(`accounting: currency '${options.currency}' is not an ISO 4217 code`);
@@ -251,6 +258,21 @@ export default class LedgerManager {
     this.newId = options.newId ?? randomUUID;
     this.viewerMay = options.viewerMay ?? (async () => false);
     this.categories = options.categories ?? (() => ({}));
+    this.dataChanged = options.dataChanged ?? (() => undefined);
+  }
+
+  /**
+   * Every write's one way in: run it in a transaction, then say the ledger
+   * changed. Saying so cannot undo a committed write: a failure there only
+   * means a cached page may show the old figures until its TTL.
+   */
+  private async commit(work: () => void): Promise<void> {
+    this.db.transaction(work)();
+    try {
+      await this.dataChanged();
+    } catch {
+      // The write stands; see above.
+    }
   }
 
   // ── Viewers ────────────────────────────────────────────────────────────
@@ -342,11 +364,11 @@ export default class LedgerManager {
       severity: 'medium', resource: fund.id, resourceType: 'accounting-fund',
       metadata: { name, openingBalance, openingDate, restricted: fund.restricted }
     });
-    this.db.transaction(() => {
+    await this.commit(() => {
       this.db.prepare(`INSERT INTO accounting_funds (id, name, description, restricted, active, opening_balance, opening_date, created_by, created_at)
         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`).run(fund.id, name, description, fund.restricted ? 1 : 0, openingBalance, openingDate, user, fund.createdAt);
       this.history(user, 'fund-create', 'fund', fund.id, null, fund);
-    })();
+    });
     return fund;
   }
 
@@ -368,11 +390,11 @@ export default class LedgerManager {
       severity: 'medium', resource: fundId, resourceType: 'accounting-fund',
       metadata: { fields: Object.keys(changes) }
     });
-    this.db.transaction(() => {
+    await this.commit(() => {
       this.db.prepare('UPDATE accounting_funds SET name = ?, description = ?, restricted = ? WHERE id = ?')
         .run(name, description, restricted ? 1 : 0, fundId);
       this.history(user, 'fund-update', 'fund', fundId, before, after);
-    })();
+    });
     return after;
   }
 
@@ -388,10 +410,10 @@ export default class LedgerManager {
       eventType: addonAuditEventName('fund-manage'), user, ipAddress: actor.ipAddress, action: 'fund-close',
       severity: 'medium', resource: fundId, resourceType: 'accounting-fund', reason: why, metadata: { name: before.name }
     });
-    this.db.transaction(() => {
+    await this.commit(() => {
       this.db.prepare('UPDATE accounting_funds SET active = 0 WHERE id = ?').run(fundId);
       this.history(user, 'fund-close', 'fund', fundId, before, { ...before, active: false }, why);
-    })();
+    });
     return { ...before, active: false };
   }
 
@@ -412,10 +434,10 @@ export default class LedgerManager {
       severity: 'medium', resource: entry.id, resourceType: 'accounting-transaction',
       metadata: { direction: entry.direction, amount: entry.amount, currency: entry.currency, fundId: entry.fundId, date: entry.date, category: entry.category }
     });
-    this.db.transaction(() => {
+    await this.commit(() => {
       this.insert(entry);
       this.history(user, 'ledger-post', 'transaction', entry.id, null, entry);
-    })();
+    });
     return entry;
   }
 
@@ -443,7 +465,7 @@ export default class LedgerManager {
       severity: 'high', resource: original.id, resourceType: 'accounting-transaction', reason: why,
       metadata: { voided: targets.map(t => t.id), replacement: next ? { id: next.id, amount: next.amount, direction: next.direction, fundId: next.fundId } : null }
     });
-    this.db.transaction(() => {
+    await this.commit(() => {
       if (next) this.insert(next);
       for (const t of targets) {
         this.db.prepare("UPDATE accounting_transactions SET status = 'voided', void_reason = ?, voided_by_id = ? WHERE id = ?")
@@ -451,7 +473,7 @@ export default class LedgerManager {
         this.history(user, 'ledger-void', 'transaction', t.id, t, { ...t, status: 'voided', voidReason: why, voidedById: t.id === original.id && next ? next.id : null }, why);
       }
       if (next) this.history(user, 'ledger-post', 'transaction', next.id, null, next, why);
-    })();
+    });
     return {
       voided: targets.map(t => this.transaction(t.id)),
       replacement: next
@@ -473,11 +495,11 @@ export default class LedgerManager {
       severity: 'high', resource: transferId, resourceType: 'accounting-transfer',
       metadata: { fromFundId: out.fundId, toFundId: into.fundId, amount: out.amount, currency: out.currency, date: out.date }
     });
-    this.db.transaction(() => {
+    await this.commit(() => {
       this.insert(out);
       this.insert(into);
       this.history(user, 'ledger-transfer', 'transfer', transferId, null, { out, into });
-    })();
+    });
     return [out, into];
   }
 
