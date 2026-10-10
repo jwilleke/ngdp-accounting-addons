@@ -18,6 +18,9 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
 import { recordAuditEvent } from '../../dist/src/utils/auditEvents.js';
 import hostLogger from '../../dist/src/utils/logger.js';
 import apiRoutes from './routes/api.js';
@@ -97,6 +100,8 @@ const AccountingAddon = {
 
     engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, viewerMay, categories, dataChanged }));
     engine.app?.use('/api/accounting', apiRoutes(engine));
+    // Static scripts (ledger-view.js). An add-on outside ngdpbase's addons/ folder mounts its own.
+    engine.app?.use('/addons/accounting', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), 'public')));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, (m) => logger.info(m));
     unavailable = null;

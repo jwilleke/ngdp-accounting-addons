@@ -30,6 +30,13 @@
       "audit": { "on-failure": "refuse", "description": "Ledger entry voided or replaced, or money moved between funds" },
       "step-up": true
     },
+    "ledger-export": {
+      "description": "Download the ledger as CSV for the books of record",
+      "icon": "file-csv",
+      "color": "#fd7e14",
+      "audit": { "on-failure": "refuse", "description": "Ledger exported as CSV; the record keeps the period, row count and file hash" },
+      "step-up": true
+    },
     "fund-manage": {
       "description": "Create, rename and close funds",
       "icon": "piggy-bank",
@@ -67,6 +74,7 @@
         "ledger-read",
         "ledger-record",
         "ledger-adjust",
+        "ledger-export",
         "fund-manage"
       ]
     }

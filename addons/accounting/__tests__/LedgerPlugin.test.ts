@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
-import LedgerPlugin from '../plugins/LedgerPlugin.js';
+import LedgerPlugin, { renderLedgerView } from '../plugins/LedgerPlugin.js';
 
 const treasurer: LedgerActor = { ipAddress: undefined, actingUsername: () => 'tess', requirePermission: () => Promise.resolve() };
 
@@ -24,8 +24,9 @@ describe('LedgerPlugin', () => {
   let dir: string;
   let provider: SqliteDatabaseProvider;
   let ledger: LedgerManager;
+  // What /api/accounting/view renders for a reader (the page itself holds only a placeholder).
   const render = (viewer: string | null, params: Record<string, string>) =>
-    LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: viewer ? { username: viewer } : null }, params);
+    renderLedgerView(ledger, ledger.viewerActor(viewer ? { username: viewer } : null), params);
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-plugin-'));
@@ -73,13 +74,19 @@ describe('LedgerPlugin', () => {
     expect(await render(null, { view: 'balances' })).toContain('You may not see the ledger.');
   });
 
-  test('declares that it reads the ledger, so the cached page follows ledger writes', async () => {
-    const declared: string[] = [];
-    await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: { username: 'board' }, dependsOn: (t) => declared.push(t) }, { view: 'balances' });
-    expect(declared).toEqual(['LedgerManager']);
+  test('the page holds only a placeholder with the view\'s parameters and the loader script', () => {
+    const html = LedgerPlugin.execute(null, { view: 'summary', month: 'previous', export: 'true', junk: 'x"><script>' });
+    expect(html).toContain('<div class="ledger-view" data-view="summary" data-month="previous" data-export="true">');
+    expect(html).toContain('<script src="/addons/accounting/js/ledger-view.js" defer></script>');
+    expect(html).not.toContain('junk');
+    expect(html).not.toContain('$');
+  });
+
+  test('a parameter value is escaped into its attribute', () => {
+    expect(LedgerPlugin.execute(null, { view: 'entries', fund: '"><b>' })).toContain('data-fund="&quot;&gt;&lt;b&gt;"');
   });
 
   test('an unknown view says which views exist', async () => {
-    expect(await render('tess', { view: 'secrets' })).toContain('use balances or entries');
+    expect(await render('tess', { view: 'secrets' })).toContain('use balances, entries or summary');
   });
 });

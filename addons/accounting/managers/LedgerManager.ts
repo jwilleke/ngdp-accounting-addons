@@ -21,6 +21,8 @@ import { randomUUID } from 'node:crypto';
 import { addonAuditEventName } from '../../../dist/src/utils/auditEventNames.js';
 import { ApiError } from '../../../dist/src/context/ApiContext.js';
 import { formatMoney } from '../../../dist/src/utils/pluginFormatters.js';
+import { toCsv } from '../../../dist/src/utils/csv.js';
+import { createHash } from 'node:crypto';
 
 /** The caller: ngdpbase's ApiContext satisfies this. */
 export interface LedgerActor {
@@ -134,6 +136,40 @@ export interface FundBalance {
   balance: number;
 }
 
+/** A reporting period, both ends included, as YYYY-MM-DD. */
+export interface Period { from: string; to: string }
+
+/** One fund over a period. end = start + opened + moneyIn - moneyOut. */
+export interface FundPeriod {
+  fundId: string; name: string; active: boolean;
+  /** Balance at the start of the period: the opening balance if the fund opened before it, plus earlier entries. */
+  start: number;
+  /** An opening balance dated inside the period. */
+  opened: number;
+  moneyIn: number; moneyOut: number; end: number;
+}
+
+/** Income and expense of one category over a period; transfers are left out, they net to zero. */
+export interface CategoryPeriod { category: string; label: string; income: number; expense: number }
+
+export interface PeriodSummary {
+  period: Period;
+  currency: string;
+  funds: FundPeriod[];
+  categories: CategoryPeriod[];
+  totals: { start: number; opened: number; moneyIn: number; moneyOut: number; end: number; income: number; expense: number };
+}
+
+/** A CSV export, with what the audit record keeps about it. */
+export interface LedgerExport {
+  kind: 'transactions' | 'funds';
+  period: Period;
+  filename: string;
+  body: string;
+  rows: number;
+  sha256: string;
+}
+
 export interface LedgerOptions {
   db: LedgerDb;
   recordAudit: RecordAudit;
@@ -225,6 +261,17 @@ function text(value: unknown, field: string, { required = false, max = 500 } = {
   return trimmed === '' ? undefined : trimmed;
 }
 
+/** Whole minor units as a plain decimal for a spreadsheet: 125050 USD → "1250.50". */
+function decimalAmount(minor: number, currency: string): string {
+  let digits = 2;
+  try { digits = new Intl.NumberFormat('en-US', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2; } catch { /* two */ }
+  const sign = minor < 0 ? '-' : '';
+  const abs = Math.abs(minor);
+  if (digits === 0) return `${sign}${abs}`;
+  const unit = 10 ** digits;
+  return `${sign}${Math.trunc(abs / unit)}.${String(abs % unit).padStart(digits, '0')}`;
+}
+
 function minorUnits(value: unknown, field: string, { positive }: { positive: boolean }): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || (positive ? value <= 0 : false)) {
     throw new LedgerError(400, `${field} must be a whole number of cents${positive ? ', more than 0' : ''}`);
@@ -273,6 +320,136 @@ export default class LedgerManager {
     } catch {
       // The write stands; see above.
     }
+  }
+
+  // ── Reports ────────────────────────────────────────────────────────────
+
+  /**
+   * A reporting period from what a page or a request names: `month` as
+   * `current`, `previous` or `YYYY-MM`, or explicit `from` and `to`
+   * (YYYY-MM-DD, both included). Defaults to the current month.
+   */
+  period(spec: { month?: string; from?: string; to?: string } = {}): Period {
+    if (spec.from !== undefined || spec.to !== undefined) {
+      const from = isoDate(spec.from, 'from');
+      const to = isoDate(spec.to, 'to');
+      if (from > to) throw new LedgerError(400, 'from must not be after to');
+      return { from, to };
+    }
+    const today = this.today();
+    let year = Number(today.slice(0, 4));
+    let month = Number(today.slice(5, 7));
+    const named = spec.month ?? 'current';
+    if (named === 'previous') {
+      month -= 1;
+      if (month === 0) { month = 12; year -= 1; }
+    } else if (named !== 'current') {
+      const m = /^(\d{4})-(\d{2})$/.exec(named);
+      if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) throw new LedgerError(400, "month must be current, previous or YYYY-MM");
+      year = Number(m[1]); month = Number(m[2]);
+    }
+    const mm = String(month).padStart(2, '0');
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${String(last).padStart(2, '0')}` };
+  }
+
+  /**
+   * The board's monthly summary, or any period's: per fund the balance at the
+   * start, money in and out, and the balance at the end; per category income
+   * and expense (transfers left out); and the totals. Posted entries only, so
+   * a voided entry is gone and its replacement counts. No names: needs only
+   * ledger-summary-read.
+   */
+  async periodSummary(actor: LedgerActor, period: Period): Promise<PeriodSummary> {
+    await actor.requirePermission('ledger-summary-read');
+    const { from, to } = period;
+    const funds = (this.db.prepare(`
+      SELECT f.id, f.name, f.active, f.opening_balance, f.opening_date,
+        COALESCE(SUM(CASE WHEN t.date < ? AND t.direction = 'in'  THEN t.amount END), 0) AS before_in,
+        COALESCE(SUM(CASE WHEN t.date < ? AND t.direction = 'out' THEN t.amount END), 0) AS before_out,
+        COALESCE(SUM(CASE WHEN t.date >= ? AND t.date <= ? AND t.direction = 'in'  THEN t.amount END), 0) AS period_in,
+        COALESCE(SUM(CASE WHEN t.date >= ? AND t.date <= ? AND t.direction = 'out' THEN t.amount END), 0) AS period_out
+      FROM accounting_funds f
+      LEFT JOIN accounting_transactions t ON t.fund_id = f.id AND t.status = 'posted'
+      WHERE f.opening_date <= ?
+      GROUP BY f.id ORDER BY f.name`).all(from, from, from, to, from, to, to) as {
+        id: string; name: string; active: number; opening_balance: number; opening_date: string;
+        before_in: number; before_out: number; period_in: number; period_out: number;
+      }[]).map((r): FundPeriod => {
+        const openedBefore = r.opening_date < from;
+        const start = (openedBefore ? r.opening_balance : 0) + r.before_in - r.before_out;
+        const opened = openedBefore ? 0 : r.opening_balance;
+        return {
+          fundId: r.id, name: r.name, active: r.active === 1, start, opened,
+          moneyIn: r.period_in, moneyOut: r.period_out, end: start + opened + r.period_in - r.period_out
+        };
+      });
+
+    const labels = this.categories();
+    const categories = (this.db.prepare(`
+      SELECT category,
+        COALESCE(SUM(CASE WHEN direction = 'in'  THEN amount END), 0) AS income,
+        COALESCE(SUM(CASE WHEN direction = 'out' THEN amount END), 0) AS expense
+      FROM accounting_transactions
+      WHERE status = 'posted' AND transfer_id IS NULL AND date >= ? AND date <= ?
+      GROUP BY category ORDER BY category`).all(from, to) as { category: string; income: number; expense: number }[])
+      .map(r => ({ category: r.category, label: typeof labels[r.category] === 'string' ? labels[r.category] : '', income: r.income, expense: r.expense }));
+
+    const sum = <T>(rows: T[], pick: (r: T) => number) => rows.reduce((total, r) => total + pick(r), 0);
+    return {
+      period: { from, to },
+      currency: this.currency,
+      funds,
+      categories,
+      totals: {
+        start: sum(funds, f => f.start), opened: sum(funds, f => f.opened),
+        moneyIn: sum(funds, f => f.moneyIn), moneyOut: sum(funds, f => f.moneyOut), end: sum(funds, f => f.end),
+        income: sum(categories, c => c.income), expense: sum(categories, c => c.expense)
+      }
+    };
+  }
+
+  /**
+   * The CSV for the books of record: `transactions` (every ledger field, every
+   * entry dated in the period, voided ones included with their status) or
+   * `funds` (the period summary per fund). Needs ledger-export, which asks for
+   * a fresh sign-in; the audit record — who, the period, the row count and the
+   * file's SHA-256 — is written before the file is handed over, and if it
+   * cannot be written there is no file.
+   */
+  async exportCsv(actor: LedgerActor, kind: 'transactions' | 'funds', period: Period): Promise<LedgerExport> {
+    await actor.requirePermission('ledger-export');
+    if (kind !== 'transactions' && kind !== 'funds') throw new LedgerError(400, "kind must be 'transactions' or 'funds'");
+    const user = actor.actingUsername();
+
+    let headers: string[];
+    let rows: unknown[][];
+    if (kind === 'transactions') {
+      headers = ['id', 'date', 'direction', 'amount_minor', 'amount', 'currency', 'fund_id', 'fund', 'category', 'party_person_id', 'party_name',
+        'payment_method', 'payment_method_id', 'provider', 'confirmation_number', 'source_type', 'source_id', 'status', 'voids_id',
+        'voided_by_id', 'void_reason', 'transfer_id', 'memo', 'created_by', 'created_at'];
+      const names = new Map((this.db.prepare('SELECT id, name FROM accounting_funds').all() as { id: string; name: string }[]).map(f => [f.id, f.name]));
+      rows = (this.db.prepare('SELECT * FROM accounting_transactions WHERE date >= ? AND date <= ? ORDER BY date, created_at')
+        .all(period.from, period.to) as TransactionRow[]).map(toTransaction).map(t => [
+        t.id, t.date, t.direction, t.amount, decimalAmount(t.amount, t.currency), t.currency, t.fundId, names.get(t.fundId) ?? '', t.category,
+        t.partyPersonId, t.partyName, t.paymentMethod, t.paymentMethodId, t.provider, t.confirmationNumber, t.sourceType, t.sourceId,
+        t.status, t.voidsId, t.voidedById, t.voidReason, t.transferId, t.memo, t.createdBy, t.createdAt
+      ]);
+    } else {
+      const summary = await this.periodSummary(actor, period);
+      headers = ['fund_id', 'fund', 'active', 'currency', 'start_minor', 'opened_minor', 'in_minor', 'out_minor', 'end_minor', 'start', 'opened', 'in', 'out', 'end'];
+      rows = summary.funds.map(f => [f.fundId, f.name, f.active, this.currency, f.start, f.opened, f.moneyIn, f.moneyOut, f.end,
+        ...[f.start, f.opened, f.moneyIn, f.moneyOut, f.end].map(v => decimalAmount(v, this.currency))]);
+    }
+
+    const body = toCsv(headers, rows);
+    const sha256 = createHash('sha256').update(body).digest('hex');
+    await this.recordAudit({
+      eventType: addonAuditEventName('ledger-export'), user, ipAddress: actor.ipAddress, action: 'ledger-export',
+      severity: 'high', resource: `${kind}:${period.from}..${period.to}`, resourceType: 'accounting-export',
+      metadata: { kind, from: period.from, to: period.to, rows: rows.length, sha256 }
+    });
+    return { kind, period, filename: `ledger-${kind}-${period.from}-to-${period.to}.csv`, body, rows: rows.length, sha256 };
   }
 
   // ── Viewers ────────────────────────────────────────────────────────────
