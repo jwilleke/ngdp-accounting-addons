@@ -19,6 +19,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { addonAuditEventName } from '../../../dist/src/utils/auditEventNames.js';
+import { ApiError } from '../../../dist/src/context/ApiContext.js';
 
 /** The caller: ngdpbase's ApiContext satisfies this. */
 export interface LedgerActor {
@@ -239,6 +240,30 @@ export default class LedgerManager {
     this.newId = options.newId ?? randomUUID;
     this.viewerMay = options.viewerMay ?? (async () => false);
     this.categories = options.categories ?? (() => ({}));
+  }
+
+  // ── Viewers ────────────────────────────────────────────────────────────
+
+  /** The site currency every amount is kept in (ISO 4217). */
+  currencyCode(): string {
+    return this.currency;
+  }
+
+  /**
+   * The caller for a page render, where there is a viewer but no request
+   * (a plugin). Each ledger method still asks its own permission of it, so a
+   * plugin reads only what the viewer may read. It never satisfies a step-up:
+   * use it for reading, never for posting.
+   */
+  viewerActor(viewer: unknown): LedgerActor {
+    const username = (viewer as { username?: unknown } | null | undefined)?.username;
+    return {
+      ipAddress: undefined,
+      actingUsername: () => (typeof username === 'string' && username !== '' ? username : 'anonymous'),
+      requirePermission: async (permission: string) => {
+        if (!(await this.viewerMay(viewer, permission))) throw new ApiError(403, `not permitted: ${permission}`);
+      }
+    };
   }
 
   // ── Form choices ───────────────────────────────────────────────────────

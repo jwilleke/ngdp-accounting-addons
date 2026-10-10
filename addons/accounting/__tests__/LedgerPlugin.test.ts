@@ -1,0 +1,79 @@
+/**
+ * [{Ledger}]: the ledger drawn for the viewer, through the ledger's own
+ * permissions, with ngdpbase's shared plugin formatting. Each test opens its
+ * own temporary database and removes only that folder.
+ */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
+import LedgerManager, { type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
+import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
+import LedgerPlugin from '../plugins/LedgerPlugin.js';
+
+const treasurer: LedgerActor = { ipAddress: undefined, actingUsername: () => 'tess', requirePermission: () => Promise.resolve() };
+
+/** Who holds what, for viewerMay. */
+const GRANTS: Record<string, string[]> = {
+  tess: ['ledger-summary-read', 'ledger-read', 'ledger-record'],
+  board: ['ledger-summary-read']
+};
+
+describe('LedgerPlugin', () => {
+  let dir: string;
+  let provider: SqliteDatabaseProvider;
+  let ledger: LedgerManager;
+  const render = (viewer: string | null, params: Record<string, string>) =>
+    LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: viewer ? { username: viewer } : null }, params);
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-plugin-'));
+    provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
+    ledger = new LedgerManager({
+      db: provider.handle as unknown as LedgerDb,
+      currency: 'USD',
+      recordAudit: () => Promise.resolve(),
+      viewerMay: async (viewer, permission) => (GRANTS[(viewer as { username?: string } | null)?.username ?? ''] ?? []).includes(permission)
+    });
+  });
+
+  afterEach(() => {
+    provider.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('balances: money in the site currency, escaped names, and a total', async () => {
+    const general = await ledger.createFund(treasurer, { name: 'General <main>', openingBalance: 10000 });
+    await ledger.createFund(treasurer, { name: 'Roof' });
+    await ledger.postTransaction(treasurer, { direction: 'in', amount: 125050, date: '2026-10-10', fundId: general.id, category: '4100' });
+    const html = await render('board', { view: 'balances' });
+    expect(html).toContain('General &lt;main&gt;');
+    expect(html).toContain('<strong>$1,350.50</strong>');
+    expect(html).toMatch(/<tfoot><tr><td><strong>Total<\/strong><\/td><td>\$100\.00<\/td><td>\$1,250\.50<\/td><td>\$0\.00<\/td><td><strong>\$1,350\.50<\/strong><\/td><\/tr><\/tfoot>/);
+  });
+
+  test('balances with no funds says so', async () => {
+    expect(await render('board', { view: 'balances' })).toContain('No funds yet.');
+  });
+
+  test('entries: newest first, limited by max, for a viewer who may read entries', async () => {
+    const f = await ledger.createFund(treasurer, { name: 'General' });
+    for (const [date, amount] of [['2026-10-01', 100], ['2026-10-03', 300], ['2026-10-02', 200]] as const) {
+      await ledger.postTransaction(treasurer, { direction: 'out', amount, date, fundId: f.id, category: '5200', memo: `m${amount}` });
+    }
+    const html = await render('tess', { view: 'entries', max: '2' });
+    expect(html.indexOf('2026-10-03')).toBeLessThan(html.indexOf('2026-10-02'));
+    expect(html).not.toContain('2026-10-01');
+    expect(html).toContain('$3.00');
+  });
+
+  test('a viewer without ledger-read is refused entries but may see balances', async () => {
+    expect(await render('board', { view: 'entries' })).toContain('You may not see the ledger.');
+    expect(await render(null, { view: 'balances' })).toContain('You may not see the ledger.');
+  });
+
+  test('an unknown view says which views exist', async () => {
+    expect(await render('tess', { view: 'secrets' })).toContain('use balances or entries');
+  });
+});

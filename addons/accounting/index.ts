@@ -22,6 +22,7 @@ import { recordAuditEvent } from '../../dist/src/utils/auditEvents.js';
 import hostLogger from '../../dist/src/utils/logger.js';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
+import LedgerPlugin from './plugins/LedgerPlugin.js';
 import LedgerManager, { type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
 
@@ -32,6 +33,7 @@ import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migra
 const logger = hostLogger as unknown as { info(message: string): void; warn(message: string): void };
 
 interface PolicyDecisionPointLike { permits(subject: unknown, action: string): Promise<boolean> }
+interface PluginManagerLike { registerPlugin(name: string, plugin: unknown): Promise<void> }
 
 /** Until ngdpbase ships a site-wide currency (ngdpbase#1711). */
 const FALLBACK_CURRENCY = 'USD';
@@ -89,6 +91,7 @@ const AccountingAddon = {
 
     engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, viewerMay, categories }));
     engine.app?.use('/api/accounting', apiRoutes(engine));
+    await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, (m) => logger.info(m));
     unavailable = null;
     logger.info(`[accounting] Ledger ready (currency ${currency})`);
