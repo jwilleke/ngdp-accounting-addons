@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { addonAuditEventName } from '../../../dist/src/utils/auditEventNames.js';
 import { ApiError } from '../../../dist/src/context/ApiContext.js';
+import { formatMoney } from '../../../dist/src/utils/pluginFormatters.js';
 
 /** The caller: ngdpbase's ApiContext satisfies this. */
 export interface LedgerActor {
@@ -157,6 +158,16 @@ export interface FormChoice { value: string; label: string }
  * The payment means a treasurer records by hand, as UN/CEFACT UNCL 4461 codes
  * (D-018). Card and online payments arrive through providers, not this list.
  */
+/** How many of the latest entries the void form offers. */
+const ENTRY_CHOICES = 100;
+
+/** "2026-10-10 · General · in $1,250.50 · Pat Member" — enough to pick the right entry. */
+function entryLabel(t: Transaction, fundName: string): string {
+  const who = t.partyName || t.memo || t.category;
+  const kind = t.transferId ? 'transfer ' : '';
+  return [t.date, fundName, `${kind}${t.direction} ${formatMoney(t.amount, t.currency)}`, who].filter(Boolean).join(' · ');
+}
+
 export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
   { value: '10', label: 'Cash' },
   { value: '20', label: 'Check' },
@@ -271,24 +282,41 @@ export default class LedgerManager {
   /**
    * Choices for a form dropdown, from page content:
    * `"optionsSource": "fetch:LedgerManager.toFormOptions(list=funds)"`.
-   * Lists: `funds` (open funds), `categories`, `payment-methods`. A viewer
-   * who may not record an entry is offered nothing. No side effects: this
-   * runs on every render.
+   * Each list asks the permission that would let the viewer see what it
+   * shows, through the ledger's own reads where there is one:
+   *   funds            open funds                   ledger-summary-read (listFunds)
+   *   entries          latest posted entries        ledger-read (listTransactions)
+   *   categories       site's UCOA categories       ledger-record
+   *   payment-methods  manual UN/CEFACT codes       ledger-record
+   * A refusal is no choices. No side effects: this runs on every render.
    */
   async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<FormChoice[]> {
-    if (!(await this.viewerMay(viewer, 'ledger-record'))) return [];
-    switch (options.list) {
-      case 'funds':
-        return (this.db.prepare('SELECT * FROM accounting_funds WHERE active = 1 ORDER BY name').all() as FundRow[])
-          .map(r => ({ value: r.id, label: r.name }));
-      case 'categories':
-        return Object.entries(this.categories())
-          .filter(([code, label]) => code !== '' && typeof label === 'string')
-          .map(([code, label]) => ({ value: code, label: `${code} ${label}` }));
-      case 'payment-methods':
-        return [...MANUAL_PAYMENT_MEANS];
-      default:
-        return [];
+    const actor = this.viewerActor(viewer);
+    try {
+      switch (options.list) {
+        case 'funds':
+          return (await this.listFunds(actor)).filter(f => f.active).map(f => ({ value: f.id, label: f.name }));
+        case 'entries': {
+          const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
+          const latest = (await this.listTransactions(actor))
+            .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+            .slice(0, ENTRY_CHOICES);
+          return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId) }));
+        }
+        case 'categories':
+          await actor.requirePermission('ledger-record');
+          return Object.entries(this.categories())
+            .filter(([code, label]) => code !== '' && typeof label === 'string')
+            .map(([code, label]) => ({ value: code, label: `${code} ${label}` }));
+        case 'payment-methods':
+          await actor.requirePermission('ledger-record');
+          return [...MANUAL_PAYMENT_MEANS];
+        default:
+          return [];
+      }
+    } catch (err) {
+      if (err instanceof ApiError) return [];
+      throw err;
     }
   }
 

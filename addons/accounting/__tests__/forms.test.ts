@@ -10,7 +10,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { MANUAL_PAYMENT_MEANS, type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
-import { ENTRY_FORM, entryFromForm, fieldOf } from '../forms.js';
+import { LEDGER_FORMS, entryFromForm, fieldOf } from '../forms.js';
+
+const formById = (id: string) => LEDGER_FORMS.find(f => f.definition.id === id)!;
 
 const treasurer: LedgerActor = {
   ipAddress: undefined,
@@ -42,13 +44,13 @@ describe('LedgerManager.toFormOptions', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test('offers open funds only, by id and name, asking the viewer for ledger-record', async () => {
+  test('offers open funds only, by id and name, asking the viewer for ledger-summary-read', async () => {
     const general = await ledger.createFund(treasurer, { name: 'General' });
     const old = await ledger.createFund(treasurer, { name: 'Old Roof' });
     await ledger.closeFund(treasurer, old.id, 'done');
     const viewer = { username: 'tess' };
     expect(await ledger.toFormOptions({ list: 'funds' }, viewer)).toEqual([{ value: general.id, label: 'General' }]);
-    expect(asked).toEqual([[viewer, 'ledger-record']]);
+    expect(asked).toEqual([[viewer, 'ledger-summary-read']]);
   });
 
   test('offers the configured categories and the manual payment means', async () => {
@@ -59,7 +61,13 @@ describe('LedgerManager.toFormOptions', () => {
     expect(await ledger.toFormOptions({ list: 'payment-methods' }, viewer)).toEqual([...MANUAL_PAYMENT_MEANS]);
   });
 
-  test('a viewer who may not record an entry is offered nothing', async () => {
+  test('entries: the latest posted, labelled so the right one can be picked, for a viewer who may read entries', async () => {
+    const f = await ledger.createFund(treasurer, { name: 'General' });
+    const t = await ledger.postTransaction(treasurer, { direction: 'in', amount: 125050, date: '2026-10-10', fundId: f.id, category: '4100', partyName: 'Pat' });
+    expect(await ledger.toFormOptions({ list: 'entries' }, { username: 'tess' })).toEqual([{ value: t.id, label: '2026-10-10 · General · in $1,250.50 · Pat' }]);
+  });
+
+  test('a viewer who may not see the ledger is offered nothing', async () => {
     await ledger.createFund(treasurer, { name: 'General' });
     expect(await ledger.toFormOptions({ list: 'funds' }, { username: 'molly' })).toEqual([]);
     expect(await ledger.toFormOptions({ list: 'funds' }, undefined)).toEqual([]);
@@ -71,12 +79,16 @@ describe('LedgerManager.toFormOptions', () => {
 });
 
 describe('the entry form', () => {
-  test('its field names are the ledger\'s, so errors land on the right field', () => {
-    expect(fieldOf('amount must be a whole number of cents, more than 0')).toBe('amount');
-    expect(fieldOf("fund 'Old Roof' is closed")).toBe('fundId');
-    expect(fieldOf('fundId is required')).toBe('fundId');
-    expect(fieldOf('paymentMethod must be a UN/CEFACT payment means code, e.g. 10 (cash) or 20 (cheque)')).toBe('paymentMethod');
-    expect(fieldOf('something else broke')).toBeUndefined();
+  test('field names are the ledger\'s, so its errors land on the right field', () => {
+    const entry = formById('ledger-entry');
+    expect(fieldOf(entry, 'amount must be a whole number of cents, more than 0')).toBe('amount');
+    expect(fieldOf(entry, "fund 'Old Roof' is closed")).toBe('fundId');
+    expect(fieldOf(entry, 'fundId is required')).toBe('fundId');
+    expect(fieldOf(entry, 'paymentMethod must be a UN/CEFACT payment means code, e.g. 10 (cash) or 20 (cheque)')).toBe('paymentMethod');
+    expect(fieldOf(entry, 'something else broke')).toBeUndefined();
+    expect(fieldOf(formById('ledger-transfer'), 'a transfer needs two different funds')).toBe('toFundId');
+    expect(fieldOf(formById('ledger-void'), 'this entry is already voided')).toBe('transactionId');
+    expect(fieldOf(formById('fund-create'), "a fund named 'General' already exists")).toBe('name');
   });
 
   test('a submitted form becomes a ledger entry; empty optional fields are left out', () => {
@@ -85,7 +97,12 @@ describe('the entry form', () => {
     });
   });
 
-  test('the form keeps no submission file: the ledger entry is the record', () => {
-    expect(ENTRY_FORM.store).toBe(false);
+  test('no form keeps a submission file: the ledger is the record', () => {
+    expect(LEDGER_FORMS.map(f => f.definition.store)).toEqual(LEDGER_FORMS.map(() => false));
+  });
+
+  test('every form posts through the ledger, which refuses a viewer without the permission', async () => {
+    const ids = LEDGER_FORMS.map(f => f.definition.id);
+    expect(ids).toEqual(['ledger-entry', 'ledger-transfer', 'ledger-void', 'fund-create', 'fund-rename', 'fund-close']);
   });
 });

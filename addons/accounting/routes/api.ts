@@ -27,7 +27,9 @@ export default function apiRoutes(engine: Engine): Router {
       const result = await fn(ctx, ledger, req);
       res.status(status).json({ ok: true, result });
     } catch (err) {
-      if (err instanceof ApiError || err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
+      // A step-up refusal carries the way to re-authenticate (ngdpbase #1745).
+      if (err instanceof ApiError) { res.status(err.status).json({ ok: false, error: err.message, ...(err.reauth ? { reauth: err.reauth } : {}) }); return; }
+      if (err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
       res.status(500).json({ ok: false, error: 'internal error' });
     }
   };
