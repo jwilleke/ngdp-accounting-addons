@@ -37,6 +37,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-021](#d-021-mvp-roles-and-report-pages-treasurer-only-reports-use-page-audience) | 2026-10-06 | MVP roles and report pages: `treasurer` only; reports use page `audience`; no vault yet | Accepted |
 | [D-022](#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up) | 2026-10-08 | Sign-in strength stays on roles; money permissions use step-up; no per-permission AAL | Accepted |
 | [D-023](#d-023-categories-follow-the-unified-chart-of-accounts-ucoa) | 2026-10-08 | Categories follow the Unified Chart of Accounts (UCOA) model | Accepted |
+| [D-024](#d-024-treasurer-screens-are-forms-of-an-improved-ngdpbase-forms-add-on) | 2026-10-10 | Treasurer screens are forms of an improved ngdpbase forms add-on, on locked pages | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -786,3 +787,39 @@ __Consequences:__
   label, not in code.
 - The specific default code set the add-on ships is decided separately.
 - UCOA is added to the standards list in requirements.md section 1a.
+
+## D-024: Treasurer screens are forms of an improved ngdpbase forms add-on
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-10
+- __Links:__ [#15](https://github.com/jwilleke/ngdp-accounting-addons/issues/15); ngdpbase
+  [#1749](https://github.com/jwilleke/ngdpbase/pull/1749); [D-021](#d-021-mvp-roles-and-report-pages-treasurer-only-reports-use-page-audience)
+
+__Context:__ The ledger had only a JSON API. The treasurer's input screens could be hand-written
+server pages in this add-on, or forms of ngdpbase's forms add-on. The forms add-on as shipped could
+not carry them: no choices from a manager, no money field, anyone could submit, a refused submission
+stayed on disk, and its admin pages could not post.
+
+__Decision (operator):__ Use the forms add-on and improve it in ngdpbase, for every add-on rather
+than for accounting alone. The treasurer's input screens are forms on locked pages this add-on ships.
+
+- Dropdowns get their choices from `LedgerManager.toFormOptions(list=...)`, which ngdpbase calls with
+  the viewer's context, the same safe convention as the Marquee plugin's `fetch=`.
+- Who may submit is decided by the page the form is on: `audience` (who sees it),
+  `access: { form-submit: [...] }` (who may submit) and `author-lock: true` (who may change those).
+- The handler posts through `LedgerManager`, which still asks its own permission and writes the
+  audit record. The page decides who may use the form; the ledger decides what they may change.
+- The entry form keeps no submission file (`"store": false`): the ledger entry is the record.
+
+__Not chosen:__ hand-written pages (quicker for the MVP, but no reuse); a treasurer vault (a private
+area belongs to one person and cannot be shared yet, which does not fit a role that changes hands).
+A vault may suit the treasurer's own notes and a handover later (#9).
+
+__Consequences:__
+
+- The MVP's input screens depend on ngdpbase #1749 merging and shipping in a release.
+- Overview screens (balances, the entry list) are display, not forms, and are built separately.
+- Until ngdpbase lets an add-on ship form definitions, this add-on writes its own through
+  `FormsDataManager.saveDefinition` on first start.
+- The default category list is still open (D-023); a site sets
+  `ngdpbase.addons.accounting.categories` meanwhile.

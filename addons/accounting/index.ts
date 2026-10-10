@@ -11,12 +11,17 @@
  * Configuration keys:
  *   ngdpbase.addons.accounting.enabled — true/false (defaults to false)
  *   ngdpbase.default.currency          — ISO 4217 code read from ngdpbase; USD until ngdpbase ships it
+ *   ngdpbase.addons.accounting.categories — { "<UCOA code>": "<label>" } for the entry form (D-023)
+ *
+ * With the forms add-on enabled, the treasurer's screens are forms on locked
+ * pages this add-on ships (forms.ts, pages/).
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
 import { recordAuditEvent } from '../../dist/src/utils/auditEvents.js';
 import hostLogger from '../../dist/src/utils/logger.js';
 import apiRoutes from './routes/api.js';
+import { registerForms } from './forms.js';
 import LedgerManager, { type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
 
@@ -25,6 +30,8 @@ import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migra
  * repository does not install, so name the two calls used here.
  */
 const logger = hostLogger as unknown as { info(message: string): void; warn(message: string): void };
+
+interface PolicyDecisionPointLike { permits(subject: unknown, action: string): Promise<boolean> }
 
 /** Until ngdpbase ships a site-wide currency (ngdpbase#1711). */
 const FALLBACK_CURRENCY = 'USD';
@@ -72,8 +79,17 @@ const AccountingAddon = {
     const configured = config?.getProperty('ngdpbase.default.currency', FALLBACK_CURRENCY);
     const currency = typeof configured === 'string' && configured !== '' ? configured : FALLBACK_CURRENCY;
 
-    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency }));
+    const pdp = engine.getManager<PolicyDecisionPointLike>('PolicyDecisionPoint');
+    const viewerMay = async (viewer: unknown, permission: string): Promise<boolean> =>
+      Boolean(viewer && pdp && await pdp.permits(viewer, permission));
+    const categories = (): Record<string, string> => {
+      const value = config?.getProperty('ngdpbase.addons.accounting.categories', {});
+      return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, string> : {};
+    };
+
+    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, viewerMay, categories }));
     engine.app?.use('/api/accounting', apiRoutes(engine));
+    await registerForms(engine, (m) => logger.info(m));
     unavailable = null;
     logger.info(`[accounting] Ledger ready (currency ${currency})`);
   },

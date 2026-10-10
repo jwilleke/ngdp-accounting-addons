@@ -1,6 +1,8 @@
 {
   "_comment_accounting": "Accounting add-on defaults (docs/plans/ledger-design.md). Merged into the site's configuration only while ngdpbase.addons.accounting.enabled is true; the site's app-custom-config.json overrides any entry. Every action is a permission whose entry carries its audit rule; money actions refuse when their audit record cannot be written, and the riskiest ask for a fresh sign-in (step-up).",
   "ngdpbase.addons.accounting.enabled": false,
+  "_comment_categories": "Income and expense categories offered on the entry form: { \"<UCOA account code>\": \"<label>\" } (D-023). Empty until the default set is decided; a site sets its own in app-custom-config.json. A map, so each layer adds codes rather than replacing the list.",
+  "ngdpbase.addons.accounting.categories": {},
 
   "ngdpbase.permissions.definitions": {
     "ledger-summary-read": {

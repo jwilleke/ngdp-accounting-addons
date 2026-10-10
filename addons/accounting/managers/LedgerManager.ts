@@ -139,7 +139,29 @@ export interface LedgerOptions {
   currency: string;
   now?: () => Date;
   newId?: () => string;
+  /**
+   * Does this viewer hold `permission`? For the choices a form offers
+   * (toFormOptions), where there is a viewer but no request; index.ts asks
+   * ngdpbase's PolicyDecisionPoint. Without it no choices are offered.
+   */
+  viewerMay?: (viewer: unknown, permission: string) => Promise<boolean>;
+  /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
+  categories?: () => Record<string, string>;
 }
+
+/** A choice in a form dropdown (ngdpbase BaseManager.toFormOptions). */
+export interface FormChoice { value: string; label: string }
+
+/**
+ * The payment means a treasurer records by hand, as UN/CEFACT UNCL 4461 codes
+ * (D-018). Card and online payments arrive through providers, not this list.
+ */
+export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
+  { value: '10', label: 'Cash' },
+  { value: '20', label: 'Check' },
+  { value: '30', label: 'Bank transfer' },
+  { value: '48', label: 'Card' }
+];
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** UN/CEFACT payment means code (UNCL 4461): digits, or ZZZ for "mutually defined". */
@@ -205,6 +227,8 @@ export default class LedgerManager {
   private readonly currency: string;
   private readonly now: () => Date;
   private readonly newId: () => string;
+  private readonly viewerMay: (viewer: unknown, permission: string) => Promise<boolean>;
+  private readonly categories: () => Record<string, string>;
 
   constructor(options: LedgerOptions) {
     if (!CURRENCY.test(options.currency)) throw new Error(`accounting: currency '${options.currency}' is not an ISO 4217 code`);
@@ -213,6 +237,34 @@ export default class LedgerManager {
     this.currency = options.currency;
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? randomUUID;
+    this.viewerMay = options.viewerMay ?? (async () => false);
+    this.categories = options.categories ?? (() => ({}));
+  }
+
+  // ── Form choices ───────────────────────────────────────────────────────
+
+  /**
+   * Choices for a form dropdown, from page content:
+   * `"optionsSource": "fetch:LedgerManager.toFormOptions(list=funds)"`.
+   * Lists: `funds` (open funds), `categories`, `payment-methods`. A viewer
+   * who may not record an entry is offered nothing. No side effects: this
+   * runs on every render.
+   */
+  async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<FormChoice[]> {
+    if (!(await this.viewerMay(viewer, 'ledger-record'))) return [];
+    switch (options.list) {
+      case 'funds':
+        return (this.db.prepare('SELECT * FROM accounting_funds WHERE active = 1 ORDER BY name').all() as FundRow[])
+          .map(r => ({ value: r.id, label: r.name }));
+      case 'categories':
+        return Object.entries(this.categories())
+          .filter(([code, label]) => code !== '' && typeof label === 'string')
+          .map(([code, label]) => ({ value: code, label: `${code} ${label}` }));
+      case 'payment-methods':
+        return [...MANUAL_PAYMENT_MEANS];
+      default:
+        return [];
+    }
   }
 
   // ── Funds ──────────────────────────────────────────────────────────────
