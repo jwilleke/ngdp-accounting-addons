@@ -7,15 +7,15 @@ last_updated: "2026-10-09"
 # TODO
 
 <!-- RESUME:START -->
-## ▶ Resume here — 2026-10-09
+## ▶ Resume here — 2026-10-10
 
 - Last worked on: the ledger core of the `accounting` add-on is built and tested (funds, entries, voids, transfers, balances, audit-first door, treasurer role); design in `docs/plans/ledger-design.md`.
-- Branch / state: main, clean, pushed. ngdpbase clone `../ngdpbase-accounting` on `master`; its branch `feat/database-busy-timeout` is pushed as [ngdpbase#1712](https://github.com/jwilleke/ngdpbase/pull/1712).
+- Branch / state: main, clean, pushed. ngdpbase clone `../ngdpbase-accounting` on `master` at v5.2.0 (scheduler and database lock wait included), built.
 - Running / in-flight: dev instance on <http://localhost:3003> (pm2 app `ngdp-instance`, folder `../ngdpbase-accounting`), left running. Never run pm2 commands on "all": the operator runs four other instances.
 - Parked / half-done: none.
 - Next steps:
   - Operator chooses the next MVP piece: treasurer screens, or the monthly summary and CSV export.
-  - When [ngdpbase#1712](https://github.com/jwilleke/ngdpbase/pull/1712) (lock wait) merges: pull the clone, rebuild, restart.
+  - Scheduled jobs are available (ngdpbase v5.2.0); use them for recurring add-on jobs per #11.
 - Blockers / significant notes: ledger data is in no backup until [ngdpbase#1723](https://github.com/jwilleke/ngdpbase/issues/1723) (P1) is built. Currency is USD until [ngdpbase#1711](https://github.com/jwilleke/ngdpbase/issues/1711). Every commit goes through `/session-commit`.
 <!-- RESUME:END -->
 
