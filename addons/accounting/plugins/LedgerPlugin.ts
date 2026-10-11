@@ -7,18 +7,13 @@
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
  *   [{Ledger view='summary' from='2026-01-01' to='2026-06-30' export='true'}]   with CSV download links
  *
- * The calendar's method: the plugin draws only a placeholder with the view's
- * parameters, and public/js/ledger-view.js asks /api/accounting/view for the
- * tables when the page opens. A page's rendered HTML is cached until the page
- * is saved, so figures drawn into it would freeze; and the shared page cache
- * then never holds money data.
- *
- * The route renders with renderLedgerView below, under the request's own
- * context, so the ledger's own permissions decide: balances need ledger-summary-read, entries
+ * Every read goes through LedgerManager as the viewer (viewerActor), so the
+ * ledger's own permissions decide: balances need ledger-summary-read, entries
  * need ledger-read, a summary needs ledger-summary-read (no names). The
  * download links lead to /api/accounting/export, which asks ledger-export and
- * a fresh sign-in itself. Nothing is copied into the page; the page holds only the
- * plugin call. Formatting comes from ngdpbase's shared plugin helpers.
+ * a fresh sign-in itself. The rendered page is cached per set of roles and
+ * re-rendered after the ledger's next write (the ledger bumps its topic).
+ * Formatting comes from ngdpbase's shared plugin helpers.
  */
 import {
   applyMax,
@@ -140,22 +135,19 @@ export async function renderLedgerView(ledger: LedgerManager, actor: LedgerActor
   }
 }
 
-/** The parameters a view takes, carried on the placeholder as data-* attributes. */
-export const VIEW_PARAMS = ['view', 'month', 'from', 'to', 'max', 'fund', 'voided', 'export'] as const;
-
 const LedgerPlugin = {
   name: 'Ledger',
-  description: 'Fund balances, entries and period summaries, loaded live for those allowed to see them',
+  description: 'Fund balances, entries and period summaries, for those allowed to see them',
   author: 'jwilleke',
   version: '0.2.0',
 
-  execute(_context: unknown, params: PluginParams): string {
-    const attrs = VIEW_PARAMS
-      .filter(key => params[key] !== undefined && params[key] !== '')
-      .map(key => `data-${key}="${escapeHtml(String(params[key]))}"`)
-      .join(' ');
-    return `<div class="ledger-view" ${attrs}><p class="text-muted"><em>Loading the ledger…</em></p></div>
-<script src="/addons/accounting/js/ledger-view.js" defer></script>`;
+  // Drawn on the server like every plugin. While the page is cached, ngdpbase
+  // records that it read LedgerManager, and re-renders it after the ledger's
+  // next write bumps that topic (caching-developer-guide.md).
+  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown }, params: PluginParams): Promise<string> {
+    const ledger = context.engine.getManager<LedgerManager>('LedgerManager');
+    if (!ledger) return note('The ledger is not available on this site.');
+    return renderLedgerView(ledger, ledger.viewerActor(context.userContext), params);
   }
 };
 

@@ -74,16 +74,11 @@ describe('LedgerPlugin', () => {
     expect(await render(null, { view: 'balances' })).toContain('You may not see the ledger.');
   });
 
-  test('the page holds only a placeholder with the view\'s parameters and the loader script', () => {
-    const html = LedgerPlugin.execute(null, { view: 'summary', month: 'previous', export: 'true', junk: 'x"><script>' });
-    expect(html).toContain('<div class="ledger-view" data-view="summary" data-month="previous" data-export="true">');
-    expect(html).toContain('<script src="/addons/accounting/js/ledger-view.js" defer></script>');
-    expect(html).not.toContain('junk');
-    expect(html).not.toContain('$');
-  });
-
-  test('a parameter value is escaped into its attribute', () => {
-    expect(LedgerPlugin.execute(null, { view: 'entries', fund: '"><b>' })).toContain('data-fund="&quot;&gt;&lt;b&gt;"');
+  test('the plugin draws the view on the server, as the viewer', async () => {
+    await ledger.createFund(treasurer, { name: 'General' });
+    const html = await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: { username: 'board' } }, { view: 'balances' });
+    expect(html).toContain('General');
+    expect(await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: null }, { view: 'balances' })).toContain('You may not see the ledger.');
   });
 
   test('an unknown view says which views exist', async () => {

@@ -11,7 +11,6 @@ import { Router, type Request, type Response } from 'express';
 import { ApiContext, ApiError } from '../../../dist/src/context/ApiContext.js';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
-import { renderLedgerView, VIEW_PARAMS } from '../plugins/LedgerPlugin.js';
 
 interface Engine { getManager<T = unknown>(name: string): T | null | undefined }
 
@@ -56,17 +55,6 @@ export default function apiRoutes(engine: Engine): Router {
     return ledger.voidTransaction(ctx, String(req.params.id), b.reason as string, b.replacement as never);
   }));
   router.post('/transfers', handle(201, (ctx, ledger, req) => ledger.transferBetweenFunds(ctx, body(req) as never)));
-
-  // [{Ledger}] tables, loaded by public/js/ledger-view.js when a page opens.
-  // Never cached: this is the live part the page's cached HTML leaves out.
-  router.get('/view', (req: Request, res: Response) => {
-    res.setHeader('Cache-Control', 'no-store');
-    void handle(200, async (ctx, ledger) => {
-      const params: Record<string, string> = {};
-      for (const key of VIEW_PARAMS) { const v = query(req, key); if (v !== undefined) params[key] = v; }
-      return { html: await renderLedgerView(ledger, ctx, params) };
-    })(req, res);
-  });
 
   // Reports: ?month=current|previous|YYYY-MM, or ?from=YYYY-MM-DD&to=YYYY-MM-DD
   const period = (ledger: LedgerManager, req: Request) => ledger.period({ month: query(req, 'month'), from: query(req, 'from'), to: query(req, 'to') });

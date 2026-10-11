@@ -232,4 +232,42 @@ describe('LedgerManager', () => {
       await expect(fund('General')).rejects.toThrow(/already exists/);
     });
   });
+
+  describe('every committed write says the ledger changed (the owner bumps)', () => {
+    let changes: number;
+    let tracked: LedgerManager;
+
+    beforeEach(() => {
+      changes = 0;
+      tracked = new LedgerManager({
+        db, currency: 'USD', recordAudit: (r) => { audit.push(r); return Promise.resolve(); },
+        dataChanged: () => { changes++; }
+      });
+    });
+
+    test('once per write: fund create, rename and close; entry; void; transfer', async () => {
+      const a = await tracked.createFund(actor(), { name: 'General' });
+      const b = await tracked.createFund(actor(), { name: 'Roof' });
+      await tracked.updateFund(actor(), b.id, { name: 'Roof Reserve' });
+      const t = await tracked.postTransaction(actor(), { direction: 'in', amount: 500, date: '2026-10-10', fundId: a.id, category: '4100' });
+      await tracked.voidTransaction(actor(), t.id, 'typo');
+      await tracked.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 100, date: '2026-10-10' });
+      await tracked.closeFund(actor(), b.id, 'done');
+      expect(changes).toBe(7);
+    });
+
+    test('a refused or invalid write says nothing', async () => {
+      const f = await tracked.createFund(actor(), { name: 'General' });
+      changes = 0;
+      await expect(tracked.postTransaction(actor([]), { direction: 'in', amount: 5, date: '2026-10-10', fundId: f.id, category: '4100' })).rejects.toThrow();
+      await expect(tracked.postTransaction(actor(), { direction: 'in', amount: -5, date: '2026-10-10', fundId: f.id, category: '4100' })).rejects.toThrow();
+      expect(changes).toBe(0);
+    });
+
+    test('a failure to say so does not undo the write', async () => {
+      const failing = new LedgerManager({ db, currency: 'USD', recordAudit: () => Promise.resolve(), dataChanged: () => { throw new Error('cache down'); } });
+      const f = await failing.createFund(actor(), { name: 'General' });
+      expect((await failing.listFunds(actor())).map(x => x.id)).toEqual([f.id]);
+    });
+  });
 });
