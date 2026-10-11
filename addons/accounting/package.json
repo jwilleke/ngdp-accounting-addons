@@ -16,7 +16,8 @@
   },
   "ngdpbase": {
     "slug": "accounting",
-    "type": "additive"
+    "type": "additive",
+    "minVersion": "5.2.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
