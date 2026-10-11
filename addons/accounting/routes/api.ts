@@ -74,10 +74,8 @@ export default function apiRoutes(engine: Engine): Router {
       res.setHeader('X-Content-SHA256', file.sha256);
       res.send(file.body);
     } catch (err) {
-      // A followed link, not a script: a step-up refusal takes the browser to sign in again.
-      // sendApiError has no page mode; the same only-this-site rule applies.
-      if (err instanceof ApiError && err.reauth?.startsWith('/auth/reauth?') && req.accepts(['html', 'json']) === 'html') { res.redirect(err.reauth); return; }
-      if (err instanceof ApiError) { sendApiError(res, err); return; }
+      // A link the treasurer follows: page mode redirects to sign in again (or to /login).
+      if (err instanceof ApiError) { sendApiError(res, err, req.accepts(['html', 'json']) === 'html' ? 'page' : 'json'); return; }
       if (err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
       res.status(500).json({ ok: false, error: 'internal error' });
     }

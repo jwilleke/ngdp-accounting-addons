@@ -2,7 +2,11 @@
 
 Add-ons for [ngdpbase](https://github.com/jwilleke/ngdpbase) that give small organizations dues, payments, donations, fund tracking, event fees and treasurer reports, all in the same wiki where they keep the rest of their records.
 
-__Status:__ planning, no code yet. This repository holds requirements and planning issues only.
+__Status:__ the base `accounting` add-on (the MVP) is built and in testing: funds, a ledger with
+voids and transfers, the treasurer's screens, a monthly summary and CSV export. The module add-ons
+(dues, donations, events) are not built yet.
+
+__Requires:__ ngdpbase v5.2.3 or later.
 
 ## Who it is for
 
