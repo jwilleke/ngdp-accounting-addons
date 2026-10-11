@@ -185,12 +185,6 @@ export interface LedgerOptions {
   viewerMay?: (viewer: unknown, permission: string) => Promise<boolean>;
   /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
   categories?: () => Record<string, string>;
-  /**
-   * Told after every committed write, so readers of the ledger's data can
-   * refresh: index.ts bumps the `LedgerManager` data version in ngdpbase's
-   * CacheManager (ngdpbase #1751), and pages showing the ledger re-render.
-   */
-  dataChanged?: () => Promise<void> | void;
 }
 
 /** A choice in a form dropdown (ngdpbase BaseManager.toFormOptions). */
@@ -294,7 +288,6 @@ export default class LedgerManager {
   private readonly newId: () => string;
   private readonly viewerMay: (viewer: unknown, permission: string) => Promise<boolean>;
   private readonly categories: () => Record<string, string>;
-  private readonly dataChanged: () => Promise<void> | void;
 
   constructor(options: LedgerOptions) {
     if (!CURRENCY.test(options.currency)) throw new Error(`accounting: currency '${options.currency}' is not an ISO 4217 code`);
@@ -305,21 +298,11 @@ export default class LedgerManager {
     this.newId = options.newId ?? randomUUID;
     this.viewerMay = options.viewerMay ?? (async () => false);
     this.categories = options.categories ?? (() => ({}));
-    this.dataChanged = options.dataChanged ?? (() => undefined);
   }
 
-  /**
-   * Every write's one way in: run it in a transaction, then say the ledger
-   * changed. Saying so cannot undo a committed write: a failure there only
-   * means a cached page may show the old figures until its TTL.
-   */
+  /** Every write's one way in: one synchronous transaction. */
   private async commit(work: () => void): Promise<void> {
     this.db.transaction(work)();
-    try {
-      await this.dataChanged();
-    } catch {
-      // The write stands; see above.
-    }
   }
 
   // ── Reports ────────────────────────────────────────────────────────────
