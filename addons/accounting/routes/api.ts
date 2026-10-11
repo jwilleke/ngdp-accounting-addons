@@ -8,7 +8,7 @@
  * The host is imported through `dist/`, never `src/` (#1192).
  */
 import { Router, type Request, type Response } from 'express';
-import { ApiContext, ApiError } from '../../../dist/src/context/ApiContext.js';
+import { ApiContext, ApiError, sendApiError } from '../../../dist/src/context/ApiContext.js';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
 
@@ -28,7 +28,7 @@ export default function apiRoutes(engine: Engine): Router {
       res.status(status).json({ ok: true, result });
     } catch (err) {
       // A step-up refusal carries the way to re-authenticate (ngdpbase #1745).
-      if (err instanceof ApiError) { res.status(err.status).json({ ok: false, error: err.message, ...(err.reauth ? { reauth: err.reauth } : {}) }); return; }
+      if (err instanceof ApiError) { sendApiError(res, err); return; }
       if (err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
       res.status(500).json({ ok: false, error: 'internal error' });
     }
@@ -74,8 +74,10 @@ export default function apiRoutes(engine: Engine): Router {
       res.setHeader('X-Content-SHA256', file.sha256);
       res.send(file.body);
     } catch (err) {
-      if (err instanceof ApiError && err.reauth && req.accepts(['html', 'json']) === 'html') { res.redirect(err.reauth); return; }
-      if (err instanceof ApiError) { res.status(err.status).json({ ok: false, error: err.message, ...(err.reauth ? { reauth: err.reauth } : {}) }); return; }
+      // A followed link, not a script: a step-up refusal takes the browser to sign in again.
+      // sendApiError has no page mode; the same only-this-site rule applies.
+      if (err instanceof ApiError && err.reauth?.startsWith('/auth/reauth?') && req.accepts(['html', 'json']) === 'html') { res.redirect(err.reauth); return; }
+      if (err instanceof ApiError) { sendApiError(res, err); return; }
       if (err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
       res.status(500).json({ ok: false, error: 'internal error' });
     }
