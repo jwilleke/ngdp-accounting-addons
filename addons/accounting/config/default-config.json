@@ -75,7 +75,8 @@
         "ledger-record",
         "ledger-adjust",
         "ledger-export",
-        "fund-manage"
+        "fund-manage",
+        "form-submit"
       ]
     }
   ]

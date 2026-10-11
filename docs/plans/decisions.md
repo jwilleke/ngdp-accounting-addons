@@ -807,6 +807,11 @@ than for accounting alone. The treasurer's input screens are forms on locked pag
   the viewer's context, the same safe convention as the Marquee plugin's `fetch=`.
 - Who may submit is decided by the page the form is on: `audience` (who sees it),
   `access: { form-submit: [...] }` (who may submit) and `author-lock: true` (who may change those).
+  __Update 2026-10-11:__ ngdpbase dropped page-decided submit before release (5abcb14e, one code
+  path). Submitting is the site-wide `form-submit` permission, asked through `ApiContext` like every
+  add-on route. The treasurer pages keep `audience` and `author-lock`. The `access: form-submit` front
+  matter is removed, and the add-on's treasurer policy grants `form-submit`. The ledger still asks its
+  own permission on every write, so a page rule was never the guard on money.
 - The handler posts through `LedgerManager`, which still asks its own permission and writes the
   audit record. The page decides who may use the form; the ledger decides what they may change.
 - The entry form keeps no submission file (`"store": false`): the ledger entry is the record.
