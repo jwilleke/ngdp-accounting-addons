@@ -366,6 +366,15 @@ __Consequences:__
   `max-age-minutes`) even in an AAL2 session. Who ships the `treasurer` role definition is
   requirements.md open question 5.
 
+__Update 2026-10-11 (operator, decided in ngdpbase):__ AAL2 is enforced only once the account can
+reach it. An account with no passkey enrolled keeps the `treasurer` role at AAL1, shown with the red
+banner until it enrolls (ngdpbase #1690; recorded in ngdpbase `docs/planning/authentication.md`,
+AuthManager layout). ngdpbase has no "require, never cap" option, by decision: many installs are a
+family or one person with no IT support, and a missing passkey must lock nobody out. So a new
+treasurer without a passkey acts at AAL1 until they enroll, and the banner is the pressure.
+`ledger-adjust` and `ledger-export` still ask for a fresh sign-in (D-022) at whatever level the
+account has. The add-on builds no workaround for this.
+
 ## D-010: Ledger data lives in ngdpbase's database
 
 - __Status:__ Accepted; the "one file, never a second SQLite file" part is superseded for the MVP by
