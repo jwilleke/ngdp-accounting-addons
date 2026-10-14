@@ -17,6 +17,7 @@ import { renderLedgerView } from '../plugins/LedgerPlugin.js';
 const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'ledger-export', 'fund-manage'];
 const actor = (granted: string[] = ALL): LedgerActor => ({
   ipAddress: '203.0.113.7',
+  subject: { username: 'tess', roles: ['treasurer'], isAuthenticated: true, ipAddress: '203.0.113.7' } as never,
   actingUsername: () => 'tess',
   requirePermission: (p: string) => (granted.includes(p) ? Promise.resolve() : Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 })))
 });

@@ -21,8 +21,10 @@ class Refused extends Error {
   constructor(public readonly permission: string) { super(`refused: ${permission}`); }
 }
 
-const actor = (granted: string[] = ALL, username = 'treasurer-tess'): LedgerActor => ({
+const actor = (granted: string[] = ALL, username = 'treasurer-tess', viaProxy?: Record<string, unknown>): LedgerActor => ({
   ipAddress: '203.0.113.7',
+  // A request's subject, as ngdpbase's session middleware writes it; the audit "who" comes from it.
+  subject: { username, roles: ['treasurer'], isAuthenticated: true, ipAddress: '203.0.113.7', ...(viaProxy ? { viaProxy } : {}) } as never,
   actingUsername: () => username,
   requirePermission: (permission: string) => (granted.includes(permission) ? Promise.resolve() : Promise.reject(new Refused(permission)))
 });
@@ -268,6 +270,31 @@ describe('LedgerManager', () => {
       const failing = new LedgerManager({ db, currency: 'USD', recordAudit: () => Promise.resolve(), dataChanged: () => { throw new Error('cache down'); } });
       const f = await failing.createFund(actor(), { name: 'General' });
       expect((await failing.listFunds(actor())).map(x => x.id)).toEqual([f.id]);
+    });
+  });
+
+  describe('the audit record says who (ngdpbase actorOf, #1762)', () => {
+    test('a person acting for another: user is the person represented, actor the one who acted', async () => {
+      const proxy = { kind: 'proxy', grantId: 'grant-7', actor: 'assistant-al', scopes: ['ledger-record', 'fund-manage'] };
+      await ledger.createFund(actor(ALL, 'treasurer-tess', proxy), { name: 'General' });
+      expect(audit.at(-1)).toMatchObject({
+        user: 'treasurer-tess',
+        actor: 'assistant-al',
+        ipAddress: '203.0.113.7',
+        metadata: { delegated: 'proxy', proxyGrantId: 'grant-7', name: 'General' }
+      });
+    });
+
+    test('acting as oneself: no actor field at all', async () => {
+      await ledger.createFund(actor(), { name: 'General' });
+      expect(audit.at(-1)).toMatchObject({ user: 'treasurer-tess', metadata: { origin: 'request' } });
+      expect(audit.at(-1)).not.toHaveProperty('actor');
+    });
+
+    test('no subject: the record says so rather than inventing a name', async () => {
+      const nobody: LedgerActor = { ...actor(), subject: null };
+      await ledger.createFund(nobody, { name: 'General' });
+      expect(audit.at(-1)).toMatchObject({ user: 'unknown', metadata: { actorMissing: true } });
     });
   });
 });

@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { addonAuditEventName } from '../../../dist/src/utils/auditEventNames.js';
 import { ApiError } from '../../../dist/src/context/ApiContext.js';
+import { actorOf, type ActorContext } from '../../../dist/src/context/ActorContext.js';
 import { formatMoney } from '../../../dist/src/utils/pluginFormatters.js';
 import { toCsv } from '../../../dist/src/utils/csv.js';
 import { createHash } from 'node:crypto';
@@ -29,12 +30,21 @@ export interface LedgerActor {
   requirePermission(permission: string): Promise<void>;
   actingUsername(): string;
   readonly ipAddress: string | undefined;
+  /**
+   * The request's subject (ngdpbase ApiContext.subject). An audit record's
+   * "who" is built from it by ngdpbase's actorOf: under a proxy grant that is
+   * the person represented in `user` and the person who acted in `actor`
+   * (#1762). Null when there is no subject; the record then says so.
+   */
+  readonly subject: ActorContext | null;
 }
 
 /** What LedgerManager hands to the audit door; index.ts wraps ngdpbase's recordAuditEvent. */
 export interface LedgerAuditRecord {
   eventType: ReturnType<typeof addonAuditEventName>;
   user: string;
+  /** Who actually acted, when it is not `user` (a proxy grant, #1762). */
+  actor?: string;
   ipAddress: string | undefined;
   action: string;
   severity: 'low' | 'medium' | 'high';
@@ -421,7 +431,7 @@ export default class LedgerManager {
   async exportCsv(actor: LedgerActor, kind: 'transactions' | 'funds', period: Period): Promise<LedgerExport> {
     await actor.requirePermission('ledger-export');
     if (kind !== 'transactions' && kind !== 'funds') throw new LedgerError(400, "kind must be 'transactions' or 'funds'");
-    const user = actor.actingUsername();
+    actor.actingUsername(); // a person must be signed in to take the file
 
     let headers: string[];
     let rows: unknown[][];
@@ -445,12 +455,29 @@ export default class LedgerManager {
 
     const body = toCsv(headers, rows);
     const sha256 = createHash('sha256').update(body).digest('hex');
-    await this.recordAudit({
-      eventType: addonAuditEventName('ledger-export'), user, ipAddress: actor.ipAddress, action: 'ledger-export',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('ledger-export'), action: 'ledger-export',
       severity: 'high', resource: `${kind}:${period.from}..${period.to}`, resourceType: 'accounting-export',
       metadata: { kind, from: period.from, to: period.to, rows: rows.length, sha256 }
     });
     return { kind, period, filename: `ledger-${kind}-${period.from}-to-${period.to}.csv`, body, rows: rows.length, sha256 };
+  }
+
+  // ── Audit ──────────────────────────────────────────────────────────────
+
+  /**
+   * Every audit record's one way out. Its "who" comes from the caller's
+   * context through ngdpbase's actorOf (audit-developer-guide, rule 6):
+   * `user`, `actor` under a proxy grant, the address, and the delegation
+   * metadata. Never copied from a username. With no subject the record says
+   * so: user 'unknown', actorMissing.
+   */
+  private async audit(actor: LedgerActor, record: Omit<LedgerAuditRecord, 'user' | 'actor' | 'ipAddress'>): Promise<void> {
+    const who = actor.subject
+      ? actorOf(actor.subject)
+      : { user: 'unknown', ipAddress: actor.ipAddress, metadata: { actorMissing: true } };
+    const { metadata: whoMetadata, ...fields } = who as { user: string; actor?: string; ipAddress?: string; metadata: Record<string, unknown> };
+    await this.recordAudit({ ...record, ...fields, ipAddress: fields.ipAddress, metadata: { ...whoMetadata, ...record.metadata } });
   }
 
   // ── Viewers ────────────────────────────────────────────────────────────
@@ -470,6 +497,7 @@ export default class LedgerManager {
     const username = (viewer as { username?: unknown } | null | undefined)?.username;
     return {
       ipAddress: undefined,
+      subject: (viewer ?? null) as ActorContext | null,
       actingUsername: () => (typeof username === 'string' && username !== '' ? username : 'anonymous'),
       requirePermission: async (permission: string) => {
         if (!(await this.viewerMay(viewer, permission))) throw new ApiError(403, `not permitted: ${permission}`);
@@ -537,8 +565,8 @@ export default class LedgerManager {
       openingBalance, openingDate, createdBy: user, createdAt: this.stamp()
     };
 
-    await this.recordAudit({
-      eventType: addonAuditEventName('fund-manage'), user, ipAddress: actor.ipAddress, action: 'fund-create',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('fund-manage'), action: 'fund-create',
       severity: 'medium', resource: fund.id, resourceType: 'accounting-fund',
       metadata: { name, openingBalance, openingDate, restricted: fund.restricted }
     });
@@ -563,8 +591,8 @@ export default class LedgerManager {
     }
     const after: Fund = { ...before, name, description, restricted };
 
-    await this.recordAudit({
-      eventType: addonAuditEventName('fund-manage'), user, ipAddress: actor.ipAddress, action: 'fund-update',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('fund-manage'), action: 'fund-update',
       severity: 'medium', resource: fundId, resourceType: 'accounting-fund',
       metadata: { fields: Object.keys(changes) }
     });
@@ -584,8 +612,8 @@ export default class LedgerManager {
     if (!before.active) throw new LedgerError(409, `fund '${before.name}' is already closed`);
     const why = text(reason, 'reason');
 
-    await this.recordAudit({
-      eventType: addonAuditEventName('fund-manage'), user, ipAddress: actor.ipAddress, action: 'fund-close',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('fund-manage'), action: 'fund-close',
       severity: 'medium', resource: fundId, resourceType: 'accounting-fund', reason: why, metadata: { name: before.name }
     });
     await this.commit(() => {
@@ -607,8 +635,8 @@ export default class LedgerManager {
     const user = actor.actingUsername();
     const entry = this.newEntry(user, input, { sourceType: 'manual' });
 
-    await this.recordAudit({
-      eventType: addonAuditEventName('ledger-record'), user, ipAddress: actor.ipAddress, action: 'ledger-post',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('ledger-record'), action: 'ledger-post',
       severity: 'medium', resource: entry.id, resourceType: 'accounting-transaction',
       metadata: { direction: entry.direction, amount: entry.amount, currency: entry.currency, fundId: entry.fundId, date: entry.date, category: entry.category }
     });
@@ -638,8 +666,8 @@ export default class LedgerManager {
     }
     const next = replacement ? this.newEntry(user, replacement, { sourceType: 'adjustment', voidsId: original.id }) : null;
 
-    await this.recordAudit({
-      eventType: addonAuditEventName('ledger-adjust'), user, ipAddress: actor.ipAddress, action: 'ledger-void',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('ledger-adjust'), action: 'ledger-void',
       severity: 'high', resource: original.id, resourceType: 'accounting-transaction', reason: why,
       metadata: { voided: targets.map(t => t.id), replacement: next ? { id: next.id, amount: next.amount, direction: next.direction, fundId: next.fundId } : null }
     });
@@ -668,8 +696,8 @@ export default class LedgerManager {
     const out = this.newEntry(user, { ...common, direction: 'out', fundId: input.fromFundId }, { sourceType: 'transfer', transferId });
     const into = this.newEntry(user, { ...common, direction: 'in', fundId: input.toFundId }, { sourceType: 'transfer', transferId });
 
-    await this.recordAudit({
-      eventType: addonAuditEventName('ledger-adjust'), user, ipAddress: actor.ipAddress, action: 'ledger-transfer',
+    await this.audit(actor, {
+      eventType: addonAuditEventName('ledger-adjust'), action: 'ledger-transfer',
       severity: 'high', resource: transferId, resourceType: 'accounting-transfer',
       metadata: { fromFundId: out.fundId, toFundId: into.fundId, amount: out.amount, currency: out.currency, date: out.date }
     });
