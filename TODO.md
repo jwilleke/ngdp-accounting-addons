@@ -11,7 +11,7 @@ last_updated: "2026-10-09"
 
 - Last worked on: MVP `accounting` add-on complete in code: treasurer screens as ngdpbase forms (entry, transfer, void, funds), `[{Ledger}]` plugin, Accounting home page, monthly summary + CSV export (`ledger-export`), ledger bumps `LedgerManager` after each write (ngdpbase one page cache). Minimum ngdpbase v5.2.3 (`minVersion`, enforced from v5.2.4).
 - Branch / state: main, clean, pushed. ngdpbase clone `../ngdpbase-accounting` at tag v5.2.4 (detached).
-- Running / in-flight: dev instance http://localhost:3003 (pm2 `ngdp-instance`, folder `../ngdpbase-accounting`), forms + accounting enabled, sample categories 4100/5200. Treasurer user `jim` (roles reader, treasurer, vault-owner; passkey enrolled). Never pm2 "all".
+- Running / in-flight: dev instance <http://localhost:3003> (pm2 `ngdp-instance`, folder `../ngdpbase-accounting`), forms + accounting enabled, sample categories 4100/5200. Treasurer user `jim` (roles reader, treasurer, vault-owner; passkey enrolled). Never pm2 "all".
 - Parked / half-done: operator is thinking about a shared "treasurer vault" (brainstormed; not recorded).
 - Next steps:
   - Smoke tests on bare metal, Docker and Kubernetes (MVP acceptance, #15).
