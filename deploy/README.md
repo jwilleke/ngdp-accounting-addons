@@ -1,40 +1,26 @@
-# Deploying and smoke-testing the accounting add-on
+# Installing and smoke-testing the accounting add-on
 
-The add-on runs on ngdpbase v5.2.3 or later, on bare metal, in Docker and in Kubernetes
-([D-006](../docs/plans/decisions.md)). `scripts/smoke.sh <base-url> <admin-password>` checks a
-running site the same way everywhere: the help page is seeded, an anonymous caller is refused,
-the admin signs in, a fund and an entry are written, the balance follows, and the CSV export works.
+The add-on is an ordinary ngdpbase add-on, independent of how a site is deployed
+([D-006](../docs/plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)):
+the same code and configuration keys on a host, in Docker or in Kubernetes, and nothing
+deployment-specific in this repository. How to install an add-on on each is ngdpbase's: its add-on
+guide (`docs/guides/addons-developer-guide.md`, "Where it is loaded" and "Shipping Your Addon as a
+Container Image") and `docs/platform/deployment/`.
 
-The smoke test needs `deploy/smoke/app-custom-config.json`, which is for tests only. It lets the
+Requirements: ngdpbase v5.2.3 or later (declared as `minVersion`), the site's database on
+(`ngdpbase.database.provider: sqlite`), and the forms add-on for the treasurer's screens.
+
+One rule worth knowing: the add-on imports ngdpbase as `../../dist/...`. Wherever it is installed,
+that path must lead to the `dist/` of the ngdpbase that runs it. Pointing it at another copy loads a
+second set of ngdpbase's modules, and every audit event is then refused as "not declared"
+(ngdpbase#1675).
+
+## Smoke test
+
+`scripts/smoke.sh <base-url> <admin-password>` checks one running site, however it is deployed:
+the help page is seeded, an anonymous caller is refused, the admin signs in, a fund and an entry are
+written, the balance follows, and the CSV export works.
+
+It needs `deploy/smoke/app-custom-config.json` on that site, which is for tests only: it lets the
 admin keep the ledger, and turns the secure session cookie off because the test talks plain HTTP to
 localhost.
-
-## Bare metal (a drop-in add-on)
-
-Add this repository's `addons/` folder to `ngdpbase.managers.addons-manager.addons-path`, enable
-`ngdpbase.addons.accounting.enabled` (and `ngdpbase.addons.forms.enabled` for the treasurer's
-screens), build the add-on (`cd addons/accounting && npm ci && npm run build`) and restart.
-
-The add-on imports ngdpbase as `../../dist/...`: this repository's `dist` link must point at the
-`dist/` of the ngdpbase that runs it. A link to a different checkout loads a second copy of
-ngdpbase's modules, and every audit event is then refused as "not declared".
-
-## Docker
-
-```sh
-docker build --platform linux/amd64 -f deploy/Dockerfile -t ngdp-accounting:smoke .
-```
-
-`deploy/Dockerfile` follows the wrapper-image pattern of ngdpbase's add-on guide (section 12). The
-runtime image has no npm, so the add-on is compiled in a build stage against the same ngdpbase
-`dist/` and copied to `/app/addons/accounting`. A fresh container needs `PUID`, `PGID`,
-`HEADLESS_INSTALL=true`, `NGDPBASE_ADMIN_PASSWORD` (with `ngdpbase.user.security.defaultpassword`
-set to `$NGDPBASE_ADMIN_PASSWORD`), `NGDPBASE_DATABASE_KEY` and `NGDPBASE_SESSION_SECRET`.
-
-Until ngdpbase supports an optional load order (ngdpbase#1808), `accounting` loads before `forms`
-in the image, and the treasurer's screens stay off there; the ledger API works.
-
-## Kubernetes
-
-`deploy/k8s/smoke.yaml`: one pod from the same image, config seeded onto the data volume. The file
-lists the secret and configmap to create first.

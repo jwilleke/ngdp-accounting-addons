@@ -223,6 +223,16 @@ __Consequences:__
 - ngdpbase's own documents disagree on the npm-package model: `addon-architecture.md` says it is
   implemented (#673), `kubernetes.md` still says it is not shipped. Confirm before relying on it.
 
+
+__Update 2026-10-14 (operator):__ the add-ons are independent of the deployment method, and this
+repository holds nothing deployment-specific: no Dockerfile, no Kubernetes manifests. Packaging and
+running a site is ngdpbase's (its add-on guide and `docs/platform/deployment/`) and each operator's.
+An add-on is tested as ngdpbase tests itself: `scripts/smoke.sh` against one running ngdpbase,
+however it is deployed. It passed on Docker (the wrapper image on v5.8.0) and on bare metal (v5.8.0),
+and the wrapper image and Kubernetes manifest used for that are removed (4521720). What it found
+went to ngdpbase: an optional load order (ngdpbase#1808), no npm in the runtime image for the
+guide's Dockerfile (#1808), and the second-copy-of-core trap (#1675).
+
 ## D-007: Configuration lives in config files
 
 - __Status:__ Accepted
