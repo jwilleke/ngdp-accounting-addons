@@ -1,0 +1,22 @@
+{
+  "_comment": "SMOKE TEST ONLY (scripts/smoke.sh). Never use on a real site: the policy below gives the admin role the treasurer's money permissions, so the smoke test can sign in with the admin password on a fresh instance, and session.secure is off because the test talks plain HTTP to localhost (a real site is behind HTTPS and keeps the secure default).",
+  "ngdpbase.application.base-url": "${NGDPBASE_BASE_URL}",
+  "ngdpbase.user.security.defaultpassword": "$NGDPBASE_ADMIN_PASSWORD",
+  "ngdpbase.session.secure": false,
+  "ngdpbase.database.provider": "sqlite",
+  "ngdpbase.addons.forms.enabled": true,
+  "ngdpbase.addons.accounting.enabled": true,
+  "ngdpbase.addons.accounting.categories": { "4100": "Dues", "5200": "Supplies" },
+  "ngdpbase.access.policies": [
+    {
+      "id": "smoke-admin-keeps-the-ledger",
+      "name": "SMOKE TEST ONLY: admin keeps the ledger",
+      "description": "Lets scripts/smoke.sh exercise the ledger as the admin on a fresh instance. Remove on any real site.",
+      "priority": 95,
+      "effect": "allow",
+      "subjects": [{ "type": "role", "value": "admin" }],
+      "resources": [{ "type": "page", "pattern": "*" }],
+      "actions": ["ledger-summary-read", "ledger-read", "ledger-record", "ledger-adjust", "ledger-export", "fund-manage", "form-submit"]
+    }
+  ]
+}

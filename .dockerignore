@@ -1,0 +1,10 @@
+# Only the add-on source goes into the image build.
+**/node_modules
+**/*.js
+**/*.js.map
+**/.tsbuildinfo
+dist
+private
+.git
+docs
+utility
