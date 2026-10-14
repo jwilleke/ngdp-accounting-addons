@@ -58,6 +58,9 @@ const AccountingAddon = {
   description: 'Accounting for ngdpbase: funds, a single-entry ledger and its audit trail',
   author: 'jwilleke',
   dependencies: [] as string[],
+  // Forms carries the treasurer's screens: load it first when the site has it, but run
+  // without it (the ledger API still works). ngdpbase v5.9.0 (#1808); older cores ignore it.
+  optionalDependencies: ['forms'],
 
   async register(engine: Engine): Promise<void> {
     const databases = engine.getManager<DatabaseManagerLike>('DatabaseManager');
