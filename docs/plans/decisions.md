@@ -223,7 +223,6 @@ __Consequences:__
 - ngdpbase's own documents disagree on the npm-package model: `addon-architecture.md` says it is
   implemented (#673), `kubernetes.md` still says it is not shipped. Confirm before relying on it.
 
-
 __Update 2026-10-14 (operator):__ the add-ons are independent of the deployment method, and this
 repository holds nothing deployment-specific: no Dockerfile, no Kubernetes manifests. Packaging and
 running a site is ngdpbase's (its add-on guide and `docs/platform/deployment/`) and each operator's.
