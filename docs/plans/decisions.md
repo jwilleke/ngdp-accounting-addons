@@ -883,7 +883,9 @@ __How the decision point is reached (operator, 2026-10-15):__ `LedgerManager` ca
 `PolicyDecisionPoint` directly (`engine.getManager('PolicyDecisionPoint').decide(subject, { action,
 resource: { type, id }, attributes })`) and gets the answer; routes stay out of it. The refusal it
 then sends (401 or 403, and for a step-up the way to sign in again, with its audit record) must come
-from core with the answer, not be rebuilt in the ledger: one code path.
+from core with the answer, not be rebuilt in the ledger: one code path. Operator, same day: the manager uses the
+PDP, not `requirePermission`; the refusal comes from a shared core helper (requested from ngdpbase),
+and the ledger switches from `requirePermission` to `decide()` once that helper ships.
 
 __Not decided yet (ngdpbase):__ the order of the core work.
 
