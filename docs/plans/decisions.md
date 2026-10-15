@@ -879,8 +879,13 @@ __Decision (operator, in ngdpbase):__
 - __The period lock stays ledger validation__ (#19): nobody writes into a closed period. Policy only
   says who may close or reopen one.
 
-__Not decided yet (ngdpbase):__ how an add-on reaches the decision point, and the order of the core
-work.
+__How the decision point is reached (operator, 2026-10-15):__ `LedgerManager` calls ngdpbase's
+`PolicyDecisionPoint` directly (`engine.getManager('PolicyDecisionPoint').decide(subject, { action,
+resource: { type, id }, attributes })`) and gets the answer; routes stay out of it. The refusal it
+then sends (401 or 403, and for a step-up the way to sign in again, with its audit record) must come
+from core with the answer, not be rebuilt in the ledger: one code path.
+
+__Not decided yet (ngdpbase):__ the order of the core work.
 
 __Consequences:__
 
