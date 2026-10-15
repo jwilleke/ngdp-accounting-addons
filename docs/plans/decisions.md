@@ -890,4 +890,3 @@ __Consequences:__
   its list and aggregate queries (balances, summary and CSV share one query).
 - Segregation of duties for reimbursements (#8) and a second approver above an amount become policy,
   not code.
-
