@@ -38,6 +38,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-022](#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up) | 2026-10-08 | Sign-in strength stays on roles; money permissions use step-up; no per-permission AAL | Accepted |
 | [D-023](#d-023-categories-follow-the-unified-chart-of-accounts-ucoa) | 2026-10-08 | Categories follow the Unified Chart of Accounts (UCOA) model | Accepted |
 | [D-024](#d-024-treasurer-screens-are-forms-of-an-improved-ngdpbase-forms-add-on) | 2026-10-10 | Treasurer screens are forms of an improved ngdpbase forms add-on, on locked pages | Accepted |
+| [D-025](#d-025-accounting-records-follow-ngdpbases-access-control-model) | 2026-10-15 | Accounting records follow ngdpbase's access-control model: the ledger guards, the PDP decides | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -846,3 +847,47 @@ __Consequences:__
   `FormsDataManager.saveDefinition` on first start.
 - The default category list is still open (D-023); a site sets
   `ngdpbase.addons.accounting.categories` meanwhile.
+
+## D-025: Accounting records follow ngdpbase's access-control model
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-15
+- __Links:__ ngdpbase [#1431](https://github.com/jwilleke/ngdpbase/issues/1431) (decision log
+  [comment](https://github.com/jwilleke/ngdpbase/issues/1431#issuecomment-6193262203)); [D-014](#d-014-every-action-is-a-permission-with-one-audited-door-no-money-moves-without-a-record)
+
+__Context:__ ngdpbase is giving add-on records the same access control as pages (an XACML-style
+model: the enforcement point asks, the decision point decides, the information point supplies the
+facts). The operator asked for accounting's view, then decided (2026-10-15).
+
+__Decision (operator, in ngdpbase):__
+
+- __Custodian, not owner.__ `LedgerManager` stores and guards the ledger: it is the enforcement point
+  for its record types and asks the decision point one question per action. It never decides. Funds
+  and entries belong to the organization, so they have no personal owner; policy alone decides.
+- __Actions are permissions.__ Our target-action names stay (`ledger-record`, `ledger-adjust`,
+  `ledger-export`, `fund-manage`, ...). The add-on declares everything with existing keys in its
+  `config/default-config.json`: its record types and their attributes under
+  `ngdpbase.access.resource-types` (for example `createdBy`, `amount`, `party`; `owner` is a reserved,
+  optional attribute), its permissions, and its policies. No new keys.
+- __Answers are allow or deny, never empty.__ An allow can carry a structured filter (data, never SQL;
+  rows only) that the ledger adds to its queries. A deny carries a reason. A request the decision point
+  cannot decide throws and fails closed. A refused list is a refusal, not zero rows.
+- __Rules that compare the person with the record__ (segregation of duties, amount thresholds) live in
+  policy or configuration, never in add-on code; thresholds are configuration values.
+- __Obligations__ (for example, notify the treasurers) are defined in policy. Everything is audited,
+  allow and deny.
+- __The period lock stays ledger validation__ (#19): nobody writes into a closed period. Policy only
+  says who may close or reopen one.
+
+__Not decided yet (ngdpbase):__ how an add-on reaches the decision point, and the order of the core
+work.
+
+__Consequences:__
+
+- No accounting code changes until ngdpbase ships the record-level API. Then `LedgerManager` asks it
+  per action (today it asks `requirePermission` per action, which stays the same shape), declares
+  `ledger-entry` and `fund` under `ngdpbase.access.resource-types`, and applies the returned filter in
+  its list and aggregate queries (balances, summary and CSV share one query).
+- Segregation of duties for reimbursements (#8) and a second approver above an amount become policy,
+  not code.
+
