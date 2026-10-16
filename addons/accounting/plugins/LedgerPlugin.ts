@@ -27,6 +27,15 @@ const DEFAULT_MAX_ENTRIES = 20;
 
 const note = (f: PluginFormatters, text: string): string => `<p class="text-muted"><em>${f.escapeHtml(text)}</em></p>`;
 
+/**
+ * Every ledger table sorts by clicking a heading (ngdpbase's tableSort.js, which
+ * reorders the body only, so a totals row stays last). A money or marked-up
+ * cell sorts on its plain value: cents, or the bare name.
+ */
+function sortOn<T>(items: T[], columns: Record<number, (item: T) => string | number>): Record<number, (row: string[], rowIndex: number) => string> {
+  return Object.fromEntries(Object.entries(columns).map(([col, pick]) => [col, (_row: string[], i: number) => String(pick(items[i]))]));
+}
+
 function balancesTable(f: PluginFormatters, rows: FundBalance[], currency: string): string {
   const { escapeHtml, formatAsTable, formatMoney } = f;
   const money = (cents: number) => escapeHtml(formatMoney(cents, currency));
@@ -41,6 +50,8 @@ function balancesTable(f: PluginFormatters, rows: FundBalance[], currency: strin
       `<strong>${money(r.balance)}</strong>`
     ]),
     {
+      sortable: true,
+      cellDataSort: sortOn(rows, { 0: r => r.name, 1: r => r.openingBalance, 2: r => r.totalIn, 3: r => r.totalOut, 4: r => r.balance }),
       emptyMessage: 'No funds yet.',
       footer: ['<strong>Total</strong>', money(sum(r => r.openingBalance)), money(sum(r => r.totalIn)), money(sum(r => r.totalOut)), `<strong>${money(sum(r => r.balance))}</strong>`]
     }
@@ -62,7 +73,11 @@ function entriesTable(f: PluginFormatters, entries: Transaction[], fundNames: Ma
       escapeHtml(t.memo),
       t.status === 'voided' ? `voided: ${escapeHtml(t.voidReason ?? '')}` : 'posted'
     ]),
-    { emptyMessage: 'No entries yet.' }
+    {
+      sortable: true,
+      cellDataSort: sortOn(entries, { 3: t => (t.direction === 'in' ? t.amount : ''), 4: t => (t.direction === 'out' ? t.amount : '') }),
+      emptyMessage: 'No entries yet.'
+    }
   );
 }
 
@@ -77,6 +92,8 @@ function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolea
       money(f.start), f.opened ? money(f.opened) : '', money(f.moneyIn), money(f.moneyOut), `<strong>${money(f.end)}</strong>`
     ]),
     {
+      sortable: true,
+      cellDataSort: sortOn(s.funds, { 0: f => f.name, 1: f => f.start, 2: f => f.opened, 3: f => f.moneyIn, 4: f => f.moneyOut, 5: f => f.end }),
       emptyMessage: 'No funds in this period.',
       footer: ['<strong>Total</strong>', money(s.totals.start), s.totals.opened ? money(s.totals.opened) : '', money(s.totals.moneyIn), money(s.totals.moneyOut), `<strong>${money(s.totals.end)}</strong>`]
     }
@@ -86,6 +103,8 @@ function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolea
     ['Category', 'Income', 'Expense'],
     s.categories.map(c => [escapeHtml(c.label ? `${c.category} ${c.label}` : c.category), c.income ? money(c.income) : '', c.expense ? money(c.expense) : '']),
     {
+      sortable: true,
+      cellDataSort: sortOn(s.categories, { 1: c => c.income, 2: c => c.expense }),
       emptyMessage: 'No income or expense in this period.',
       footer: [`<strong>Total</strong> (net ${money(net)})`, money(s.totals.income), money(s.totals.expense)]
     }

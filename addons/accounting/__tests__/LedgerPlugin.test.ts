@@ -61,6 +61,14 @@ describe('LedgerPlugin', () => {
     expect(html).toMatch(/<tfoot><tr><td><strong>Total<\/strong><\/td><td>\$100\.00<\/td><td>\$1,250\.50<\/td><td>\$0\.00<\/td><td><strong>\$1,350\.50<\/strong><\/td><\/tr><\/tfoot>/);
   });
 
+  test('tables sort by heading, money on its cents and names without markup', async () => {
+    await ledger.createFund(treasurer, { name: 'General <main>', openingBalance: 125050 });
+    const html = await render('board', { view: 'balances' });
+    expect(html).toContain('<table class="plugin-table sortable">');
+    expect(html).toContain('<td data-sort="General &lt;main&gt;">');
+    expect(html).toContain('<td data-sort="125050">$1,250.50</td>');
+  });
+
   test('balances with no funds says so', async () => {
     expect(await render('board', { view: 'balances' })).toContain('No funds yet.');
   });
