@@ -18,20 +18,13 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
-import { recordAuditEvent } from '../../dist/src/utils/auditEvents.js';
 import type { Decision } from '../../dist/src/types/Policy.js';
-import hostLogger from '../../dist/src/utils/logger.js';
+import type { AddonHost } from '../../dist/src/utils/addonHost.js';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
 import LedgerManager, { type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
-
-/**
- * ngdpbase's logger. Its declared type comes from winston, which this
- * repository does not install, so name the two calls used here.
- */
-const logger = hostLogger as unknown as { info(message: string): void; warn(message: string): void };
 
 interface PolicyDecisionPointLike { decide(subject: unknown, request: { action: string }): Promise<Decision> }
 interface PluginManagerLike { registerPlugin(name: string, plugin: unknown): Promise<void> }
@@ -63,7 +56,9 @@ const AccountingAddon = {
   // without it (the ledger API still works). ngdpbase v5.9.0 (#1808); older cores ignore it.
   optionalDependencies: ['forms'],
 
-  async register(engine: Engine): Promise<void> {
+  // Core values arrive as `host` (ngdpbase v5.11.0, #1813), never imported from core's files.
+  async register(engine: Engine, _config: Record<string, unknown>, host: AddonHost): Promise<void> {
+    const { logger, recordAuditEvent } = host;
     const databases = engine.getManager<DatabaseManagerLike>('DatabaseManager');
     if (!databases?.isEnabled()) {
       unavailable = "the site's database is off — set ngdpbase.database.provider to 'sqlite' and restart";
@@ -99,10 +94,10 @@ const AccountingAddon = {
     const cache = engine.getManager<CacheManagerLike>('CacheManager');
     const dataChanged = async (): Promise<void> => { await cache?.bump('LedgerManager'); };
 
-    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, decide, categories, dataChanged }));
-    engine.app?.use('/api/accounting', apiRoutes(engine));
+    engine.registerManager('LedgerManager', new LedgerManager({ host, db, recordAudit, currency, decide, categories, dataChanged }));
+    engine.app?.use('/api/accounting', apiRoutes(engine, host));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
-    await registerForms(engine, (m) => logger.info(m));
+    await registerForms(engine, host);
     unavailable = null;
     logger.info(`[accounting] Ledger ready (currency ${currency})`);
   },

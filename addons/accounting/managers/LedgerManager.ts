@@ -18,13 +18,18 @@
  * emitter.
  */
 import { randomUUID } from 'node:crypto';
-import { addonAuditEventName } from '../../../dist/src/utils/auditEventNames.js';
-import { ApiError } from '../../../dist/src/context/ApiContext.js';
-import { actorOf, type ActorContext } from '../../../dist/src/context/ActorContext.js';
+import type { ActorContext } from '../../../dist/src/context/ActorContext.js';
 import type { Decision } from '../../../dist/src/types/Policy.js';
+import type { AddonHost } from '../../../dist/src/utils/addonHost.js';
 import { formatMoney } from '../../../dist/src/utils/pluginFormatters.js';
 import { toCsv } from '../../../dist/src/utils/csv.js';
 import { createHash } from 'node:crypto';
+
+/**
+ * The core values the ledger uses, from the `host` ngdpbase hands register()
+ * (#1813): never imported from core's files.
+ */
+export type LedgerHost = Pick<AddonHost, 'ApiError' | 'actorOf' | 'addonAuditEventName'>;
 
 /** The caller: ngdpbase's ApiContext satisfies this. */
 export interface LedgerActor {
@@ -46,7 +51,7 @@ export interface LedgerActor {
 
 /** What LedgerManager hands to the audit door; index.ts wraps ngdpbase's recordAuditEvent. */
 export interface LedgerAuditRecord {
-  eventType: ReturnType<typeof addonAuditEventName>;
+  eventType: ReturnType<AddonHost['addonAuditEventName']>;
   user: string;
   /** Who actually acted, when it is not `user` (a proxy grant, #1762). */
   actor?: string;
@@ -186,6 +191,8 @@ export interface LedgerExport {
 }
 
 export interface LedgerOptions {
+  /** ngdpbase's host for this add-on: the refusal type, actorOf and the audit event names. */
+  host: LedgerHost;
   db: LedgerDb;
   recordAudit: RecordAudit;
   /** ISO 4217 code for every amount; the site's `ngdpbase.default.currency` once ngdpbase has it, else USD. */
@@ -302,6 +309,7 @@ function isoDate(value: unknown, field: string): string {
 }
 
 export default class LedgerManager {
+  private readonly host: LedgerHost;
   private readonly db: LedgerDb;
   private readonly recordAudit: RecordAudit;
   private readonly currency: string;
@@ -313,6 +321,7 @@ export default class LedgerManager {
 
   constructor(options: LedgerOptions) {
     if (!CURRENCY.test(options.currency)) throw new Error(`accounting: currency '${options.currency}' is not an ISO 4217 code`);
+    this.host = options.host;
     this.db = options.db;
     this.recordAudit = options.recordAudit;
     this.currency = options.currency;
@@ -460,7 +469,7 @@ export default class LedgerManager {
     const body = toCsv(headers, rows);
     const sha256 = createHash('sha256').update(body).digest('hex');
     await this.audit(actor, {
-      eventType: addonAuditEventName('ledger-export'), action: 'ledger-export',
+      eventType: this.host.addonAuditEventName('ledger-export'), action: 'ledger-export',
       severity: 'high', resource: `${kind}:${period.from}..${period.to}`, resourceType: 'accounting-export',
       metadata: { kind, from: period.from, to: period.to, rows: rows.length, sha256 }
     });
@@ -489,7 +498,7 @@ export default class LedgerManager {
    */
   private async audit(actor: LedgerActor, record: Omit<LedgerAuditRecord, 'user' | 'actor' | 'ipAddress'>): Promise<void> {
     const who = actor.subject
-      ? actorOf(actor.subject)
+      ? this.host.actorOf(actor.subject)
       : { user: 'unknown', ipAddress: actor.ipAddress, metadata: { actorMissing: true } };
     const { metadata: whoMetadata, ...fields } = who as { user: string; actor?: string; ipAddress?: string; metadata: Record<string, unknown> };
     await this.recordAudit({ ...record, ...fields, ipAddress: fields.ipAddress, metadata: { ...whoMetadata, ...record.metadata } });
@@ -515,7 +524,7 @@ export default class LedgerManager {
       subject: (viewer ?? null) as ActorContext | null,
       actingUsername: () => (typeof username === 'string' && username !== '' ? username : 'anonymous'),
       // A render has no request to answer, so a refusal is just a refusal: the plugin shows a note.
-      enforceDeny: async (permission: string) => { throw new ApiError(403, `not permitted: ${permission}`); }
+      enforceDeny: async (permission: string) => { throw new this.host.ApiError(403, `not permitted: ${permission}`); }
     };
   }
 
@@ -557,7 +566,7 @@ export default class LedgerManager {
           return [];
       }
     } catch (err) {
-      if (err instanceof ApiError) return [];
+      if (err instanceof this.host.ApiError) return [];
       throw err;
     }
   }
@@ -580,7 +589,7 @@ export default class LedgerManager {
     };
 
     await this.audit(actor, {
-      eventType: addonAuditEventName('fund-manage'), action: 'fund-create',
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'fund-create',
       severity: 'medium', resource: fund.id, resourceType: 'accounting-fund',
       metadata: { name, openingBalance, openingDate, restricted: fund.restricted }
     });
@@ -606,7 +615,7 @@ export default class LedgerManager {
     const after: Fund = { ...before, name, description, restricted };
 
     await this.audit(actor, {
-      eventType: addonAuditEventName('fund-manage'), action: 'fund-update',
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'fund-update',
       severity: 'medium', resource: fundId, resourceType: 'accounting-fund',
       metadata: { fields: Object.keys(changes) }
     });
@@ -627,7 +636,7 @@ export default class LedgerManager {
     const why = text(reason, 'reason');
 
     await this.audit(actor, {
-      eventType: addonAuditEventName('fund-manage'), action: 'fund-close',
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'fund-close',
       severity: 'medium', resource: fundId, resourceType: 'accounting-fund', reason: why, metadata: { name: before.name }
     });
     await this.commit(() => {
@@ -650,7 +659,7 @@ export default class LedgerManager {
     const entry = this.newEntry(user, input, { sourceType: 'manual' });
 
     await this.audit(actor, {
-      eventType: addonAuditEventName('ledger-record'), action: 'ledger-post',
+      eventType: this.host.addonAuditEventName('ledger-record'), action: 'ledger-post',
       severity: 'medium', resource: entry.id, resourceType: 'accounting-transaction',
       metadata: { direction: entry.direction, amount: entry.amount, currency: entry.currency, fundId: entry.fundId, date: entry.date, category: entry.category }
     });
@@ -681,7 +690,7 @@ export default class LedgerManager {
     const next = replacement ? this.newEntry(user, replacement, { sourceType: 'adjustment', voidsId: original.id }) : null;
 
     await this.audit(actor, {
-      eventType: addonAuditEventName('ledger-adjust'), action: 'ledger-void',
+      eventType: this.host.addonAuditEventName('ledger-adjust'), action: 'ledger-void',
       severity: 'high', resource: original.id, resourceType: 'accounting-transaction', reason: why,
       metadata: { voided: targets.map(t => t.id), replacement: next ? { id: next.id, amount: next.amount, direction: next.direction, fundId: next.fundId } : null }
     });
@@ -711,7 +720,7 @@ export default class LedgerManager {
     const into = this.newEntry(user, { ...common, direction: 'in', fundId: input.toFundId }, { sourceType: 'transfer', transferId });
 
     await this.audit(actor, {
-      eventType: addonAuditEventName('ledger-adjust'), action: 'ledger-transfer',
+      eventType: this.host.addonAuditEventName('ledger-adjust'), action: 'ledger-transfer',
       severity: 'high', resource: transferId, resourceType: 'accounting-transfer',
       metadata: { fromFundId: out.fundId, toFundId: into.fundId, amount: out.amount, currency: out.currency, date: out.date }
     });

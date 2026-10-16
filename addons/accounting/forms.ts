@@ -11,7 +11,8 @@
  *
  * When the forms add-on is not enabled, nothing here runs; the JSON API stays.
  */
-import { ApiContext } from '../../dist/src/context/ApiContext.js';
+import type { ApiContext } from '../../dist/src/context/ApiContext.js';
+import type { AddonHost } from '../../dist/src/utils/addonHost.js';
 import type LedgerManager from './managers/LedgerManager.js';
 import { LedgerError, type NewTransaction } from './managers/LedgerManager.js';
 
@@ -152,7 +153,8 @@ export function fieldOf(ledgerForm: LedgerForm, message: string): string | undef
   return ledgerForm.definition.fields.some(f => f.name === first) ? first : undefined;
 }
 
-export async function registerForms(engine: Engine, log: (message: string) => void): Promise<void> {
+export async function registerForms(engine: Engine, host: AddonHost): Promise<void> {
+  const log = (message: string): void => host.logger.info(message);
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
   if (!forms || !definitions) { log('[accounting] Forms add-on not enabled: treasurer screens are off; the API still works'); return; }
@@ -167,7 +169,7 @@ export async function registerForms(engine: Engine, log: (message: string) => vo
       const ledger = engine.getManager<LedgerManager>('LedgerManager');
       if (!ledger) return { ok: false, error: 'The ledger is not available on this site' };
       try {
-        const ctx = ApiContext.from(req as never, engine as never);
+        const ctx = host.ApiContext.from(req as never, engine as never);
         return { ok: true, ...(await ledgerForm.run(ledger, ctx, submission.data)) };
       } catch (err) {
         if (!(err instanceof LedgerError)) throw err; // a permission refusal is the forms add-on's to answer

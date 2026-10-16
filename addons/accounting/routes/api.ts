@@ -5,10 +5,12 @@
  * for each action's permission on the request's own ApiContext), and shape the
  * reply. No permission, role or audit decision is made here.
  *
- * The host is imported through `dist/`, never `src/` (#1192).
+ * Core values come from the `host` ngdpbase hands register() (#1813); only
+ * types are imported from core.
  */
 import { Router, type Request, type Response } from 'express';
-import { ApiContext, ApiError, sendApiError } from '../../../dist/src/context/ApiContext.js';
+import type { ApiContext } from '../../../dist/src/context/ApiContext.js';
+import type { AddonHost } from '../../../dist/src/utils/addonHost.js';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
 
@@ -16,7 +18,8 @@ interface Engine { getManager<T = unknown>(name: string): T | null | undefined }
 
 type Handler = (ctx: ApiContext, ledger: LedgerManager, req: Request) => Promise<unknown>;
 
-export default function apiRoutes(engine: Engine): Router {
+export default function apiRoutes(engine: Engine, host: AddonHost): Router {
+  const { ApiContext, ApiError, sendApiError } = host;
   const router = Router();
 
   const handle = (status: number, fn: Handler) => async (req: Request, res: Response): Promise<void> => {

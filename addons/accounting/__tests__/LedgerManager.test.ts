@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { testHost } from './host.js';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { LedgerError, type LedgerActor, type LedgerAuditRecord, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
@@ -47,7 +48,7 @@ describe('LedgerManager', () => {
     db = provider.handle as unknown as LedgerDb & { exec(sql: string): unknown };
     audit = [];
     auditFails = false;
-    ledger = new LedgerManager({
+    ledger = new LedgerManager({ host: testHost,
       db,
       decide,
       currency: 'USD',
@@ -87,7 +88,7 @@ describe('LedgerManager', () => {
     test('every entry carries the site currency', async () => {
       const general = await fund('General');
       expect((await entry(general.id, 'in', 100)).currency).toBe('USD');
-      expect(() => new LedgerManager({ db, currency: 'usd', recordAudit: () => Promise.resolve() })).toThrow(/ISO 4217/);
+      expect(() => new LedgerManager({ host: testHost, db, currency: 'usd', recordAudit: () => Promise.resolve() })).toThrow(/ISO 4217/);
     });
   });
 
@@ -246,7 +247,7 @@ describe('LedgerManager', () => {
 
     beforeEach(() => {
       changes = 0;
-      tracked = new LedgerManager({
+      tracked = new LedgerManager({ host: testHost,
         db, currency: 'USD', decide, recordAudit: (r) => { audit.push(r); return Promise.resolve(); },
         dataChanged: () => { changes++; }
       });
@@ -272,7 +273,7 @@ describe('LedgerManager', () => {
     });
 
     test('a failure to say so does not undo the write', async () => {
-      const failing = new LedgerManager({ db, currency: 'USD', decide, recordAudit: () => Promise.resolve(), dataChanged: () => { throw new Error('cache down'); } });
+      const failing = new LedgerManager({ host: testHost, db, currency: 'USD', decide, recordAudit: () => Promise.resolve(), dataChanged: () => { throw new Error('cache down'); } });
       const f = await failing.createFund(actor(), { name: 'General' });
       expect((await failing.listFunds(actor())).map(x => x.id)).toEqual([f.id]);
     });
@@ -299,7 +300,7 @@ describe('LedgerManager', () => {
     test('no subject: the record says so rather than inventing a name', async () => {
       const nobody: LedgerActor = { ...actor(), subject: null };
       // A decision point that allows, so the audit record without a subject can be seen.
-      const open = new LedgerManager({ db, currency: 'USD', decide: async () => ({ permit: true, applicable: true, reason: 'test_allow' }), recordAudit: (r) => { audit.push(r); return Promise.resolve(); } });
+      const open = new LedgerManager({ host: testHost, db, currency: 'USD', decide: async () => ({ permit: true, applicable: true, reason: 'test_allow' }), recordAudit: (r) => { audit.push(r); return Promise.resolve(); } });
       await open.createFund(nobody, { name: 'General' });
       expect(audit.at(-1)).toMatchObject({ user: 'unknown', metadata: { actorMissing: true } });
     });

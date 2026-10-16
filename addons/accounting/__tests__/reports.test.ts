@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { testHost } from './host.js';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { type LedgerActor, type LedgerAuditRecord, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
@@ -36,7 +37,7 @@ describe('reports', () => {
     provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
     audit = [];
     auditFails = false;
-    ledger = new LedgerManager({
+    ledger = new LedgerManager({ host: testHost,
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
       now: () => new Date('2026-10-15T12:00:00Z'),
