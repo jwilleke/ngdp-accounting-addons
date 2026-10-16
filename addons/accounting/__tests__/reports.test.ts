@@ -17,9 +17,9 @@ import { renderLedgerView } from '../plugins/LedgerPlugin.js';
 const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'ledger-export', 'fund-manage'];
 const actor = (granted: string[] = ALL): LedgerActor => ({
   ipAddress: '203.0.113.7',
-  subject: { username: 'tess', roles: ['treasurer'], isAuthenticated: true, ipAddress: '203.0.113.7' } as never,
+  subject: { username: 'tess', roles: ['treasurer'], isAuthenticated: true, ipAddress: '203.0.113.7', granted } as never,
   actingUsername: () => 'tess',
-  requirePermission: (p: string) => (granted.includes(p) ? Promise.resolve() : Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 })))
+  enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
 });
 
 describe('reports', () => {
@@ -42,7 +42,11 @@ describe('reports', () => {
       now: () => new Date('2026-10-15T12:00:00Z'),
       recordAudit: (r) => (auditFails ? Promise.reject(new Error('audit down')) : (audit.push(r), Promise.resolve())),
       categories: () => ({ '4100': 'Dues', '5200': 'Supplies' }),
-      viewerMay: async () => true
+      // A caller with a `granted` list gets what it names; a page viewer (the plugin) may read everything.
+      decide: async (subject, { action }) => {
+        const granted = (subject as { granted?: string[] } | null)?.granted;
+        return { permit: granted ? granted.includes(action) : true, applicable: true, reason: 'test' };
+      }
     });
     // September: General opens with $100, $50 dues. October: $200 dues, $30 supplies,
     // a $40 transfer to Roof, a $10 entry voided and replaced by $12. Roof opens in October with $5.

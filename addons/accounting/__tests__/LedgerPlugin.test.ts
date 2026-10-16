@@ -12,11 +12,15 @@ import LedgerManager, { type LedgerActor, type LedgerDb } from '../managers/Ledg
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
 import LedgerPlugin, { renderLedgerView } from '../plugins/LedgerPlugin.js';
 
-const treasurer: LedgerActor = { ipAddress: undefined, actingUsername: () => 'tess', requirePermission: () => Promise.resolve() };
+const treasurer: LedgerActor = {
+  ipAddress: undefined, actingUsername: () => 'setup', subject: { username: 'setup' } as never,
+  enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
+};
 
-/** Who holds what, for viewerMay. */
+/** Who holds what, for the test's decision point. `setup` writes the test data. */
 const GRANTS: Record<string, string[]> = {
   tess: ['ledger-summary-read', 'ledger-read', 'ledger-record'],
+  setup: ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'fund-manage'],
   board: ['ledger-summary-read']
 };
 
@@ -35,7 +39,9 @@ describe('LedgerPlugin', () => {
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
       recordAudit: () => Promise.resolve(),
-      viewerMay: async (viewer, permission) => (GRANTS[(viewer as { username?: string } | null)?.username ?? ''] ?? []).includes(permission)
+      decide: async (subject, { action }) => ({
+        permit: (GRANTS[(subject as { username?: string } | null)?.username ?? ''] ?? []).includes(action), applicable: true, reason: 'test'
+      })
     });
   });
 

@@ -7,7 +7,7 @@ deployment-specific in this repository. How to install an add-on on each is ngdp
 guide (`docs/guides/addons-developer-guide.md`, "Where it is loaded" and "Shipping Your Addon as a
 Container Image") and `docs/platform/deployment/`.
 
-Requirements: ngdpbase v5.2.3 or later (declared as `minVersion`), the site's database on
+Requirements: ngdpbase v5.11.0 or later (declared as `minVersion`; it is `ctx.enforceDeny`, ngdpbase v5.11.0, that the ledger needs), the site's database on
 (`ngdpbase.database.provider: sqlite`), and the forms add-on for the treasurer's screens.
 
 One rule worth knowing: the add-on imports ngdpbase as `../../dist/...`. Wherever it is installed,

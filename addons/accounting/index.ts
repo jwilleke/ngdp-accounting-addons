@@ -19,6 +19,7 @@
  * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
 import { recordAuditEvent } from '../../dist/src/utils/auditEvents.js';
+import type { Decision } from '../../dist/src/types/Policy.js';
 import hostLogger from '../../dist/src/utils/logger.js';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
@@ -32,7 +33,7 @@ import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migra
  */
 const logger = hostLogger as unknown as { info(message: string): void; warn(message: string): void };
 
-interface PolicyDecisionPointLike { permits(subject: unknown, action: string): Promise<boolean> }
+interface PolicyDecisionPointLike { decide(subject: unknown, request: { action: string }): Promise<Decision> }
 interface PluginManagerLike { registerPlugin(name: string, plugin: unknown): Promise<void> }
 interface CacheManagerLike { bump(topic: string): Promise<unknown> }
 
@@ -86,8 +87,9 @@ const AccountingAddon = {
     const currency = typeof configured === 'string' && configured !== '' ? configured : FALLBACK_CURRENCY;
 
     const pdp = engine.getManager<PolicyDecisionPointLike>('PolicyDecisionPoint');
-    const viewerMay = async (viewer: unknown, permission: string): Promise<boolean> =>
-      Boolean(viewer && pdp && await pdp.permits(viewer, permission));
+    // The ledger asks ngdpbase's decision point for every action (D-025).
+    const decide = async (subject: unknown, request: { action: string }): Promise<Decision> =>
+      pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' };
     const categories = (): Record<string, string> => {
       const value = config?.getProperty('ngdpbase.addons.accounting.categories', {});
       return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, string> : {};
@@ -97,7 +99,7 @@ const AccountingAddon = {
     const cache = engine.getManager<CacheManagerLike>('CacheManager');
     const dataChanged = async (): Promise<void> => { await cache?.bump('LedgerManager'); };
 
-    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, viewerMay, categories, dataChanged }));
+    engine.registerManager('LedgerManager', new LedgerManager({ db, recordAudit, currency, decide, categories, dataChanged }));
     engine.app?.use('/api/accounting', apiRoutes(engine));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, (m) => logger.info(m));

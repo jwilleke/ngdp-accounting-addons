@@ -21,13 +21,18 @@ import { randomUUID } from 'node:crypto';
 import { addonAuditEventName } from '../../../dist/src/utils/auditEventNames.js';
 import { ApiError } from '../../../dist/src/context/ApiContext.js';
 import { actorOf, type ActorContext } from '../../../dist/src/context/ActorContext.js';
+import type { Decision } from '../../../dist/src/types/Policy.js';
 import { formatMoney } from '../../../dist/src/utils/pluginFormatters.js';
 import { toCsv } from '../../../dist/src/utils/csv.js';
 import { createHash } from 'node:crypto';
 
 /** The caller: ngdpbase's ApiContext satisfies this. */
 export interface LedgerActor {
-  requirePermission(permission: string): Promise<void>;
+  /**
+   * Turn the decision point's "no" into the refusal (ngdpbase ApiContext.enforceDeny,
+   * v5.11.0): 401 or 403, and for a step-up the way to sign in again, audited. Always throws.
+   */
+  enforceDeny(permission: string, decision: Decision): Promise<never>;
   actingUsername(): string;
   readonly ipAddress: string | undefined;
   /**
@@ -188,11 +193,10 @@ export interface LedgerOptions {
   now?: () => Date;
   newId?: () => string;
   /**
-   * Does this viewer hold `permission`? For the choices a form offers
-   * (toFormOptions), where there is a viewer but no request; index.ts asks
-   * ngdpbase's PolicyDecisionPoint. Without it no choices are offered.
+   * ngdpbase's PolicyDecisionPoint.decide: the ledger is the enforcement point
+   * and asks it for every action (D-025). Without it every action is refused.
    */
-  viewerMay?: (viewer: unknown, permission: string) => Promise<boolean>;
+  decide?: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
   categories?: () => Record<string, string>;
   /**
@@ -303,7 +307,7 @@ export default class LedgerManager {
   private readonly currency: string;
   private readonly now: () => Date;
   private readonly newId: () => string;
-  private readonly viewerMay: (viewer: unknown, permission: string) => Promise<boolean>;
+  private readonly decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   private readonly categories: () => Record<string, string>;
   private readonly dataChanged: () => Promise<void> | void;
 
@@ -314,7 +318,7 @@ export default class LedgerManager {
     this.currency = options.currency;
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? randomUUID;
-    this.viewerMay = options.viewerMay ?? (async () => false);
+    this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point' }));
     this.categories = options.categories ?? (() => ({}));
     this.dataChanged = options.dataChanged ?? (() => undefined);
   }
@@ -372,7 +376,7 @@ export default class LedgerManager {
    * ledger-summary-read.
    */
   async periodSummary(actor: LedgerActor, period: Period): Promise<PeriodSummary> {
-    await actor.requirePermission('ledger-summary-read');
+    await this.authorize(actor, 'ledger-summary-read');
     const { from, to } = period;
     const funds = (this.db.prepare(`
       SELECT f.id, f.name, f.active, f.opening_balance, f.opening_date,
@@ -429,7 +433,7 @@ export default class LedgerManager {
    * cannot be written there is no file.
    */
   async exportCsv(actor: LedgerActor, kind: 'transactions' | 'funds', period: Period): Promise<LedgerExport> {
-    await actor.requirePermission('ledger-export');
+    await this.authorize(actor, 'ledger-export');
     if (kind !== 'transactions' && kind !== 'funds') throw new LedgerError(400, "kind must be 'transactions' or 'funds'");
     actor.actingUsername(); // a person must be signed in to take the file
 
@@ -461,6 +465,17 @@ export default class LedgerManager {
       metadata: { kind, from: period.from, to: period.to, rows: rows.length, sha256 }
     });
     return { kind, period, filename: `ledger-${kind}-${period.from}-to-${period.to}.csv`, body, rows: rows.length, sha256 };
+  }
+
+  // ── Decisions ──────────────────────────────────────────────────────────
+
+  /**
+   * Every action's one check: ask the decision point, and hand a "no" to the
+   * caller's enforceDeny, which throws ngdpbase's own refusal (D-025).
+   */
+  private async authorize(actor: LedgerActor, action: string): Promise<void> {
+    const decision = await this.decide(actor.subject, { action });
+    if (!decision.permit) await actor.enforceDeny(action, decision);
   }
 
   // ── Audit ──────────────────────────────────────────────────────────────
@@ -499,9 +514,8 @@ export default class LedgerManager {
       ipAddress: undefined,
       subject: (viewer ?? null) as ActorContext | null,
       actingUsername: () => (typeof username === 'string' && username !== '' ? username : 'anonymous'),
-      requirePermission: async (permission: string) => {
-        if (!(await this.viewerMay(viewer, permission))) throw new ApiError(403, `not permitted: ${permission}`);
-      }
+      // A render has no request to answer, so a refusal is just a refusal: the plugin shows a note.
+      enforceDeny: async (permission: string) => { throw new ApiError(403, `not permitted: ${permission}`); }
     };
   }
 
@@ -532,12 +546,12 @@ export default class LedgerManager {
           return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId) }));
         }
         case 'categories':
-          await actor.requirePermission('ledger-record');
+          await this.authorize(actor, 'ledger-record');
           return Object.entries(this.categories())
             .filter(([code, label]) => code !== '' && typeof label === 'string')
             .map(([code, label]) => ({ value: code, label: `${code} ${label}` }));
         case 'payment-methods':
-          await actor.requirePermission('ledger-record');
+          await this.authorize(actor, 'ledger-record');
           return [...MANUAL_PAYMENT_MEANS];
         default:
           return [];
@@ -551,7 +565,7 @@ export default class LedgerManager {
   // ── Funds ──────────────────────────────────────────────────────────────
 
   async createFund(actor: LedgerActor, input: NewFund): Promise<Fund> {
-    await actor.requirePermission('fund-manage');
+    await this.authorize(actor, 'fund-manage');
     const user = actor.actingUsername();
     const name = text(input.name, 'name', { required: true, max: 120 }) as string;
     const description = text(input.description, 'description') ?? '';
@@ -580,7 +594,7 @@ export default class LedgerManager {
 
   /** Change a fund's name, description or restricted flag. Its opening balance never changes. */
   async updateFund(actor: LedgerActor, fundId: string, changes: { name?: string; description?: string; restricted?: boolean }): Promise<Fund> {
-    await actor.requirePermission('fund-manage');
+    await this.authorize(actor, 'fund-manage');
     const user = actor.actingUsername();
     const before = this.fund(fundId);
     const name = changes.name === undefined ? before.name : text(changes.name, 'name', { required: true, max: 120 }) as string;
@@ -606,7 +620,7 @@ export default class LedgerManager {
 
   /** Close a fund: no new entries; its history and balance stay. */
   async closeFund(actor: LedgerActor, fundId: string, reason?: string): Promise<Fund> {
-    await actor.requirePermission('fund-manage');
+    await this.authorize(actor, 'fund-manage');
     const user = actor.actingUsername();
     const before = this.fund(fundId);
     if (!before.active) throw new LedgerError(409, `fund '${before.name}' is already closed`);
@@ -624,14 +638,14 @@ export default class LedgerManager {
   }
 
   async listFunds(actor: LedgerActor): Promise<Fund[]> {
-    await actor.requirePermission('ledger-summary-read');
+    await this.authorize(actor, 'ledger-summary-read');
     return (this.db.prepare('SELECT * FROM accounting_funds ORDER BY name').all() as FundRow[]).map(toFund);
   }
 
   // ── Entries ────────────────────────────────────────────────────────────
 
   async postTransaction(actor: LedgerActor, input: NewTransaction): Promise<Transaction> {
-    await actor.requirePermission('ledger-record');
+    await this.authorize(actor, 'ledger-record');
     const user = actor.actingUsername();
     const entry = this.newEntry(user, input, { sourceType: 'manual' });
 
@@ -653,7 +667,7 @@ export default class LedgerManager {
    * a new transfer instead.
    */
   async voidTransaction(actor: LedgerActor, transactionId: string, reason: string, replacement?: NewTransaction): Promise<{ voided: Transaction[]; replacement: Transaction | null }> {
-    await actor.requirePermission('ledger-adjust');
+    await this.authorize(actor, 'ledger-adjust');
     const user = actor.actingUsername();
     const why = text(reason, 'reason', { required: true }) as string;
     const original = this.transaction(transactionId);
@@ -688,7 +702,7 @@ export default class LedgerManager {
 
   /** Move money between two funds: an `out` and an `in` sharing one transfer id; the total is unchanged. */
   async transferBetweenFunds(actor: LedgerActor, input: { fromFundId: string; toFundId: string; amount: number; date: string; memo?: string }): Promise<Transaction[]> {
-    await actor.requirePermission('ledger-adjust');
+    await this.authorize(actor, 'ledger-adjust');
     const user = actor.actingUsername();
     if (input.fromFundId === input.toFundId) throw new LedgerError(400, 'a transfer needs two different funds');
     const transferId = this.newId();
@@ -710,7 +724,7 @@ export default class LedgerManager {
   }
 
   async listTransactions(actor: LedgerActor, filter: { fundId?: string; from?: string; to?: string; includeVoided?: boolean } = {}): Promise<Transaction[]> {
-    await actor.requirePermission('ledger-read');
+    await this.authorize(actor, 'ledger-read');
     const where: string[] = [];
     const params: unknown[] = [];
     if (filter.fundId) { where.push('fund_id = ?'); params.push(filter.fundId); }
@@ -722,13 +736,13 @@ export default class LedgerManager {
   }
 
   async getTransaction(actor: LedgerActor, transactionId: string): Promise<Transaction> {
-    await actor.requirePermission('ledger-read');
+    await this.authorize(actor, 'ledger-read');
     return this.transaction(transactionId);
   }
 
   /** Each fund's opening balance plus posted money in, minus posted money out. Voided entries do not count. */
   async fundBalances(actor: LedgerActor): Promise<FundBalance[]> {
-    await actor.requirePermission('ledger-summary-read');
+    await this.authorize(actor, 'ledger-summary-read');
     const rows = this.db.prepare(`
       SELECT f.id, f.name, f.active, f.restricted, f.opening_balance,
         COALESCE(SUM(CASE WHEN t.direction = 'in'  THEN t.amount END), 0) AS total_in,

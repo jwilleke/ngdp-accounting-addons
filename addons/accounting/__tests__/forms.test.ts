@@ -17,7 +17,8 @@ const formById = (id: string) => LEDGER_FORMS.find(f => f.definition.id === id)!
 const treasurer: LedgerActor = {
   ipAddress: undefined,
   actingUsername: () => 'tess',
-  requirePermission: () => Promise.resolve()
+  subject: { username: 'tess' } as never,
+  enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
 };
 
 describe('LedgerManager.toFormOptions', () => {
@@ -34,7 +35,10 @@ describe('LedgerManager.toFormOptions', () => {
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
       recordAudit: () => Promise.resolve(),
-      viewerMay: async (viewer, permission) => { asked.push([viewer, permission]); return (viewer as { username?: string } | undefined)?.username === 'tess'; },
+      decide: async (subject, { action }) => {
+        asked.push([subject, action]);
+        return { permit: (subject as { username?: string } | null)?.username === 'tess', applicable: true, reason: 'test' };
+      },
       categories: () => ({ '4100': 'Dues', '5200': 'Supplies' })
     });
   });
@@ -49,6 +53,7 @@ describe('LedgerManager.toFormOptions', () => {
     const old = await ledger.createFund(treasurer, { name: 'Old Roof' });
     await ledger.closeFund(treasurer, old.id, 'done');
     const viewer = { username: 'tess' };
+    asked.length = 0; // only the dropdown's own question, not the setup's
     expect(await ledger.toFormOptions({ list: 'funds' }, viewer)).toEqual([{ value: general.id, label: 'General' }]);
     expect(asked).toEqual([[viewer, 'ledger-summary-read']]);
   });

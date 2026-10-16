@@ -21,12 +21,16 @@ class Refused extends Error {
   constructor(public readonly permission: string) { super(`refused: ${permission}`); }
 }
 
+/** The test's decision point: a subject may do what its `granted` list names. */
+const decide = async (subject: unknown, { action }: { action: string }) =>
+  ({ permit: Boolean((subject as { granted?: string[] } | null)?.granted?.includes(action)), applicable: true, reason: 'test' });
+
 const actor = (granted: string[] = ALL, username = 'treasurer-tess', viaProxy?: Record<string, unknown>): LedgerActor => ({
   ipAddress: '203.0.113.7',
   // A request's subject, as ngdpbase's session middleware writes it; the audit "who" comes from it.
-  subject: { username, roles: ['treasurer'], isAuthenticated: true, ipAddress: '203.0.113.7', ...(viaProxy ? { viaProxy } : {}) } as never,
+  subject: { username, roles: ['treasurer'], isAuthenticated: true, ipAddress: '203.0.113.7', granted, ...(viaProxy ? { viaProxy } : {}) } as never,
   actingUsername: () => username,
-  requirePermission: (permission: string) => (granted.includes(permission) ? Promise.resolve() : Promise.reject(new Refused(permission)))
+  enforceDeny: (permission: string) => Promise.reject(new Refused(permission))
 });
 
 describe('LedgerManager', () => {
@@ -45,6 +49,7 @@ describe('LedgerManager', () => {
     auditFails = false;
     ledger = new LedgerManager({
       db,
+      decide,
       currency: 'USD',
       recordAudit: (record) => {
         if (auditFails) return Promise.reject(new Error('Audit write failed for ledger-record, which is declared on-failure: refuse'));
@@ -242,7 +247,7 @@ describe('LedgerManager', () => {
     beforeEach(() => {
       changes = 0;
       tracked = new LedgerManager({
-        db, currency: 'USD', recordAudit: (r) => { audit.push(r); return Promise.resolve(); },
+        db, currency: 'USD', decide, recordAudit: (r) => { audit.push(r); return Promise.resolve(); },
         dataChanged: () => { changes++; }
       });
     });
@@ -267,7 +272,7 @@ describe('LedgerManager', () => {
     });
 
     test('a failure to say so does not undo the write', async () => {
-      const failing = new LedgerManager({ db, currency: 'USD', recordAudit: () => Promise.resolve(), dataChanged: () => { throw new Error('cache down'); } });
+      const failing = new LedgerManager({ db, currency: 'USD', decide, recordAudit: () => Promise.resolve(), dataChanged: () => { throw new Error('cache down'); } });
       const f = await failing.createFund(actor(), { name: 'General' });
       expect((await failing.listFunds(actor())).map(x => x.id)).toEqual([f.id]);
     });
@@ -293,7 +298,9 @@ describe('LedgerManager', () => {
 
     test('no subject: the record says so rather than inventing a name', async () => {
       const nobody: LedgerActor = { ...actor(), subject: null };
-      await ledger.createFund(nobody, { name: 'General' });
+      // A decision point that allows, so the audit record without a subject can be seen.
+      const open = new LedgerManager({ db, currency: 'USD', decide: async () => ({ permit: true, applicable: true, reason: 'test_allow' }), recordAudit: (r) => { audit.push(r); return Promise.resolve(); } });
+      await open.createFund(nobody, { name: 'General' });
       expect(audit.at(-1)).toMatchObject({ user: 'unknown', metadata: { actorMissing: true } });
     });
   });
