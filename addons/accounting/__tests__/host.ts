@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { buildAddonHost } from '../../../dist/src/utils/addonHost.js';
 import * as pluginFormatters from '../../../dist/src/utils/pluginFormatters.js';
 import ExportManager from '../../../dist/src/managers/ExportManager.js';
-import type { PluginFormatters } from '../../../dist/src/managers/PluginManager.js';
+import type { PluginFormatters } from '../../../dist/src/plugins/types.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 

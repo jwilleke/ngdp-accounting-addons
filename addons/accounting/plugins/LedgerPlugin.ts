@@ -16,7 +16,7 @@
  * Formatting comes from ngdpbase's plugin helpers, which PluginManager hands
  * every plugin as `context.formatters` (#1820).
  */
-import type { PluginFormatters } from '../../../dist/src/managers/PluginManager.js';
+import type { PluginFormatters } from '../../../dist/src/plugins/types.js';
 import type LedgerManager from '../managers/LedgerManager.js';
 import type { FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
 
