@@ -39,6 +39,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-023](#d-023-categories-follow-the-unified-chart-of-accounts-ucoa) | 2026-10-08 | Categories follow the Unified Chart of Accounts (UCOA) model | Accepted |
 | [D-024](#d-024-treasurer-screens-are-forms-of-an-improved-ngdpbase-forms-add-on) | 2026-10-10 | Treasurer screens are forms of an improved ngdpbase forms add-on, on locked pages | Accepted |
 | [D-025](#d-025-accounting-records-follow-ngdpbases-access-control-model) | 2026-10-15 | Accounting records follow ngdpbase's access-control model: the ledger guards, the PDP decides | Accepted |
+| [D-026](#d-026-ledger-tables-stay-the-ledger-plugins-own-for-now) | 2026-10-16 | Ledger tables stay the `[{Ledger}]` plugin's own for now; DataFeed and wiki-table markup are not adopted yet | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -897,3 +898,26 @@ __Consequences:__
   its list and aggregate queries (balances, summary and CSV share one query).
 - Segregation of duties for reimbursements (#8) and a second approver above an amount become policy,
   not code.
+
+## D-026: Ledger tables stay the Ledger plugin's own for now
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-16
+- __Links:__ ngdpbase [#1813](https://github.com/jwilleke/ngdpbase/issues/1813); [D-025](#d-025-accounting-records-follow-ngdpbases-access-control-model)
+
+__Context:__ The operator's direction in ngdpbase is that add-ons supply records and a shared renderer
+draws tables. Two ways were looked at for the ledger:
+
+- the shared `[{DataFeed}]` plugin (feeds add-on). Today it only shows records the feeds add-on stored
+  from outside URLs. It has no live source from another add-on, no per-viewer rows, no money format
+  and no totals row;
+- `[{Ledger}]` writing wiki-table markup (`|| head ||`, `| cell |`) from LedgerManager's rows, with a
+  money plugin in each amount cell. ngdpbase has no money plugin yet.
+
+__Decision (operator, 2026-10-16):__ leave it for now. `[{Ledger}]` keeps drawing its tables as it does
+(HTML through PluginManager's formatters). Whatever renderer comes later, `LedgerManager` owns the
+data and filters it to what each viewer may see (D-025); a renderer only displays.
+
+__Facts checked on the way:__ ngdpbase's page cache keys a rendered page by the viewer's username and
+roles (plus preferences and a 5-minute time slot), and the ledger's bump re-renders it. So each person
+gets their own cached copy; nobody sees another viewer's table.
