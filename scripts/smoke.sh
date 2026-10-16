@@ -26,9 +26,11 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/accounting/funds")
 # 3. Sign in as admin.
 csrf=$(curl -s -c "$JAR" -b "$JAR" "$BASE/login" | grep -o 'name="_csrf" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"//')
 code=$(curl -s -c "$JAR" -b "$JAR" --data-urlencode "_csrf=$csrf" --data-urlencode "username=admin" --data-urlencode "password=$PASSWORD" \
-  -o /dev/null -w '%{http_code}' "$BASE/login")
+  -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/login")
 token=$(curl -sL -c "$JAR" -b "$JAR" "$BASE/" | grep -o 'name="csrf-token" content="[^"]*"' | sed 's/.*content="//;s/"//')
-[ "$code" = 302 ] && [ -n "$token" ] && pass "signed in as admin" || fail "sign-in: HTTP $code"
+# A refused password also answers 302, back to /login?error=…: only a redirect elsewhere is a sign-in.
+case "$code" in 302\ *login\?error*) code="refused: ${code#302 }" ;; 302\ *) code=302 ;; esac
+[ "$code" = 302 ] && [ -n "$token" ] && pass "signed in as admin" || fail "sign-in: $code"
 api() { curl -s -b "$JAR" -H "X-CSRF-Token: $token" -H 'Content-Type: application/json' "$@"; }
 
 # 4. A fund, an entry, and the balance that follows from them (written to the database, audited).
