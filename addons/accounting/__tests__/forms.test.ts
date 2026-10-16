@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { testHost } from './host.js';
+import { testLedgerParts } from './host.js';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { MANUAL_PAYMENT_MEANS, type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
@@ -32,7 +32,7 @@ describe('LedgerManager.toFormOptions', () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-forms-'));
     provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
     asked = [];
-    ledger = new LedgerManager({ host: testHost,
+    ledger = new LedgerManager({ ...testLedgerParts,
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
       recordAudit: () => Promise.resolve(),

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { testHost } from './host.js';
+import { testLedgerParts, testFormatters } from './host.js';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { type LedgerActor, type LedgerAuditRecord, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
@@ -37,7 +37,7 @@ describe('reports', () => {
     provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
     audit = [];
     auditFails = false;
-    ledger = new LedgerManager({ host: testHost,
+    ledger = new LedgerManager({ ...testLedgerParts,
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
       now: () => new Date('2026-10-15T12:00:00Z'),
@@ -131,7 +131,7 @@ describe('reports', () => {
   });
 
   test('[{Ledger view=summary}] shows the period, with download links only when asked', async () => {
-    const render = (params: Record<string, string>) => renderLedgerView(ledger, ledger.viewerActor({ username: 'board' }), params);
+    const render = (params: Record<string, string>) => renderLedgerView(testFormatters, ledger, ledger.viewerActor({ username: 'board' }), params);
     const html = await render({ view: 'summary', month: '2026-10' });
     expect(html).toContain('2026-10-01 to 2026-10-31');
     expect(html).toContain('<strong>$292.00</strong>');

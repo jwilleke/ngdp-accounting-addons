@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { testHost } from './host.js';
+import { testLedgerParts, testFormatters } from './host.js';
 import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
@@ -31,12 +31,12 @@ describe('LedgerPlugin', () => {
   let ledger: LedgerManager;
   // What /api/accounting/view renders for a reader (the page itself holds only a placeholder).
   const render = (viewer: string | null, params: Record<string, string>) =>
-    renderLedgerView(ledger, ledger.viewerActor(viewer ? { username: viewer } : null), params);
+    renderLedgerView(testFormatters, ledger, ledger.viewerActor(viewer ? { username: viewer } : null), params);
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-plugin-'));
     provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
-    ledger = new LedgerManager({ host: testHost,
+    ledger = new LedgerManager({ ...testLedgerParts,
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
       recordAudit: () => Promise.resolve(),
@@ -83,9 +83,9 @@ describe('LedgerPlugin', () => {
 
   test('the plugin draws the view on the server, as the viewer', async () => {
     await ledger.createFund(treasurer, { name: 'General' });
-    const html = await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: { username: 'board' } }, { view: 'balances' });
+    const html = await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: { username: 'board' }, formatters: testFormatters }, { view: 'balances' });
     expect(html).toContain('General');
-    expect(await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: null }, { view: 'balances' })).toContain('You may not see the ledger.');
+    expect(await LedgerPlugin.execute({ engine: { getManager: <T>() => ledger as unknown as T }, userContext: null, formatters: testFormatters }, { view: 'balances' })).toContain('You may not see the ledger.');
   });
 
   test('an unknown view says which views exist', async () => {

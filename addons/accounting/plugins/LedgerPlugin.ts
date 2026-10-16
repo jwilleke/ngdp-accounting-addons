@@ -13,16 +13,10 @@
  * download links lead to /api/accounting/export, which asks ledger-export and
  * a fresh sign-in itself. The rendered page is cached per set of roles and
  * re-rendered after the ledger's next write (the ledger bumps its topic).
- * Formatting comes from ngdpbase's shared plugin helpers.
+ * Formatting comes from ngdpbase's plugin helpers, which PluginManager hands
+ * every plugin as `context.formatters` (#1820).
  */
-import {
-  applyMax,
-  escapeHtml,
-  formatAsTable,
-  formatMoney,
-  parseBoolParam,
-  parseMaxParam
-} from '../../../dist/src/utils/pluginFormatters.js';
+import type { PluginFormatters } from '../../../dist/src/managers/PluginManager.js';
 import type LedgerManager from '../managers/LedgerManager.js';
 import type { FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
 
@@ -30,9 +24,10 @@ type PluginParams = Record<string, string | number | boolean>;
 
 const DEFAULT_MAX_ENTRIES = 20;
 
-const note = (text: string): string => `<p class="text-muted"><em>${escapeHtml(text)}</em></p>`;
+const note = (f: PluginFormatters, text: string): string => `<p class="text-muted"><em>${f.escapeHtml(text)}</em></p>`;
 
-function balancesTable(rows: FundBalance[], currency: string): string {
+function balancesTable(f: PluginFormatters, rows: FundBalance[], currency: string): string {
+  const { escapeHtml, formatAsTable, formatMoney } = f;
   const money = (cents: number) => escapeHtml(formatMoney(cents, currency));
   const sum = (pick: (r: FundBalance) => number) => rows.reduce((total, r) => total + pick(r), 0);
   return formatAsTable(
@@ -51,7 +46,8 @@ function balancesTable(rows: FundBalance[], currency: string): string {
   );
 }
 
-function entriesTable(entries: Transaction[], fundNames: Map<string, string>): string {
+function entriesTable(f: PluginFormatters, entries: Transaction[], fundNames: Map<string, string>): string {
+  const { escapeHtml, formatAsTable, formatMoney } = f;
   const money = (t: Transaction) => escapeHtml(formatMoney(t.amount, t.currency));
   return formatAsTable(
     ['Date', 'Fund', 'Category', 'In', 'Out', 'Paid by / to', 'Memo', 'Status'],
@@ -69,7 +65,8 @@ function entriesTable(entries: Transaction[], fundNames: Map<string, string>): s
   );
 }
 
-function summaryTables(s: PeriodSummary, withExport: boolean): string {
+function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolean): string {
+  const { escapeHtml, formatAsTable, formatMoney } = f;
   const money = (cents: number) => escapeHtml(formatMoney(cents, s.currency));
   const heading = `<p class="text-muted">${escapeHtml(s.period.from)} to ${escapeHtml(s.period.to)}</p>`;
   const funds = formatAsTable(
@@ -98,10 +95,11 @@ function summaryTables(s: PeriodSummary, withExport: boolean): string {
   return `${heading}\n<h4>Funds</h4>\n${funds}\n<h4>Income and expense by category</h4>\n<p class="text-muted small">Transfers between funds are left out: they net to zero.</p>\n${categories}\n${downloads}`;
 }
 
-async function render(ledger: LedgerManager, actor: LedgerActor, params: PluginParams): Promise<string> {
+async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerActor, params: PluginParams): Promise<string> {
+  const { applyMax, parseBoolParam, parseMaxParam } = f;
   const view = String(params.view ?? 'balances');
   if (view === 'balances') {
-    return balancesTable(await ledger.fundBalances(actor), ledger.currencyCode());
+    return balancesTable(f, await ledger.fundBalances(actor), ledger.currencyCode());
   }
   if (view === 'entries') {
     const fund = typeof params.fund === 'string' && params.fund !== '' ? params.fund : undefined;
@@ -110,28 +108,28 @@ async function render(ledger: LedgerManager, actor: LedgerActor, params: PluginP
     const entries = await ledger.listTransactions(actor, { fundId: fund, includeVoided });
     const newestFirst = [...entries].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
     const fundNames = new Map((await ledger.fundBalances(actor)).map(f => [f.fundId, f.name]));
-    return entriesTable(applyMax(newestFirst, max), fundNames);
+    return entriesTable(f, applyMax(newestFirst, max), fundNames);
   }
   if (view === 'summary') {
     const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
     const period = ledger.period({ month: str(params.month), from: str(params.from), to: str(params.to) });
-    return summaryTables(await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
+    return summaryTables(f, await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
   }
-  return note(`Ledger: unknown view '${view}'; use balances, entries or summary.`);
+  return note(f, `Ledger: unknown view '${view}'; use balances, entries or summary.`);
 }
 
 /**
  * The tables for one view, read as `actor` (the request's context). A refusal
  * or a bad parameter is a short note, not an error page.
  */
-export async function renderLedgerView(ledger: LedgerManager, actor: LedgerActor, params: PluginParams): Promise<string> {
+export async function renderLedgerView(f: PluginFormatters, ledger: LedgerManager, actor: LedgerActor, params: PluginParams): Promise<string> {
   try {
-    return await render(ledger, actor, params);
+    return await render(f, ledger, actor, params);
   } catch (err) {
     const status = (err as { status?: number }).status;
-    if (status === 401 || status === 403) return note('You may not see the ledger.');
-    if (status === 400) return note(`Ledger: ${(err as Error).message}`);
-    return note('The ledger could not be shown.');
+    if (status === 401 || status === 403) return note(f, 'You may not see the ledger.');
+    if (status === 400) return note(f, `Ledger: ${(err as Error).message}`);
+    return note(f, 'The ledger could not be shown.');
   }
 }
 
@@ -144,10 +142,10 @@ const LedgerPlugin = {
   // Drawn on the server like every plugin. While the page is cached, ngdpbase
   // records that it read LedgerManager, and re-renders it after the ledger's
   // next write bumps that topic (caching-developer-guide.md).
-  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown }, params: PluginParams): Promise<string> {
+  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; formatters: PluginFormatters }, params: PluginParams): Promise<string> {
     const ledger = context.engine.getManager<LedgerManager>('LedgerManager');
-    if (!ledger) return note('The ledger is not available on this site.');
-    return renderLedgerView(ledger, ledger.viewerActor(context.userContext), params);
+    if (!ledger) return note(context.formatters, 'The ledger is not available on this site.');
+    return renderLedgerView(context.formatters, ledger, ledger.viewerActor(context.userContext), params);
   }
 };
 

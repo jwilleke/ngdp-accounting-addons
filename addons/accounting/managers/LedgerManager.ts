@@ -21,8 +21,6 @@ import { randomUUID } from 'node:crypto';
 import type { ActorContext } from '../../../dist/src/context/ActorContext.js';
 import type { Decision } from '../../../dist/src/types/Policy.js';
 import type { AddonHost } from '../../../dist/src/utils/addonHost.js';
-import { formatMoney } from '../../../dist/src/utils/pluginFormatters.js';
-import { toCsv } from '../../../dist/src/utils/csv.js';
 import { createHash } from 'node:crypto';
 
 /**
@@ -206,6 +204,10 @@ export interface LedgerOptions {
   decide?: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
   categories?: () => Record<string, string>;
+  /** ngdpbase's money formatter (PluginManager.formatters.formatMoney, #1820), for form choice labels. */
+  formatMoney: (minor: number, currency: string) => string;
+  /** ngdpbase's one CSV writer (ExportManager.toCsv, #1819), for the export. */
+  toCsv: (headers: readonly string[], rows: readonly (readonly unknown[])[]) => string;
   /**
    * Told after every committed write. index.ts bumps the `LedgerManager`
    * topic in ngdpbase's CacheManager, so cached pages that read the ledger
@@ -226,7 +228,7 @@ export interface FormChoice { value: string; label: string }
 const ENTRY_CHOICES = 100;
 
 /** "2026-10-10 · General · in $1,250.50 · Pat Member" — enough to pick the right entry. */
-function entryLabel(t: Transaction, fundName: string): string {
+function entryLabel(t: Transaction, fundName: string, formatMoney: LedgerOptions['formatMoney']): string {
   const who = t.partyName || t.memo || t.category;
   const kind = t.transferId ? 'transfer ' : '';
   return [t.date, fundName, `${kind}${t.direction} ${formatMoney(t.amount, t.currency)}`, who].filter(Boolean).join(' · ');
@@ -317,6 +319,8 @@ export default class LedgerManager {
   private readonly newId: () => string;
   private readonly decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   private readonly categories: () => Record<string, string>;
+  private readonly formatMoney: LedgerOptions['formatMoney'];
+  private readonly toCsv: LedgerOptions['toCsv'];
   private readonly dataChanged: () => Promise<void> | void;
 
   constructor(options: LedgerOptions) {
@@ -329,6 +333,8 @@ export default class LedgerManager {
     this.newId = options.newId ?? randomUUID;
     this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point' }));
     this.categories = options.categories ?? (() => ({}));
+    this.formatMoney = options.formatMoney;
+    this.toCsv = options.toCsv;
     this.dataChanged = options.dataChanged ?? (() => undefined);
   }
 
@@ -466,7 +472,7 @@ export default class LedgerManager {
         ...[f.start, f.opened, f.moneyIn, f.moneyOut, f.end].map(v => decimalAmount(v, this.currency))]);
     }
 
-    const body = toCsv(headers, rows);
+    const body = this.toCsv(headers, rows);
     const sha256 = createHash('sha256').update(body).digest('hex');
     await this.audit(actor, {
       eventType: this.host.addonAuditEventName('ledger-export'), action: 'ledger-export',
@@ -552,7 +558,7 @@ export default class LedgerManager {
           const latest = (await this.listTransactions(actor))
             .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
             .slice(0, ENTRY_CHOICES);
-          return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId) }));
+          return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
         }
         case 'categories':
           await this.authorize(actor, 'ledger-record');

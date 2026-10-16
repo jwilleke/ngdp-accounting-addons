@@ -29,6 +29,8 @@ import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migra
 interface PolicyDecisionPointLike { decide(subject: unknown, request: { action: string }): Promise<Decision> }
 interface PluginManagerLike { registerPlugin(name: string, plugin: unknown): Promise<void> }
 interface CacheManagerLike { bump(topic: string): Promise<unknown> }
+interface PluginManagerFormatters { formatters: { formatMoney(minor: number, currency: string): string } }
+interface ExportManagerLike { toCsv(headers: readonly string[], rows: readonly (readonly unknown[])[]): string }
 
 /** Until ngdpbase ships a site-wide currency (ngdpbase#1711). */
 const FALLBACK_CURRENCY = 'USD';
@@ -94,7 +96,18 @@ const AccountingAddon = {
     const cache = engine.getManager<CacheManagerLike>('CacheManager');
     const dataChanged = async (): Promise<void> => { await cache?.bump('LedgerManager'); };
 
-    engine.registerManager('LedgerManager', new LedgerManager({ host, db, recordAudit, currency, decide, categories, dataChanged }));
+    // Shared capabilities belong to their manager (ngdpbase v5.12.0): the money
+    // formatter to PluginManager (#1820), the one CSV writer to ExportManager (#1819).
+    const managerOf = <T>(name: string): T => {
+      const manager = engine.getManager<T>(name);
+      if (!manager) throw new Error(`accounting: ngdpbase's ${name} is not available`);
+      return manager;
+    };
+    const formatMoney = (minor: number, code: string): string =>
+      managerOf<PluginManagerFormatters>('PluginManager').formatters.formatMoney(minor, code);
+    const toCsv: ExportManagerLike['toCsv'] = (headers, rows) => managerOf<ExportManagerLike>('ExportManager').toCsv(headers, rows);
+
+    engine.registerManager('LedgerManager', new LedgerManager({ host, db, recordAudit, currency, decide, categories, dataChanged, formatMoney, toCsv }));
     engine.app?.use('/api/accounting', apiRoutes(engine, host));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, host);
