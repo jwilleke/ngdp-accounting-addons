@@ -11,8 +11,9 @@
  * ledger's own permissions decide: balances need ledger-summary-read, entries
  * need ledger-read, a summary needs ledger-summary-read (no names). The
  * download links lead to /api/accounting/export, which asks ledger-export and
- * a fresh sign-in itself. The rendered page is cached per set of roles and
- * re-rendered after the ledger's next write (the ledger bumps its topic).
+ * a fresh sign-in itself. ngdpbase caches the rendered page per viewer
+ * (username and roles) and re-renders it after the ledger's next write (the
+ * ledger bumps its topic).
  * Formatting comes from ngdpbase's plugin helpers, which PluginManager hands
  * every plugin as `context.formatters` (#1820).
  */
