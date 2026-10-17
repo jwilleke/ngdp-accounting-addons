@@ -8,19 +8,23 @@
  * Core values come from the `host` ngdpbase hands register() (#1813); only
  * types are imported from core.
  */
-import { Router, type Request, type Response } from 'express';
+import type { Request, Response, Router } from 'express';
 import type { ApiContext } from '../../../dist/src/context/ApiContext.js';
 import type { AddonHost } from '../../../dist/src/utils/addonHost.js';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
 
-interface Engine { getManager<T = unknown>(name: string): T | null | undefined }
+interface Engine {
+  getManager<T = unknown>(name: string): T | null | undefined;
+  /** A Router from ngdpbase's own Express (v5.15.0, #1861); add-ons never import express at runtime. */
+  createRouter(): Router;
+}
 
 type Handler = (ctx: ApiContext, ledger: LedgerManager, req: Request) => Promise<unknown>;
 
 export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   const { ApiContext, ApiError, sendApiError } = host;
-  const router = Router();
+  const router = engine.createRouter();
 
   const handle = (status: number, fn: Handler) => async (req: Request, res: Response): Promise<void> => {
     try {

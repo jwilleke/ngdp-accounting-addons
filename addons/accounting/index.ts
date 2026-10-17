@@ -39,6 +39,7 @@ interface Engine {
   getManager<T = unknown>(name: string): T | null | undefined;
   registerManager(name: string, manager: unknown): void;
   app?: { use(route: string, handler: unknown): void };
+  createRouter(): import('express').Router;
 }
 
 interface DatabaseManagerLike {

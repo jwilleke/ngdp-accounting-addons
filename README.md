@@ -6,7 +6,7 @@ __Status:__ the base `accounting` add-on (the MVP) is built and in testing: fund
 voids and transfers, the treasurer's screens, a monthly summary and CSV export. The module add-ons
 (dues, donations, events) are not built yet.
 
-__Requires:__ ngdpbase v5.12.0 or later.
+__Requires:__ ngdpbase v5.15.0 or later.
 
 ## Who it is for
 

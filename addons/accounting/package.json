@@ -17,14 +17,11 @@
   "ngdpbase": {
     "slug": "accounting",
     "type": "additive",
-    "minVersion": "5.12.0"
+    "minVersion": "5.15.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "pretest": "npm run build",
     "test": "vitest run"
-  },
-  "peerDependencies": {
-    "express": "^5.2.1"
   }
 }
