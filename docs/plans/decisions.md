@@ -440,6 +440,10 @@ __Consequences:__
   ledger must close its statements in its own `shutdown()` (DatabaseManager.md, "Not yet").
 - Nothing in core stores rows yet; the first planned user is the database audit provider
   (ngdpbase#1537). The ledger may be the first add-on user.
+__Update (operator, 2026-10-17):__ the accounting database is declared to ngdpbase (#1860) with
+`"encrypt": "optional"`, keeping this decision: SQLCipher when `NGDPBASE_DATABASE_KEY` is set, plain
+SQLite with a boot warning otherwise. `"required"` (which stops the add-on loading without the key)
+was offered and not chosen. PR #23.
 
 ## D-011: One path to the database
 
