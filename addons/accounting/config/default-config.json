@@ -79,5 +79,7 @@
         "form-submit"
       ]
     }
-  ]
+  ],
+  "_comment_accounting_database": "The accounting database, declared so ngdpbase's DatabaseManager.openAddonDatabase will open it (ngdpbase #1860). encrypt 'optional' per D-010: SQLCipher when NGDPBASE_DATABASE_KEY is set, plain SQLite with a boot warning otherwise.",
+  "ngdpbase.addons.accounting.database": { "owner": "accounting", "ledgerTable": "accounting_schema_migrations", "encrypt": "optional" }
 }
