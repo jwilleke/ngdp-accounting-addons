@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-16"
+last_updated: "2026-10-17"
 ---
 
 # TODO
@@ -34,8 +34,7 @@ last_updated: "2026-10-16"
 
 ## 🟠 P1
 
-- [#7](https://github.com/jwilleke/ngdp-accounting-addons/issues/7) — Treasurer reports and CSV / QuickBooks / Wave export
-- [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5) — Fund tracking and the shared single-entry ledger
+*None.*
 
 ## 🟡 P2
 
@@ -53,10 +52,12 @@ last_updated: "2026-10-16"
 <!-- Issues labeled `in-review` — shipped and pushed, awaiting the operator's decision to close. -->
 <!-- This band outranks an issue's priority, so finished work surfaces as "ready for your call". -->
 
-*None.*
+- [#7](https://github.com/jwilleke/ngdp-accounting-addons/issues/7) — Treasurer reports and CSV / QuickBooks / Wave export
+- [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5) — Fund tracking and the shared single-entry ledger
 
 ## ⏸ Deferred
 
+- [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21) — [FEATURE] Board report: large or unusual items, and printable / PDF / wiki-page output
 - [#9](https://github.com/jwilleke/ngdp-accounting-addons/issues/9) — Treasurer handover record tied to board memory
 - [#8](https://github.com/jwilleke/ngdp-accounting-addons/issues/8) — Expense reimbursement requests with treasurer approval
 
@@ -65,7 +66,7 @@ last_updated: "2026-10-16"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-*None.*
+- [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
 
 <!-- KIT:END -->
 
