@@ -40,6 +40,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-024](#d-024-treasurer-screens-are-forms-of-an-improved-ngdpbase-forms-add-on) | 2026-10-10 | Treasurer screens are forms of an improved ngdpbase forms add-on, on locked pages | Accepted |
 | [D-025](#d-025-accounting-records-follow-ngdpbases-access-control-model) | 2026-10-15 | Accounting records follow ngdpbase's access-control model: the ledger guards, the PDP decides | Accepted |
 | [D-026](#d-026-ledger-tables-stay-the-ledger-plugins-own-for-now) | 2026-10-16 | Ledger tables stay the `[{Ledger}]` plugin's own for now; DataFeed and wiki-table markup are not adopted yet | Accepted |
+| [D-027](#d-027-ledger-5-and-reports-7-are-done-their-leftovers-move-to-the-issues-that-need-them) | 2026-10-17 | Ledger (#5) and reports (#7) are done; their leftovers move to the issues that need them | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -921,3 +922,22 @@ data and filters it to what each viewer may see (D-025); a renderer only display
 __Facts checked on the way:__ ngdpbase's page cache keys a rendered page by the viewer's username and
 roles (plus preferences and a 5-minute time slot), and the ledger's bump re-renders it. So each person
 gets their own cached copy; nobody sees another viewer's table.
+
+## D-027: Ledger (#5) and reports (#7) are done; their leftovers move to the issues that need them
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-17
+- __Links:__ [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5), [#7](https://github.com/jwilleke/ngdp-accounting-addons/issues/7), [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20), [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21); ngdpbase [#1723](https://github.com/jwilleke/ngdpbase/issues/1723)
+
+__Context:__ The shared ledger (#5) and the treasurer reports (#7) meet their acceptance criteria, but
+each issue's original scope also named pieces that only make sense with modules not built yet.
+
+__Decision (operator):__ both go to In review. Their leftovers move:
+
+- __From #5:__ pending entries and a deductible amount to donations (#4) and payments (#3);
+  attachments to reimbursements (#8); the `accounting-settings` permission when a setting first needs
+  protecting; the month lock is #19. Backup of the ledger's database depends on ngdpbase#1723 (core
+  backups do not cover add-on databases yet).
+- __From #7:__ QuickBooks and Wave formats to their own issue (#20); dues and donations reports to #2
+  and #4; large or unusual items and printable / PDF / wiki-page output __later__, after the MVP (#21,
+  deferred).
