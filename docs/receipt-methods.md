@@ -23,13 +23,13 @@ The same list is used for money going out (an entry's method) and for refunds.
 | --- | --- | --- | --- | --- | --- |
 | Cash | `10` | In cash | yes | Notes and coins handed over | none |
 | Check | `20` | Cheque | yes | A paper check | the check number |
-| ACH | `2` | Automated clearing house credit | no | Money the payer sends to the organization's bank: direct deposit, online bill pay | the bank's confirmation or trace number |
-| Zelle | `68` | Online payment service | no | A Zelle transfer | Zelle's confirmation code |
+| ACH | `2` | Automated clearing house credit | yes | Money the payer sends to the organization's bank: direct deposit, online bill pay | the bank's confirmation or trace number |
+| Zelle | `68` | Online payment service | yes | A Zelle transfer | Zelle's confirmation code |
 | Bank transfer | `30` | Credit transfer | yes | A wire, or another transfer that is not ACH or Zelle | the bank's reference |
 | Card | `48` | Bank card | yes | A card payment taken outside this system (a card reader at an event) | the reader's receipt number, if any; never the card number |
 | ACH debit | `3` | Automated clearing house debit | no, later | Money the organization pulls from a payer's account; needs a processor (see Notes) | set by the processor |
 
-__Implemented__ means the receipt form offers it today. "No" rows are decided and waiting to be
+__Implemented__ means the receipt form offers it today. A "no" row is decided and waiting to be
 built; "no, later" waits on something else.
 
 The reference goes in the receipt's reference field (`paymentMethodId`; see
@@ -52,6 +52,6 @@ full card or bank account number ([requirements](requirements.md), section 9).
 
 `MANUAL_PAYMENT_MEANS` in `addons/accounting/managers/LedgerManager.ts` holds the rows marked
 "yes", in this order; the form reads it through `LedgerManager.toFormOptions({ list: 'payment-methods' })`.
-When a row is implemented, change this page and that list in the same commit. Until ACH and Zelle are
-added, the form's reference field is labelled "Check number"; it becomes "Check number or confirmation
-code" with them.
+When a row is implemented, change this page and that list in the same commit: a test
+(`__tests__/receipt-methods.test.ts`) reads this table and fails if the "yes" rows and the list
+differ. The form's reference field is labelled "Check number or confirmation code".

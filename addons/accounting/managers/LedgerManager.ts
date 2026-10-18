@@ -254,8 +254,9 @@ export interface LedgerOptions {
 export interface FormChoice { value: string; label: string }
 
 /**
- * The payment means a treasurer records by hand, as UN/CEFACT UNCL 4461 codes
- * (D-018). Card and online payments arrive through providers, not this list.
+ * The methods a treasurer records by hand, as UN/CEFACT UNCL 4461 codes (D-018).
+ * docs/receipt-methods.md is the source of truth: this list is its rows marked
+ * "Implemented: yes", in its order, and a test fails if they differ.
  */
 /** How many of the latest entries the void form offers. */
 const ENTRY_CHOICES = 100;
@@ -270,6 +271,8 @@ function entryLabel(t: Transaction, fundName: string, formatMoney: LedgerOptions
 export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
   { value: '10', label: 'Cash' },
   { value: '20', label: 'Check' },
+  { value: '2', label: 'ACH' },
+  { value: '68', label: 'Zelle' },
   { value: '30', label: 'Bank transfer' },
   { value: '48', label: 'Card' }
 ];
