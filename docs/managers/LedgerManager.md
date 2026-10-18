@@ -59,7 +59,7 @@ the person to sign in again, recorded in the audit log. No role name appears in 
 | `transferBetweenFunds` | `ledger-adjust` | yes | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
 | `exportCsv` | `ledger-export` | yes | `ledger-export` (`ledger-export`) |
-| `toFormOptions` | `ledger-record` | no | — |
+| `toFormOptions` | each list its own: `funds` `ledger-summary-read`; `entries`, `receipts` `ledger-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
 `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit

@@ -602,7 +602,9 @@ export default class LedgerManager {
           return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
         }
         case 'receipts': {
-          await this.authorize(actor, 'receipt-refund');
+          // Seeing the receipts is reading the ledger. The refund itself asks receipt-refund,
+          // with its step-up, when the form is submitted; a page render cannot step up.
+          await this.authorize(actor, 'ledger-read');
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
           return this.receiptRows()
             .filter(t => this.refundable(t) > 0)
