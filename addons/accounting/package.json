@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "description": "Accounting addon for ngdpbase",
   "license": "Apache-2.0",
-  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwilleke/ngdp-accounting-addons.git",
+    "directory": "addons/accounting"
+  },
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.15.0"
   },
   "devDependencies": {
     "@jwilleke/ngdpbase-types": "5.18.0",
@@ -24,5 +28,15 @@
     "build": "tsc -p tsconfig.json",
     "pretest": "npm run build",
     "test": "vitest run"
-  }
+  },
+  "files": [
+    "index.js",
+    "forms.js",
+    "managers/*.js",
+    "routes/*.js",
+    "plugins/*.js",
+    "config/",
+    "pages/",
+    "README.md"
+  ]
 }

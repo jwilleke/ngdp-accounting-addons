@@ -24,6 +24,27 @@ books of record stay in QuickBooks or Wave, and accounting hands them a CSV.
 - `NGDPBASE_DATABASE_KEY` set in the site's environment or `.env`, so the ledger is encrypted. Without
   it the ledger is plain SQLite and the site warns at startup.
 
+## Install it
+
+From npm, once a release is published: ngdpbase installs the add-on itself, checks its sha512 and its
+provenance (it must have been built by this repository's publish workflow), and pins it. Installing does not enable it; the enable key below still decides. The site
+needs Node 24.15.0 or later. In `app-custom-config.json`:
+
+```json
+{
+  "ngdpbase.addons.install": {
+    "accounting": {
+      "package": "@jwilleke/accounting-addon",
+      "version": "^0.1.0",
+      "repository": "github.com/jwilleke/ngdp-accounting-addons"
+    }
+  }
+}
+```
+
+Or from a checkout: point the site's add-ons path at this repository's `addons/` folder after
+`npm install` and `npm run build` in `addons/accounting/`.
+
 ## Turn it on
 
 In the site's `app-custom-config.json`:
