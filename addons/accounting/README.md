@@ -1,63 +1,66 @@
 # Accounting
 
-Accounting addon for [ngdpbase](https://github.com/jwilleke/ngdpbase).
+The base accounting add-on for [ngdpbase](https://github.com/jwilleke/ngdpbase): funds, a
+single-entry ledger with voids and transfers, the treasurer's screens, the `[{Ledger}]` plugin, a
+monthly summary and a CSV export.
 
-- __Slug:__ `accounting` — the canonical identity. It is the registry key and the
-  config key, and it must equal the `name` exported from `index.ts`.
-- __Type:__ `additive` — augments an existing instance.
+- __Slug:__ `accounting`. It is the registry key and the config key, and equals the `name` exported
+  from `index.ts`.
+- __Type:__ `additive`.
+- __Requires:__ ngdpbase 5.17.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on
+  for the screens (`optionalDependencies: ['forms']`).
 
-## Enable
-
-```json
-{
-  "ngdpbase.addons.accounting.enabled": true
-}
-```
+Turning it on for a site: [docs/guides/accounting-guide.md](../../docs/guides/accounting-guide.md).
+The ledger's API for other add-ons: [docs/managers/LedgerManager.md](../../docs/managers/LedgerManager.md).
+Why it is built this way: [docs/plans/ledger-design.md](../../docs/plans/ledger-design.md) and
+[docs/plans/decisions.md](../../docs/plans/decisions.md).
 
 ## Contents
 
 | Path | What it is |
-|---|---|
-| `managers/LedgerManager.ts` | The ledger: funds, entries, voids, transfers, balances; the one door for each action |
-| `managers/migrations.ts` | The accounting database's tables and the triggers that keep money from changing quietly |
-| `routes/api.ts` | JSON API under `/api/accounting`, calling `LedgerManager` |
-| `config/default-config.json` | Permissions with their audit and step-up rules, the `treasurer` role and its policy |
-| `pages/` | Seed pages copied into the platform on first enable |
-| `__tests__/` | Ledger tests against a real encrypted database (`npm test`) |
+| --- | --- |
+| `index.ts` | `register(engine, config, host)`: opens the declared database, builds the audit door, registers `LedgerManager`, mounts the API, the plugin and the forms |
+| `managers/LedgerManager.ts` | The ledger: one door per action, each asked of ngdpbase's decision point and audited |
+| `managers/migrations.ts` | The accounting tables, and the triggers that refuse deletes and silent changes to money |
+| `routes/api.ts` | JSON API under `/api/accounting`, including the CSV download at `/export` |
+| `forms.ts` | The treasurer's forms (entry, transfer, void, fund create/rename/close) for the forms add-on |
+| `plugins/LedgerPlugin.ts` | `[{Ledger view='balances' / 'entries' / 'summary'}]`, drawn for the viewer |
+| `config/default-config.json` | The database declaration, permissions with their audit and step-up rules, the `treasurer` role and its policy |
+| `pages/` | The treasurer's pages and the Using Accounting help page, seeded on first enable |
+| `__tests__/` | Ledger, report, form and plugin tests against a real SQLite database |
 
-The design is [docs/plans/ledger-design.md](../../docs/plans/ledger-design.md).
+## How it reaches ngdpbase
 
-## Rules an addon lives under
+One path for each thing, never a local copy:
 
-Addon code runs in the ngdpbase process. Every check that enforces a runtime
-property of `src/` applies to this directory identically — a check that scans
-only `src/` is a bug in the check, not a licence. This addon already follows the
-four that bite:
+- __Core values__ (`ApiContext`, `ApiError`, `sendApiError`, `recordAuditEvent`,
+  `addonAuditEventName`, `actorOf`, `logger`) come from the `host` passed to `register()`
+  (ngdpbase #1813) and are handed down to the manager, routes and forms.
+- __Shared capabilities belong to their manager__: the CSV writer is `ExportManager.toCsv`, the money
+  formatter `PluginManager.formatters.formatMoney`; the plugin gets the formatters as
+  `context.formatters`.
+- __Routes__ use `engine.createRouter()`, core's own Express; the add-on never imports express at
+  runtime.
+- __The database__ is opened with `DatabaseManager.openAddonDatabase` and declared as
+  `ngdpbase.addons.accounting.database`.
+- __Access__: `LedgerManager` asks `PolicyDecisionPoint.decide(subject, { action })` and turns a deny
+  into ngdpbase's refusal with `ctx.enforceDeny` (D-025). No role names in code.
+- __Caching__: after each write the manager bumps the `LedgerManager` topic in `CacheManager`.
 
-- __Outbound HTTP goes through the host's `guardedFetch`.__ `index.ts` builds
-  one under the instance's egress policy and injects it; a manager never calls
-  `fetch` or an HTTP client library itself. Loopback and link-local are never
-  reachable; a LAN source needs its prefix in
-  `ngdpbase.security.egress.allowed-ranges`.
-- __A permission decision is `ctx.requirePermission('accounting-manage')`__ on
-  the request's own subject, forwarded — never a role name, never
-  `isAuthenticated`, never a subject rebuilt from fields. The permission and its
-  policy are declared in `config/default-config.json`.
-- __A mutating browser request carries the CSRF token__ — the view uses
-  `(window.csrfFetch || fetch)`; a bare `fetch` is refused by the host.
-- __An acting call takes a context__, never a bare username.
-
-The host is imported through `dist/`, never `src/`: a value import of host
-source compiles it into this addon and emits a `.js` beside it, which exists on
-a developer's machine and does not exist in the container.
-
-The host's guards run over this directory: `lint:code`, `lint:csrf`,
-`lint:http`, `lint:permission-subject`, `lint:gates`, `lint:addons`,
-`lint:audit-deps` and the addon's own `tsc`. The rules in full are the
-standing rules of ngdpbase's [addons developer guide](https://github.com/jwilleke/ngdpbase/blob/master/docs/guides/addons-developer-guide.md#standing-rules).
+From `../../dist` the runtime code imports types only. Tests may import core values (the host
+builder, the SQLite provider, the CSV writer, the plugin formatters).
 
 ## Develop
 
-Drop this directory into an ngdpbase instance's `addons/` (or point
-`ngdpbase.managers.addons-manager.addons-path` at its parent), enable it, and
-restart. For production, see the platform's `packaged` distribution model.
+The repository root needs a `dist` link to a built ngdpbase checkout at or above `minVersion`
+(types, and core modules for the tests):
+
+```bash
+ln -s ../ngdpbase/dist dist     # once, at the repository root
+cd addons/accounting
+npm install
+npm test                        # builds (tsc) first, then runs vitest
+```
+
+To run it, point an ngdpbase instance's add-ons path at this repository's `addons/` folder, enable
+`accounting` (and `forms`), and restart. `scripts/smoke.sh` checks a running site end to end.

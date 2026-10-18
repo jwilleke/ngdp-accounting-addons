@@ -2,9 +2,13 @@
 
 Add-ons for [ngdpbase](https://github.com/jwilleke/ngdpbase) that give small organizations dues, payments, donations, fund tracking, event fees and treasurer reports, all in the same wiki where they keep the rest of their records.
 
-__Status:__ the base `accounting` add-on (the MVP) is built and in testing: funds, a ledger with
-voids and transfers, the treasurer's screens, a monthly summary and CSV export. The module add-ons
-(dues, donations, events) are not built yet.
+__Status:__ the base `accounting` add-on (the MVP) is built: funds, a ledger with voids and
+transfers, the treasurer's screens, the `[{Ledger}]` plugin, a monthly summary and CSV export. The
+module add-ons (dues, payments, donations, events) are not built yet.
+
+- Setting it up on a site: [docs/guides/accounting-guide.md](docs/guides/accounting-guide.md)
+- The ledger's API for other add-ons: [docs/managers/LedgerManager.md](docs/managers/LedgerManager.md)
+- The add-on's code: [addons/accounting/](addons/accounting/README.md)
 
 __Requires:__ ngdpbase v5.17.0 or later.
 
@@ -46,7 +50,7 @@ See [docs/requirements.md](docs/requirements.md) for goals, personas, per-module
 
 ## Relationship to ngdpbase
 
-These are ngdpbase add-ons: each one exports an `AddonModule` with a `register(engine, config)` function and declares its own permissions and policies, as described in the ngdpbase add-on guide (`docs/guides/addons-developer-guide.md` in ngdpbase). Some requirements depend on ngdpbase core work that is not built yet; requirements.md lists it.
+These are ngdpbase add-ons: each one exports an `AddonModule` with a `register(engine, config, host)` function and declares its own permissions and policies, as described in the ngdpbase add-on guide (`docs/guides/addons-developer-guide.md` in ngdpbase). Some requirements depend on ngdpbase core work that is not built yet; requirements.md lists it.
 
 ## License
 

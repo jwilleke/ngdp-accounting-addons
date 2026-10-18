@@ -10,10 +10,13 @@ Container Image") and `docs/platform/deployment/`.
 Requirements: ngdpbase v5.17.0 or later (declared as `minVersion`; the ledger needs `ctx.enforceDeny` from v5.11.0, the ExportManager CSV writer and PluginManager formatters from v5.12.0, `engine.createRouter()` from v5.15.0, and declared add-on databases from v5.17.0), the site's database on
 (`ngdpbase.database.provider: sqlite`), and the forms add-on for the treasurer's screens.
 
-One rule worth knowing: the add-on imports ngdpbase as `../../dist/...`. Wherever it is installed,
-that path must lead to the `dist/` of the ngdpbase that runs it. Pointing it at another copy loads a
-second set of ngdpbase's modules, and every audit event is then refused as "not declared"
-(ngdpbase#1675).
+At runtime the add-on imports nothing from ngdpbase's files: core values come from the `host` passed
+to `register()`, routes from `engine.createRouter()`, and the rest from ngdpbase's managers. Only the
+build and the tests need a built ngdpbase (`dist`) beside the repository. So installing it needs no
+`dist` path; it does need its compiled `.js` files, which `npm run build` writes beside the `.ts`.
+
+Setting it up for a real site (access, the board's view, backups): the
+[accounting site guide](../docs/guides/accounting-guide.md).
 
 ## Smoke test
 
