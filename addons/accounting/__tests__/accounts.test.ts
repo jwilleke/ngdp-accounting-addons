@@ -138,6 +138,15 @@ describe('the ledger\'s accounts', () => {
       await expect(ledger.setAccountOpening(actor(), 'checking', { openingBalance: 1 })).rejects.toThrow('already has its opening balance');
     });
 
+    test('the same opening submitted several times at once is set once; the others are refused cleanly', async () => {
+      const results = await Promise.allSettled([1, 2, 3, 4].map(() =>
+        ledger.setAccountOpening(actor(), 'checking', { openingBalance: 5000, openingDate: '2026-01-01' })));
+      expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+      for (const r of results.filter(r => r.status === 'rejected')) {
+        expect((r as PromiseRejectedResult).reason.message).toBe("account 'Checking' already has its opening balance");
+      }
+    });
+
     test('the database refuses to change one', async () => {
       await ledger.setAccountOpening(actor(), CASH_ON_HAND, { openingBalance: 200, openingDate: '2026-01-01' });
       expect(() => db.prepare('UPDATE accounting_account_openings SET opening_balance = 1').run()).toThrow(/do not change/);
