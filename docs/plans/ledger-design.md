@@ -79,6 +79,17 @@ export are designed with the reports work, on top of this ledger.
 actor, time, and before and after values, so the record survives with the add-on's data even apart
 from ngdpbase's audit log.
 
+### Second migration: accounts
+
+[D-031](decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits) adds where the money sits:
+
+- `accounting_transactions.account_id` (TEXT, required): `cash-on-hand` or a bank account id from
+  `ngdpbase.addons.accounting.accounts`. Accounts are configuration, so it is an id, not a foreign
+  key; the ledger checks it on every write. Entries posted before the migration are `checking`.
+  The "money never changes" trigger now covers it too.
+- `accounting_account_openings` (`account_id` primary key, `opening_balance`, `opening_date`,
+  `created_by`, `created_at`): set once by the treasurer; never updated or deleted.
+
 ### Enforced by the database itself
 
 Triggers make the money rules hold even if code is wrong:

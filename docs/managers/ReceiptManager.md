@@ -42,9 +42,10 @@ entry naming a provider this version does not ship is skipped, with a warning at
 - `recordReceipt(actor, receipt, provider = 'manual')` → `Transaction`. Refused if the provider is
   not enabled or cannot record by hand. The receipt fields are `LedgerManager.postReceipt`'s:
   `amount`, `date`, `fundId`, `category`, `partyName` (who paid), `paymentMethod` (UN/CEFACT payment
-  means), `paymentMethodId` (a check's number), `memo` (the reason), and optionally `reference:
-  { type, id }` (what it pays for). The result carries the receipt number in `confirmationNumber`.
-- `refundReceipt(actor, receiptId, { amount?, date, memo, paymentMethod?, paymentMethodId? })` →
+  means), `paymentMethodId` (a check's number), `memo` (the reason), and optionally `accountId`
+  (where it lands; left out, the method picks it: cash and checks to Cash on Hand, bank methods to
+  the default bank account, D-031) and `reference: { type, id }` (what it pays for). The result carries the receipt number in `confirmationNumber`.
+- `refundReceipt(actor, receiptId, { amount?, date, memo, paymentMethod?, paymentMethodId?, accountId? })` →
   `Transaction`, the linked out entry. Needs `receipt-refund` (step-up off for now, D-030).
 - `providers()` → the enabled providers and their capabilities.
 

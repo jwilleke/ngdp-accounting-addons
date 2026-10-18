@@ -52,7 +52,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 
 | Method | Permission | Step-up | Audit event (action) |
 | --- | --- | --- | --- |
-| `listFunds`, `fundBalances`, `periodSummary` | `ledger-summary-read` | no | — |
+| `listFunds`, `fundBalances`, `periodSummary`, `listAccounts`, `accountBalances` | `ledger-summary-read` | no | — |
 | `listTransactions`, `getTransaction` | `ledger-read` | no | — |
 | `postTransaction` (money out) | `ledger-record` | no | `ledger-record` (`ledger-post`) |
 | `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
@@ -60,8 +60,9 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `voidTransaction` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-void`) |
 | `transferBetweenFunds` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
+| `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
-| `toFormOptions` | each list its own: `funds` `ledger-summary-read`; `entries`, `receipts` `ledger-read`; `categories`, `payment-methods` `ledger-record` | no | — |
+| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts` `ledger-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
 `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit
@@ -79,6 +80,19 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
 - `closeFund(actor, fundId, reason?)` → `Fund`. Funds are closed, never deleted; a closed fund
   takes no new entries.
 - `listFunds(actor)` → `Fund[]`.
+- `listAccounts(actor)` → `Account[]`: where money sits
+  ([D-031](../plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)). Cash on Hand
+  (`cash-on-hand`, built in) first, then the bank accounts in `ngdpbase.addons.accounting.accounts`,
+  then any account entries still name that the configuration has dropped (`configured: false`). One
+  active bank account is the default.
+- `setAccountOpening(actor, accountId, { openingBalance, openingDate? })` → `AccountBalance`. What
+  the account held on the day the books started. Set once; it never changes.
+- `accountBalances(actor)` → per account: opening balance, money in, money out, balance. Added up,
+  they equal the funds' balances when the openings agree.
+- __Every entry has an account__ as well as a fund: `accountId` on `postTransaction`, `postReceipt`
+  and `refundReceipt`. Left out, the method picks it: cash, checks and card go to Cash on Hand, every
+  other method (and no method) to the default bank account (`docs/receipt-methods.md`, "Starting
+  account"). A transfer between funds puts both halves in the same account, so no account changes.
 - `postTransaction(actor, { direction: 'out', amount, date, fundId, category, partyPersonId?,
   partyName?, paymentMethod?, paymentMethodId?, memo })` → `Transaction`. Money out only: `in` is
   refused ("money in is recorded as a receipt"). `category` is a UCOA account code; `paymentMethod` a
@@ -105,12 +119,12 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   out, posted entries only).
 - `period({ month?, from?, to? })` → `{ from, to }`. `month` is `current`, `previous` or `YYYY-MM`;
   the default is the current month.
-- `periodSummary(actor, period)` → per fund start, opened, in, out and end, and per category income
+- `periodSummary(actor, period)` → per fund and per account start, opened, in, out and end, and per category income
   and expense, with totals. Transfers are left out of the categories; they net to zero. It carries
   no names, so a summary reader never sees who paid.
 - `exportCsv(actor, 'transactions' | 'funds', period)` → `{ filename, body, sha256 }`. Built with
   ngdpbase's one CSV writer (`ExportManager.toCsv`); the audit record carries the file's SHA-256.
-- `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `entries`, `receipts`
+- `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `accounts`, `entries`, `receipts`
   (posted receipts with money left to refund), `categories` or `payment-methods`. Reached from a form definition as
   `optionsSource: "fetch:LedgerManager.toFormOptions(list=funds)"`; each list asks its own
   permission of the viewer, so a dropdown never offers what its reader may not see.

@@ -94,6 +94,42 @@ export interface Fund {
 
 export type Direction = 'in' | 'out';
 
+/**
+ * Where money sits (D-031): a bank account from the site's configuration, or
+ * Cash on Hand, which is built in. A fund says what money is for; an account
+ * says where it is. One account holds money for several funds.
+ */
+export interface Account {
+  id: string;
+  name: string;
+  kind: 'bank' | 'cash';
+  /** The bank account ACH, Zelle and bank transfers land in, and money out comes from. */
+  isDefault: boolean;
+  active: boolean;
+  /** False for an account entries still name but the configuration no longer has. */
+  configured: boolean;
+}
+
+export interface AccountBalance {
+  accountId: string;
+  name: string;
+  kind: Account['kind'];
+  active: boolean;
+  configured: boolean;
+  openingBalance: number;
+  /** Null until the treasurer sets it. */
+  openingDate: string | null;
+  totalIn: number;
+  totalOut: number;
+  balance: number;
+}
+
+/** One account over a period, like FundPeriod. */
+export interface AccountPeriod {
+  accountId: string; name: string; configured: boolean;
+  start: number; opened: number; moneyIn: number; moneyOut: number; end: number;
+}
+
 export interface Transaction {
   id: string;
   direction: Direction;
@@ -101,6 +137,7 @@ export interface Transaction {
   currency: string;
   date: string;
   fundId: string;
+  accountId: string;
   category: string;
   partyPersonId: string | null;
   partyName: string | null;
@@ -133,6 +170,8 @@ export interface NewTransaction {
   amount: number;
   date: string;
   fundId: string;
+  /** Where the money comes from or goes to; blank picks it by method (D-031). */
+  accountId?: string;
   category: string;
   partyPersonId?: string;
   partyName?: string;
@@ -150,6 +189,8 @@ export interface NewReceipt {
   amount: number;
   date: string;
   fundId: string;
+  /** Blank picks it by method: cash and checks to Cash on Hand, bank methods to the default bank account. */
+  accountId?: string;
   category: string;
   partyName: string;
   partyPersonId?: string;
@@ -167,6 +208,8 @@ export interface ReceiptRefund {
   memo: string;
   paymentMethod?: string;
   paymentMethodId?: string;
+  /** The account the money is paid back from; blank picks it by method. */
+  accountId?: string;
 }
 
 /** The provider that recorded a receipt, and its own number for it (D-004). */
@@ -207,6 +250,8 @@ export interface PeriodSummary {
   period: Period;
   currency: string;
   funds: FundPeriod[];
+  /** The same money by where it sits; its ends add up to the funds' ends. */
+  accounts: AccountPeriod[];
   categories: CategoryPeriod[];
   totals: { start: number; opened: number; moneyIn: number; moneyOut: number; end: number; income: number; expense: number };
 }
@@ -237,6 +282,8 @@ export interface LedgerOptions {
   decide?: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
   categories?: () => Record<string, string>;
+  /** Bank accounts: `ngdpbase.addons.accounting.accounts` from site configuration (D-031), read by accountsFrom. */
+  accounts?: () => unknown;
   /** ngdpbase's money formatter (PluginManager.formatters.formatMoney, #1820), for form choice labels. */
   formatMoney: (minor: number, currency: string) => string;
   /** ngdpbase's one CSV writer (ExportManager.toCsv, #1819), for the export. */
@@ -279,6 +326,51 @@ export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
 
 /** The provider that is always there: receipts the treasurer records by hand (D-004). */
 export const MANUAL_PROVIDER = 'manual';
+
+/** The built-in account for money in hand: cash, and checks not yet deposited (D-031). */
+export const CASH_ON_HAND = 'cash-on-hand';
+const CASH_ON_HAND_ACCOUNT: Account = Object.freeze({ id: CASH_ON_HAND, name: 'Cash on Hand', kind: 'cash', isDefault: false, active: true, configured: true });
+
+/**
+ * Methods whose money is handed over, so it lands in Cash on Hand until it is
+ * deposited; every other method lands in the default bank account (D-031).
+ * docs/receipt-methods.md, column "Starting account", is the source of truth;
+ * a test fails if they differ.
+ */
+export const CASH_ON_HAND_METHODS: readonly string[] = ['10', '20', '48'];
+
+const ACCOUNT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/**
+ * The accounts from `ngdpbase.addons.accounting.accounts`, a map keyed by
+ * account id (so each configuration layer adds or changes one account), with
+ * Cash on Hand first. Each entry is `{ "name": "Checking", "kind": "bank",
+ * "default": true, "active": true }`; `false` or `null` removes a shipped one.
+ * Exactly one active bank account is the default: the one marked, else the
+ * first. Anything it cannot use is skipped, with a warning.
+ */
+export function accountsFrom(entries: unknown, warn: (message: string) => void = () => undefined): Account[] {
+  const accounts: Account[] = [CASH_ON_HAND_ACCOUNT];
+  const map = entries && typeof entries === 'object' && !Array.isArray(entries) ? entries as Record<string, unknown> : {};
+  for (const [id, value] of Object.entries(map)) {
+    if (value === null || value === false) continue;
+    if (id === CASH_ON_HAND) { warn(`[accounting] account '${id}' is built in; its configuration entry is ignored`); continue; }
+    if (!ACCOUNT_ID.test(id) || typeof value !== 'object' || Array.isArray(value)) {
+      warn(`[accounting] account '${id}' is not usable: the id must be lowercase letters, digits and dashes, and the entry an object; skipped`);
+      continue;
+    }
+    const entry = value as { name?: unknown; kind?: unknown; default?: unknown; active?: unknown };
+    if (entry.kind !== undefined && entry.kind !== 'bank') { warn(`[accounting] account '${id}': kind must be 'bank'; skipped`); continue; }
+    const name = typeof entry.name === 'string' && entry.name.trim() !== '' ? entry.name.trim() : id;
+    accounts.push({ id, name, kind: 'bank', isDefault: entry.default === true, active: entry.active !== false, configured: true });
+  }
+  const banks = accounts.filter(a => a.kind === 'bank' && a.active);
+  const marked = banks.filter(a => a.isDefault);
+  if (marked.length > 1) warn(`[accounting] several accounts are marked default; '${marked[0].id}' is used`);
+  if (banks.length === 0) warn('[accounting] no bank account is configured: everything lands in Cash on Hand');
+  const chosen = marked[0] ?? banks[0];
+  return accounts.map(a => ({ ...a, isDefault: a === chosen }));
+}
 const RECEIPT_REFUND = 'receipt-refund';
 const MONEY_IN_IS_A_RECEIPT = 'money in is recorded as a receipt (Record a Receipt), not as an entry';
 
@@ -292,7 +384,7 @@ interface FundRow {
   opening_balance: number; opening_date: string; created_by: string; created_at: string;
 }
 interface TransactionRow {
-  id: string; direction: Direction; amount: number; currency: string; date: string; fund_id: string;
+  id: string; direction: Direction; amount: number; currency: string; date: string; fund_id: string; account_id: string;
   category: string; party_person_id: string | null; party_name: string | null; payment_method: string | null;
   payment_method_id: string | null; provider: string | null; confirmation_number: string | null;
   source_type: string; source_id: string | null; status: 'posted' | 'voided'; voids_id: string | null;
@@ -306,7 +398,7 @@ const toFund = (r: FundRow): Fund => ({
 });
 
 const toTransaction = (r: TransactionRow): Transaction => ({
-  id: r.id, direction: r.direction, amount: r.amount, currency: r.currency, date: r.date, fundId: r.fund_id,
+  id: r.id, direction: r.direction, amount: r.amount, currency: r.currency, date: r.date, fundId: r.fund_id, accountId: r.account_id,
   category: r.category, partyPersonId: r.party_person_id, partyName: r.party_name, paymentMethod: r.payment_method,
   paymentMethodId: r.payment_method_id, provider: r.provider, confirmationNumber: r.confirmation_number,
   sourceType: r.source_type, sourceId: r.source_id, status: r.status, voidsId: r.voids_id,
@@ -360,6 +452,7 @@ export default class LedgerManager {
   private readonly newId: () => string;
   private readonly decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   private readonly categories: () => Record<string, string>;
+  private readonly accountsConfig: () => unknown;
   private readonly formatMoney: LedgerOptions['formatMoney'];
   private readonly toCsv: LedgerOptions['toCsv'];
   private readonly dataChanged: () => Promise<void> | void;
@@ -374,6 +467,7 @@ export default class LedgerManager {
     this.newId = options.newId ?? randomUUID;
     this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point' }));
     this.categories = options.categories ?? (() => ({}));
+    this.accountsConfig = options.accounts ?? (() => ({}));
     this.formatMoney = options.formatMoney;
     this.toCsv = options.toCsv;
     this.dataChanged = options.dataChanged ?? (() => undefined);
@@ -456,6 +550,27 @@ export default class LedgerManager {
         };
       });
 
+    const openings = this.openings();
+    const moved = new Map((this.db.prepare(`
+      SELECT account_id,
+        COALESCE(SUM(CASE WHEN date < ? AND direction = 'in'  THEN amount END), 0) AS before_in,
+        COALESCE(SUM(CASE WHEN date < ? AND direction = 'out' THEN amount END), 0) AS before_out,
+        COALESCE(SUM(CASE WHEN date >= ? AND date <= ? AND direction = 'in'  THEN amount END), 0) AS period_in,
+        COALESCE(SUM(CASE WHEN date >= ? AND date <= ? AND direction = 'out' THEN amount END), 0) AS period_out
+      FROM accounting_transactions WHERE status = 'posted' AND date <= ?
+      GROUP BY account_id`).all(from, from, from, to, from, to, to) as {
+        account_id: string; before_in: number; before_out: number; period_in: number; period_out: number;
+      }[]).map(r => [r.account_id, r]));
+    const accounts = this.accountsInUse().map((a): AccountPeriod => {
+      const o = openings.get(a.id);
+      const m = moved.get(a.id) ?? { before_in: 0, before_out: 0, period_in: 0, period_out: 0 };
+      const openingBalance = o && o.opening_date <= to ? o.opening_balance : 0;
+      const openedBefore = o !== undefined && o.opening_date < from;
+      const start = (openedBefore ? openingBalance : 0) + m.before_in - m.before_out;
+      const opened = openedBefore ? 0 : openingBalance;
+      return { accountId: a.id, name: a.name, configured: a.configured, start, opened, moneyIn: m.period_in, moneyOut: m.period_out, end: start + opened + m.period_in - m.period_out };
+    });
+
     const labels = this.categories();
     const categories = (this.db.prepare(`
       SELECT category,
@@ -471,6 +586,7 @@ export default class LedgerManager {
       period: { from, to },
       currency: this.currency,
       funds,
+      accounts,
       categories,
       totals: {
         start: sum(funds, f => f.start), opened: sum(funds, f => f.opened),
@@ -496,13 +612,14 @@ export default class LedgerManager {
     let headers: string[];
     let rows: unknown[][];
     if (kind === 'transactions') {
-      headers = ['id', 'date', 'direction', 'amount_minor', 'amount', 'currency', 'fund_id', 'fund', 'category', 'party_person_id', 'party_name',
+      headers = ['id', 'date', 'direction', 'amount_minor', 'amount', 'currency', 'fund_id', 'fund', 'account_id', 'account', 'category', 'party_person_id', 'party_name',
         'payment_method', 'payment_method_id', 'provider', 'confirmation_number', 'source_type', 'source_id', 'status', 'voids_id',
         'voided_by_id', 'void_reason', 'transfer_id', 'memo', 'created_by', 'created_at'];
       const names = new Map((this.db.prepare('SELECT id, name FROM accounting_funds').all() as { id: string; name: string }[]).map(f => [f.id, f.name]));
+      const accountNames = new Map(this.accountsInUse().map(a => [a.id, a.name]));
       rows = (this.db.prepare('SELECT * FROM accounting_transactions WHERE date >= ? AND date <= ? ORDER BY date, created_at')
         .all(period.from, period.to) as TransactionRow[]).map(toTransaction).map(t => [
-        t.id, t.date, t.direction, t.amount, decimalAmount(t.amount, t.currency), t.currency, t.fundId, names.get(t.fundId) ?? '', t.category,
+        t.id, t.date, t.direction, t.amount, decimalAmount(t.amount, t.currency), t.currency, t.fundId, names.get(t.fundId) ?? '', t.accountId, accountNames.get(t.accountId) ?? '', t.category,
         t.partyPersonId, t.partyName, t.paymentMethod, t.paymentMethodId, t.provider, t.confirmationNumber, t.sourceType, t.sourceId,
         t.status, t.voidsId, t.voidedById, t.voidReason, t.transferId, t.memo, t.createdBy, t.createdAt
       ]);
@@ -583,6 +700,7 @@ export default class LedgerManager {
    * Each list asks the permission that would let the viewer see what it
    * shows, through the ledger's own reads where there is one:
    *   funds            open funds                   ledger-summary-read (listFunds)
+   *   accounts         active accounts              ledger-summary-read (listAccounts)
    *   entries          latest posted entries        ledger-read (listTransactions)
    *   categories       site's UCOA categories       ledger-record
    *   payment-methods  manual UN/CEFACT codes       ledger-record
@@ -594,6 +712,8 @@ export default class LedgerManager {
       switch (options.list) {
         case 'funds':
           return (await this.listFunds(actor)).filter(f => f.active).map(f => ({ value: f.id, label: f.name }));
+        case 'accounts':
+          return (await this.listAccounts(actor)).filter(a => a.configured && a.active).map(a => ({ value: a.id, label: a.name }));
         case 'entries': {
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
           const latest = (await this.listTransactions(actor))
@@ -708,6 +828,71 @@ export default class LedgerManager {
     return (this.db.prepare('SELECT * FROM accounting_funds ORDER BY name').all() as FundRow[]).map(toFund);
   }
 
+  // ── Accounts (D-031) ───────────────────────────────────────────────────
+
+  /** Cash on Hand, the configured bank accounts, and any that entries name but the configuration has dropped. */
+  async listAccounts(actor: LedgerActor): Promise<Account[]> {
+    await this.authorize(actor, 'ledger-summary-read');
+    return this.accountsInUse();
+  }
+
+  /**
+   * Set what an account held on the day the books started. Once: like a fund's,
+   * an account's opening balance and date never change.
+   */
+  async setAccountOpening(actor: LedgerActor, accountId: string, input: { openingBalance: number; openingDate?: string }): Promise<AccountBalance> {
+    await this.authorize(actor, 'fund-manage');
+    const user = actor.actingUsername();
+    const account = this.account(text(accountId, 'accountId', { required: true, max: 32 }) as string);
+    if (!account.configured) throw new LedgerError(409, `account '${account.id}' is no longer configured`);
+    const openingBalance = minorUnits(input.openingBalance, 'openingBalance', { positive: false });
+    const openingDate = input.openingDate === undefined || input.openingDate === '' ? this.today() : isoDate(input.openingDate, 'openingDate');
+    if (this.db.prepare('SELECT account_id FROM accounting_account_openings WHERE account_id = ?').get(account.id)) {
+      throw new LedgerError(409, `account '${account.name}' already has its opening balance`);
+    }
+    const opening = { accountId: account.id, openingBalance, openingDate, createdBy: user, createdAt: this.stamp() };
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'account-opening',
+      severity: 'medium', resource: account.id, resourceType: 'accounting-account',
+      metadata: { name: account.name, openingBalance, openingDate }
+    });
+    await this.commit(() => {
+      this.db.prepare(`INSERT INTO accounting_account_openings (account_id, opening_balance, opening_date, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?)`).run(account.id, openingBalance, openingDate, user, opening.createdAt);
+      this.history(user, 'account-opening', 'account', account.id, null, opening);
+    });
+    return (await this.accountBalances(actor)).find(b => b.accountId === account.id) as AccountBalance;
+  }
+
+  /** Each account's opening balance plus posted money in, minus posted money out. Added up, they equal the funds. */
+  async accountBalances(actor: LedgerActor): Promise<AccountBalance[]> {
+    await this.authorize(actor, 'ledger-summary-read');
+    const openings = this.openings();
+    const totals = new Map((this.db.prepare(`
+      SELECT account_id,
+        COALESCE(SUM(CASE WHEN direction = 'in'  THEN amount END), 0) AS total_in,
+        COALESCE(SUM(CASE WHEN direction = 'out' THEN amount END), 0) AS total_out
+      FROM accounting_transactions WHERE status = 'posted' GROUP BY account_id`).all() as { account_id: string; total_in: number; total_out: number }[])
+      .map(r => [r.account_id, r]));
+    return this.accountsInUse().map(a => {
+      const opening = openings.get(a.id);
+      const t = totals.get(a.id);
+      const openingBalance = opening?.opening_balance ?? 0;
+      const totalIn = t?.total_in ?? 0;
+      const totalOut = t?.total_out ?? 0;
+      return {
+        accountId: a.id, name: a.name, kind: a.kind, active: a.active, configured: a.configured,
+        openingBalance, openingDate: opening?.opening_date ?? null, totalIn, totalOut, balance: openingBalance + totalIn - totalOut
+      };
+    });
+  }
+
+  /** Account ids that entries name but the configuration no longer has: index.ts warns at startup. */
+  droppedAccounts(): string[] {
+    return this.accountsInUse().filter(a => !a.configured).map(a => a.id);
+  }
+
   // ── Entries ────────────────────────────────────────────────────────────
 
   /** Money out. Money in is a receipt (`postReceipt`, D-029). */
@@ -780,7 +965,8 @@ export default class LedgerManager {
     const user = actor.actingUsername();
     if (input.fromFundId === input.toFundId) throw new LedgerError(400, 'a transfer needs two different funds');
     const transferId = this.newId();
-    const common = { amount: input.amount, date: input.date, category: 'transfer', memo: input.memo };
+    // Funds do not care where money sits: both halves are in the same account, so no account changes.
+    const common = { amount: input.amount, date: input.date, category: 'transfer', memo: input.memo, accountId: this.startingAccount().id };
     const out = this.newEntry(user, { ...common, direction: 'out', fundId: input.fromFundId }, { sourceType: 'transfer', transferId });
     const into = this.newEntry(user, { ...common, direction: 'in', fundId: input.toFundId }, { sourceType: 'transfer', transferId });
 
@@ -853,7 +1039,8 @@ export default class LedgerManager {
     const refund = this.newEntry(user, {
       direction: 'out', amount, date: input.date, fundId: receipt.fundId, category: receipt.category,
       partyName: receipt.partyName ?? undefined, partyPersonId: receipt.partyPersonId ?? undefined,
-      paymentMethod: input.paymentMethod ?? receipt.paymentMethod ?? undefined, paymentMethodId: input.paymentMethodId, memo: input.memo
+      paymentMethod: input.paymentMethod ?? receipt.paymentMethod ?? undefined, paymentMethodId: input.paymentMethodId, memo: input.memo,
+      accountId: input.accountId
     }, { sourceType: RECEIPT_REFUND, sourceId: receipt.id });
 
     await this.audit(actor, {
@@ -911,6 +1098,10 @@ export default class LedgerManager {
     if (paymentMethod !== undefined && !PAYMENT_MEANS.test(paymentMethod)) {
       throw new LedgerError(400, 'paymentMethod must be a UN/CEFACT payment means code, e.g. 10 (cash) or 20 (cheque)');
     }
+    const accountId = text(input.accountId, 'accountId', { max: 32 });
+    const account = accountId === undefined ? this.startingAccount(paymentMethod) : this.account(accountId);
+    if (!account.configured) throw new LedgerError(409, `account '${account.id}' is no longer configured`);
+    if (!account.active) throw new LedgerError(409, `account '${account.name}' is closed`);
     return {
       id: this.newId(),
       direction: input.direction,
@@ -918,6 +1109,7 @@ export default class LedgerManager {
       currency: this.currency,
       date: isoDate(input.date, 'date'),
       fundId: fund.id,
+      accountId: account.id,
       category: text(input.category, 'category', { required: true, max: 32 }) as string,
       partyPersonId: text(input.partyPersonId, 'partyPersonId', { max: 64 }) ?? null,
       partyName: text(input.partyName, 'partyName', { max: 200 }) ?? null,
@@ -940,11 +1132,11 @@ export default class LedgerManager {
   }
 
   private insert(t: Transaction): void {
-    this.db.prepare(`INSERT INTO accounting_transactions (id, direction, amount, currency, date, fund_id, category,
+    this.db.prepare(`INSERT INTO accounting_transactions (id, direction, amount, currency, date, fund_id, account_id, category,
         party_person_id, party_name, payment_method, payment_method_id, provider, confirmation_number,
         source_type, source_id, status, voids_id, voided_by_id, void_reason, transfer_id, memo, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      t.id, t.direction, t.amount, t.currency, t.date, t.fundId, t.category, t.partyPersonId, t.partyName,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      t.id, t.direction, t.amount, t.currency, t.date, t.fundId, t.accountId, t.category, t.partyPersonId, t.partyName,
       t.paymentMethod, t.paymentMethodId, t.provider, t.confirmationNumber, t.sourceType, t.sourceId, t.status,
       t.voidsId, t.voidedById, t.voidReason, t.transferId, t.memo, t.createdBy, t.createdAt);
   }
@@ -952,6 +1144,35 @@ export default class LedgerManager {
   private history(actor: string, action: string, entity: string, entityId: string, before: unknown, after: unknown, reason?: string): void {
     this.db.prepare('INSERT INTO accounting_history (at, actor, action, entity, entity_id, before, after, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(this.stamp(), actor, action, entity, entityId, before === null ? null : JSON.stringify(before), JSON.stringify(after), reason ?? null);
+  }
+
+  /** The configured accounts, plus any that entries or openings still name but the configuration has dropped. */
+  private accountsInUse(): Account[] {
+    const configured = accountsFrom(this.accountsConfig());
+    const known = new Set(configured.map(a => a.id));
+    const named = (this.db.prepare(`SELECT account_id FROM accounting_transactions
+      UNION SELECT account_id FROM accounting_account_openings ORDER BY account_id`).all() as { account_id: string }[]).map(r => r.account_id);
+    const dropped = named.filter(id => !known.has(id))
+      .map((id): Account => ({ id, name: id, kind: 'bank', isDefault: false, active: false, configured: false }));
+    return [...configured, ...dropped];
+  }
+
+  private account(accountId: string): Account {
+    const account = this.accountsInUse().find(a => a.id === accountId);
+    if (!account) throw new LedgerError(404, 'unknown account');
+    return account;
+  }
+
+  /** Where money lands when no account is named: by method, else the default bank account (D-031). */
+  private startingAccount(paymentMethod?: string | null): Account {
+    const accounts = accountsFrom(this.accountsConfig());
+    if (paymentMethod && CASH_ON_HAND_METHODS.includes(paymentMethod)) return CASH_ON_HAND_ACCOUNT;
+    return accounts.find(a => a.isDefault) ?? CASH_ON_HAND_ACCOUNT;
+  }
+
+  private openings(): Map<string, { opening_balance: number; opening_date: string }> {
+    return new Map((this.db.prepare('SELECT account_id, opening_balance, opening_date FROM accounting_account_openings').all() as
+      { account_id: string; opening_balance: number; opening_date: string }[]).map(r => [r.account_id, r]));
   }
 
   private fund(fundId: string): Fund {

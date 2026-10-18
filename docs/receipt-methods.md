@@ -19,15 +19,20 @@ The same list is used for money going out (an entry's method) and for refunds.
 
 ## The methods
 
-| Label | Code | UNCL 4461 name | Implemented | Use it for | Reference to record |
-| --- | --- | --- | --- | --- | --- |
-| Cash | `10` | In cash | yes | Notes and coins handed over | none |
-| Check | `20` | Cheque | yes | A paper check | the check number |
-| ACH | `2` | Automated clearing house credit | yes | Money the payer sends to the organization's bank: direct deposit, online bill pay | the bank's confirmation or trace number |
-| Zelle | `68` | Online payment service | yes | A Zelle transfer | Zelle's confirmation code |
-| Bank transfer | `30` | Credit transfer | yes | A wire, or another transfer that is not ACH or Zelle | the bank's reference |
-| Card | `48` | Bank card | yes | A card payment taken outside this system (a card reader at an event) | the reader's receipt number, if any; never the card number |
-| ACH debit | `3` | Automated clearing house debit | no, later | Money the organization pulls from a payer's account; needs a processor (see Notes) | set by the processor |
+| Label | Code | UNCL 4461 name | Implemented | Use it for | Reference to record | Starting account |
+| --- | --- | --- | --- | --- | --- | --- |
+| Cash | `10` | In cash | yes | Notes and coins handed over | none | Cash on Hand |
+| Check | `20` | Cheque | yes | A paper check | the check number | Cash on Hand |
+| ACH | `2` | Automated clearing house credit | yes | Money the payer sends to the organization's bank: direct deposit, online bill pay | the bank's confirmation or trace number | default bank account |
+| Zelle | `68` | Online payment service | yes | A Zelle transfer | Zelle's confirmation code | default bank account |
+| Bank transfer | `30` | Credit transfer | yes | A wire, or another transfer that is not ACH or Zelle | the bank's reference | default bank account |
+| Card | `48` | Bank card | yes | A card payment taken outside this system (a card reader at an event) | the reader's receipt number, if any; never the card number | Cash on Hand |
+| ACH debit | `3` | Automated clearing house debit | no, later | Money the organization pulls from a payer's account; needs a processor (see Notes) | set by the processor | default bank account |
+
+__Starting account__ is where a receipt by that method lands when the treasurer names no account
+([D-031](plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)): money handed over waits
+in Cash on Hand until it is deposited; money sent to the bank is already there. Money out and
+refunds follow the same column.
 
 __Implemented__ means the receipt form offers it today. A "no" row is decided and waiting to be
 built; "no, later" waits on something else.
@@ -54,4 +59,5 @@ full card or bank account number ([requirements](requirements.md), section 9).
 "yes", in this order; the form reads it through `LedgerManager.toFormOptions({ list: 'payment-methods' })`.
 When a row is implemented, change this page and that list in the same commit: a test
 (`__tests__/receipt-methods.test.ts`) reads this table and fails if the "yes" rows and the list
-differ. The form's reference field is labelled "Check number or confirmation code".
+differ. `CASH_ON_HAND_METHODS` in the same file is the codes whose starting account is Cash on Hand,
+and the same test checks it. The form's reference field is labelled "Check number or confirmation code".

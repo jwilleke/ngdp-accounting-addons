@@ -19,7 +19,9 @@ export const testFormatters: PluginFormatters = formatters;
 export const testLedgerParts = {
   host: testHost,
   formatMoney: testFormatters.formatMoney,
-  toCsv
+  toCsv,
+  // The shipped bank account (Checking), as a site has before it configures its own (D-031).
+  accounts: () => defaults['ngdpbase.addons.accounting.accounts']
 };
 
 /**
