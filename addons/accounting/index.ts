@@ -12,6 +12,7 @@
  *   ngdpbase.addons.accounting.enabled — true/false (defaults to false)
  *   ngdpbase.default.currency          — ISO 4217 code read from ngdpbase; USD until ngdpbase ships it
  *   ngdpbase.addons.accounting.categories — { "<UCOA code>": "<label>" } for the entry form (D-023)
+ *   ngdpbase.addons.accounting.receiptproviders — [{ "id": "manual", "enabled": true }, …] (D-017, D-029)
  *
  * With the forms add-on enabled, the treasurer's screens are forms on locked
  * pages this add-on ships (forms.ts, pages/).
@@ -23,6 +24,7 @@ import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
 import LedgerManager, { type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
+import ReceiptManager, { receiptProvidersFrom } from './managers/ReceiptManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
 
 interface PolicyDecisionPointLike { decide(subject: unknown, request: { action: string }): Promise<Decision> }
@@ -107,7 +109,11 @@ const AccountingAddon = {
       managerOf<PluginManagerFormatters>('PluginManager').formatters.formatMoney(minor, code);
     const toCsv: ExportManagerLike['toCsv'] = (headers, rows) => managerOf<ExportManagerLike>('ExportManager').toCsv(headers, rows);
 
-    engine.registerManager('LedgerManager', new LedgerManager({ host, db, recordAudit, currency, decide, categories, dataChanged, formatMoney, toCsv }));
+    const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, dataChanged, formatMoney, toCsv });
+    engine.registerManager('LedgerManager', ledger);
+    // Money coming in, through the providers the site enables (D-028, D-029); the manual provider is always there.
+    const receiptProviders = receiptProvidersFrom(config?.getProperty('ngdpbase.addons.accounting.receiptproviders', []), (m) => logger.warn(m));
+    engine.registerManager('ReceiptManager', new ReceiptManager(ledger, receiptProviders));
     engine.app?.use('/api/accounting', apiRoutes(engine, host));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, host);

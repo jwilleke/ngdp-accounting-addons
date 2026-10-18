@@ -21,9 +21,10 @@ Why it is built this way: [docs/plans/ledger-design.md](../../docs/plans/ledger-
 | --- | --- |
 | `index.ts` | `register(engine, config, host)`: opens the declared database, builds the audit door, registers `LedgerManager`, mounts the API, the plugin and the forms |
 | `managers/LedgerManager.ts` | The ledger: one door per action, each asked of ngdpbase's decision point and audited |
+| `managers/ReceiptManager.ts` | Money coming in: picks the receipt provider (manual now, Stripe later) and hands the receipt or refund to the ledger |
 | `managers/migrations.ts` | The accounting tables, and the triggers that refuse deletes and silent changes to money |
 | `routes/api.ts` | JSON API under `/api/accounting`, including the CSV download at `/export` |
-| `forms.ts` | The treasurer's forms (entry, transfer, void, fund create/rename/close) for the forms add-on |
+| `forms.ts` | The treasurer's forms (receipt, refund, money out, transfer, void, fund create/rename/close) for the forms add-on |
 | `plugins/LedgerPlugin.ts` | `[{Ledger view='balances' / 'entries' / 'summary'}]`, drawn for the viewer |
 | `config/default-config.json` | The database declaration, permissions with their audit and step-up rules, the `treasurer` role and its policy |
 | `pages/` | The treasurer's pages and the Using Accounting help page, seeded on first enable |

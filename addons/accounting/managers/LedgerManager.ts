@@ -141,6 +141,41 @@ export interface NewTransaction {
   memo?: string;
 }
 
+/**
+ * Money received, recorded by hand (D-029). The payer, the method and the
+ * reason are required; a check's number goes in `paymentMethodId`. The receipt
+ * number is the ledger's, never the caller's.
+ */
+export interface NewReceipt {
+  amount: number;
+  date: string;
+  fundId: string;
+  category: string;
+  partyName: string;
+  partyPersonId?: string;
+  paymentMethod: string;
+  paymentMethodId?: string;
+  memo: string;
+  /** What the money is for, once dues, donations and events exist: e.g. { type: 'dues-invoice', id }. */
+  reference?: { type: string; id: string };
+}
+
+/** A refund of a receipt: money returned to the payer. The amount defaults to what is left to refund. */
+export interface ReceiptRefund {
+  amount?: number;
+  date: string;
+  memo: string;
+  paymentMethod?: string;
+  paymentMethodId?: string;
+}
+
+/** The provider that recorded a receipt, and its own number for it (D-004). */
+export interface ReceiptSource {
+  provider: string;
+  /** The provider's number; absent for the manual provider, whose number the ledger assigns. */
+  confirmationNumber?: string;
+}
+
 export interface FundBalance {
   fundId: string;
   name: string;
@@ -229,7 +264,7 @@ const ENTRY_CHOICES = 100;
 function entryLabel(t: Transaction, fundName: string, formatMoney: LedgerOptions['formatMoney']): string {
   const who = t.partyName || t.memo || t.category;
   const kind = t.transferId ? 'transfer ' : '';
-  return [t.date, fundName, `${kind}${t.direction} ${formatMoney(t.amount, t.currency)}`, who].filter(Boolean).join(' · ');
+  return [t.confirmationNumber, t.date, fundName, `${kind}${t.direction} ${formatMoney(t.amount, t.currency)}`, who].filter(Boolean).join(' · ');
 }
 
 export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
@@ -238,6 +273,11 @@ export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
   { value: '30', label: 'Bank transfer' },
   { value: '48', label: 'Card' }
 ];
+
+/** The provider that is always there: receipts the treasurer records by hand (D-004). */
+export const MANUAL_PROVIDER = 'manual';
+const RECEIPT_REFUND = 'receipt-refund';
+const MONEY_IN_IS_A_RECEIPT = 'money in is recorded as a receipt (Record a Receipt), not as an entry';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** UN/CEFACT payment means code (UNCL 4461): digits, or ZZZ for "mutually defined". */
@@ -558,6 +598,14 @@ export default class LedgerManager {
             .slice(0, ENTRY_CHOICES);
           return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
         }
+        case 'receipts': {
+          await this.authorize(actor, 'receipt-refund');
+          const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
+          return this.receiptRows()
+            .filter(t => this.refundable(t) > 0)
+            .slice(0, ENTRY_CHOICES)
+            .map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
+        }
         case 'categories':
           await this.authorize(actor, 'ledger-record');
           return Object.entries(this.categories())
@@ -657,9 +705,11 @@ export default class LedgerManager {
 
   // ── Entries ────────────────────────────────────────────────────────────
 
+  /** Money out. Money in is a receipt (`postReceipt`, D-029). */
   async postTransaction(actor: LedgerActor, input: NewTransaction): Promise<Transaction> {
     await this.authorize(actor, 'ledger-record');
     const user = actor.actingUsername();
+    if (input.direction === 'in') throw new LedgerError(400, MONEY_IN_IS_A_RECEIPT);
     const entry = this.newEntry(user, input, { sourceType: 'manual' });
 
     await this.audit(actor, {
@@ -690,6 +740,12 @@ export default class LedgerManager {
       : [original];
     if (original.transferId && replacement) {
       throw new LedgerError(400, 'a transfer is voided as a pair without a replacement; post a new transfer instead');
+    }
+    if (replacement?.direction === 'in') {
+      throw new LedgerError(400, 'a receipt is corrected by voiding it and recording a new receipt, not by a replacement');
+    }
+    if (original.confirmationNumber && this.refunded(original) > 0) {
+      throw new LedgerError(409, 'this receipt has refunds; void the refunds first');
     }
     const next = replacement ? this.newEntry(user, replacement, { sourceType: 'adjustment', voidsId: original.id }) : null;
 
@@ -736,6 +792,77 @@ export default class LedgerManager {
     return [out, into];
   }
 
+  // ── Receipts (D-028, D-029) ──────────────────────────────────────────────
+
+  /**
+   * Money received. The manual provider's receipt is numbered by the ledger,
+   * R-0001 onwards, in the same database transaction that posts it: one
+   * sequence per site, never reused (a voided receipt keeps its number). A
+   * provider's own number (Stripe, later) is stored as given; provider plus
+   * number is unique, so the same receipt never posts twice.
+   */
+  async postReceipt(actor: LedgerActor, input: NewReceipt, source: ReceiptSource): Promise<Transaction> {
+    await this.authorize(actor, 'ledger-record');
+    const user = actor.actingUsername();
+    const provider = text(source.provider, 'provider', { required: true, max: 32 }) as string;
+    const given = text(source.confirmationNumber, 'confirmationNumber', { max: 128 });
+    if (provider !== MANUAL_PROVIDER && !given) throw new LedgerError(400, 'confirmationNumber is required for a provider receipt');
+    text(input.partyName, 'partyName', { required: true, max: 200 });
+    text(input.paymentMethod, 'paymentMethod', { required: true, max: 16 });
+    const referenceType = text(input.reference?.type, 'reference.type', { max: 32 });
+    const referenceId = text(input.reference?.id, 'reference.id', { max: 64 });
+    if (Boolean(referenceType) !== Boolean(referenceId)) throw new LedgerError(400, 'reference needs both a type and an id');
+    const draft = this.newEntry(user, { ...input, direction: 'in' },
+      { sourceType: referenceType ?? 'receipt', sourceId: referenceId, provider, confirmationNumber: given });
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('ledger-record'), action: 'receipt-record',
+      severity: 'medium', resource: draft.id, resourceType: 'accounting-transaction',
+      metadata: { amount: draft.amount, currency: draft.currency, fundId: draft.fundId, date: draft.date, category: draft.category,
+        provider, confirmationNumber: given ?? 'assigned on posting', paymentMethod: draft.paymentMethod }
+    });
+    let receipt = draft;
+    await this.commit(() => {
+      receipt = given ? draft : { ...draft, confirmationNumber: this.nextReceiptNumber() };
+      this.insert(receipt);
+      this.history(user, 'receipt-record', 'transaction', receipt.id, null, receipt);
+    });
+    return receipt;
+  }
+
+  /**
+   * Return money to the payer of a receipt: an out entry in the receipt's fund
+   * and category, linked to it. The receipt stays posted. Partial refunds add up
+   * to at most the receipt's amount.
+   */
+  async refundReceipt(actor: LedgerActor, receiptId: string, input: ReceiptRefund): Promise<Transaction> {
+    await this.authorize(actor, 'receipt-refund');
+    const user = actor.actingUsername();
+    const receipt = this.transaction(text(receiptId, 'receiptId', { required: true }) as string);
+    if (receipt.direction !== 'in' || !receipt.confirmationNumber) throw new LedgerError(400, 'only a receipt can be refunded');
+    if (receipt.status !== 'posted') throw new LedgerError(409, 'this receipt is voided');
+    const left = this.refundable(receipt);
+    if (left <= 0) throw new LedgerError(409, 'this receipt is already fully refunded');
+    const amount = input.amount === undefined ? left : minorUnits(input.amount, 'amount', { positive: true });
+    if (amount > left) throw new LedgerError(400, `amount is more than is left to refund (${this.formatMoney(left, receipt.currency)})`);
+    const refund = this.newEntry(user, {
+      direction: 'out', amount, date: input.date, fundId: receipt.fundId, category: receipt.category,
+      partyName: receipt.partyName ?? undefined, partyPersonId: receipt.partyPersonId ?? undefined,
+      paymentMethod: input.paymentMethod ?? receipt.paymentMethod ?? undefined, paymentMethodId: input.paymentMethodId, memo: input.memo
+    }, { sourceType: RECEIPT_REFUND, sourceId: receipt.id });
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('receipt-refund'), action: 'receipt-refund',
+      severity: 'high', resource: receipt.id, resourceType: 'accounting-transaction', reason: refund.memo,
+      metadata: { refundId: refund.id, receipt: receipt.confirmationNumber, amount, currency: refund.currency, leftBefore: left }
+    });
+    await this.commit(() => {
+      this.insert(refund);
+      this.history(user, 'receipt-refund', 'transaction', refund.id, null, refund, refund.memo);
+    });
+    return refund;
+  }
+
   async listTransactions(actor: LedgerActor, filter: { fundId?: string; from?: string; to?: string; includeVoided?: boolean } = {}): Promise<Transaction[]> {
     await this.authorize(actor, 'ledger-read');
     const where: string[] = [];
@@ -771,7 +898,7 @@ export default class LedgerManager {
 
   // ── Internals ──────────────────────────────────────────────────────────
 
-  private newEntry(user: string, input: NewTransaction, link: { sourceType: string; voidsId?: string; transferId?: string }): Transaction {
+  private newEntry(user: string, input: NewTransaction, link: { sourceType: string; sourceId?: string; voidsId?: string; transferId?: string; provider?: string; confirmationNumber?: string }): Transaction {
     if (input.direction !== 'in' && input.direction !== 'out') throw new LedgerError(400, "direction must be 'in' or 'out'");
     const fund = this.fund(text(input.fundId, 'fundId', { required: true }) as string);
     if (!fund.active) throw new LedgerError(409, `fund '${fund.name}' is closed`);
@@ -791,16 +918,17 @@ export default class LedgerManager {
       partyName: text(input.partyName, 'partyName', { max: 200 }) ?? null,
       paymentMethod: paymentMethod ?? null,
       paymentMethodId: text(input.paymentMethodId, 'paymentMethodId', { max: 64 }) ?? null,
-      provider: null,
-      confirmationNumber: null,
+      provider: link.provider ?? null,
+      confirmationNumber: link.confirmationNumber ?? null,
       sourceType: link.sourceType,
-      sourceId: null,
+      sourceId: link.sourceId ?? null,
       status: 'posted',
       voidsId: link.voidsId ?? null,
       voidedById: null,
       voidReason: null,
       transferId: link.transferId ?? null,
-      memo: text(input.memo, 'memo', { max: 2000 }) ?? '',
+      // Every money movement says why (D-029).
+      memo: text(input.memo, 'memo', { required: true, max: 2000 }) as string,
       createdBy: user,
       createdAt: this.stamp()
     };
@@ -831,6 +959,31 @@ export default class LedgerManager {
     const row = this.db.prepare('SELECT * FROM accounting_transactions WHERE id = ?').get(transactionId) as TransactionRow | undefined;
     if (!row) throw new LedgerError(404, 'unknown entry');
     return toTransaction(row);
+  }
+
+  /** The next manual receipt number: one past the highest ever used, voided ones included. */
+  private nextReceiptNumber(): string {
+    const row = this.db.prepare(`SELECT MAX(CAST(SUBSTR(confirmation_number, 3) AS INTEGER)) AS last
+      FROM accounting_transactions WHERE provider = ? AND confirmation_number LIKE 'R-%'`).get(MANUAL_PROVIDER) as { last: number | null };
+    return `R-${String((row.last ?? 0) + 1).padStart(4, '0')}`;
+  }
+
+  /** What has been refunded of a receipt so far (posted refunds only). */
+  private refunded(receipt: Transaction): number {
+    const row = this.db.prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM accounting_transactions
+      WHERE source_type = ? AND source_id = ? AND status = 'posted'`).get(RECEIPT_REFUND, receipt.id) as { total: number };
+    return row.total;
+  }
+
+  private refundable(receipt: Transaction): number {
+    return receipt.status === 'posted' ? receipt.amount - this.refunded(receipt) : 0;
+  }
+
+  /** Posted receipts, newest first. */
+  private receiptRows(): Transaction[] {
+    return (this.db.prepare(`SELECT * FROM accounting_transactions
+      WHERE direction = 'in' AND confirmation_number IS NOT NULL AND status = 'posted'
+      ORDER BY date DESC, created_at DESC`).all() as TransactionRow[]).map(toTransaction);
   }
 
   private stamp(): string {
