@@ -43,6 +43,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-027](#d-027-ledger-5-and-reports-7-are-done-their-leftovers-move-to-the-issues-that-need-them) | 2026-10-17 | Ledger (#5) and reports (#7) are done; their leftovers move to the issues that need them | Accepted |
 | [D-028](#d-028-receipts-for-money-in-statements-for-what-donors-get-payments-only-for-money-out) | 2026-10-18 | Receipts for money in, statements for what donors get, payments only for money out | Accepted |
 | [D-029](#d-029-how-receipts-are-recorded-numbered-corrected-and-refunded-every-money-movement-has-a-reason) | 2026-10-18 | How receipts are recorded, numbered, corrected and refunded; every money movement has a reason | Accepted |
+| [D-030](#d-030-step-up-off-for-accountings-money-actions-for-now) | 2026-10-18 | Step-up off for accounting's money actions, for now | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -797,6 +798,8 @@ __Consequences:__
   role's AAL2 and step-up on the money permissions.
 - #17 is closed as not planned.
 
+__Update (2026-10-18):__ step-up is off for accounting's money permissions for now; see [D-030](#d-030-step-up-off-for-accountings-money-actions-for-now).
+
 ## D-023: Categories follow the Unified Chart of Accounts (UCOA)
 
 - __Status:__ Accepted
@@ -1007,3 +1010,27 @@ __Decision (operator, 2026-10-18):__
 __Defaults (operator, 2026-10-18):__ the payer is a name for now (a member link comes with dues); the
 "what it pays for" link is optional until dues, donations and events exist; existing "in" entries get
 no receipt numbers after the fact. Deposit batches come later.
+
+## D-030: Step-up off for accounting's money actions, for now
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-18
+- __Links:__ [D-022](#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up),
+  [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3)
+
+__Context:__ Testing a refund on the dev site, the treasurer filled in the form, was sent to sign in
+again (step-up), came back, and found the form empty: everything had to be typed again. The forms
+add-on does not keep a submission across the fresh sign-in, and that fix is not being built now.
+
+__Decision (operator, 2026-10-18, relayed by the ngdpbase session):__ add-ons turn step-up off for now.
+Accounting removes `"step-up": true` from `ledger-adjust` (voids, transfers), `receipt-refund` and
+`ledger-export`. Their audit rules stay as they are (`on-failure: refuse`). ngdpbase core's own
+step-up window goes from 15 to 60 minutes; its own step-up permissions are unchanged.
+
+__What still protects money actions:__ the treasurer role needs a passkey sign-in (`required-aal: 2`,
+D-009); every action asks the decision point; every write is audited, and refused if its record
+cannot be written.
+
+__Turning it back on:__ when the form keeps its fields across a fresh sign-in, add `"step-up": true`
+back to those three entries in `addons/accounting/config/default-config.json` and restore the
+sentences in the docs and pages.

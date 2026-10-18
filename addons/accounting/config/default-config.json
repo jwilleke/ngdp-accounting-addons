@@ -27,22 +27,19 @@
       "description": "Void a posted entry and post its replacement, or move money between funds",
       "icon": "pen-to-square",
       "color": "#fd7e14",
-      "audit": { "on-failure": "refuse", "description": "Ledger entry voided or replaced, or money moved between funds" },
-      "step-up": true
+      "audit": { "on-failure": "refuse", "description": "Ledger entry voided or replaced, or money moved between funds" }
     },
     "receipt-refund": {
       "description": "Refund money received: return all or part of a receipt to the payer",
       "icon": "rotate-left",
       "color": "#fd7e14",
-      "audit": { "on-failure": "refuse", "description": "Receipt refunded; the record keeps the receipt number and amount" },
-      "step-up": true
+      "audit": { "on-failure": "refuse", "description": "Receipt refunded; the record keeps the receipt number and amount" }
     },
     "ledger-export": {
       "description": "Download the ledger as CSV for the books of record",
       "icon": "file-csv",
       "color": "#fd7e14",
-      "audit": { "on-failure": "refuse", "description": "Ledger exported as CSV; the record keeps the period, row count and file hash" },
-      "step-up": true
+      "audit": { "on-failure": "refuse", "description": "Ledger exported as CSV; the record keeps the period, row count and file hash" }
     },
     "fund-manage": {
       "description": "Create, rename and close funds",
