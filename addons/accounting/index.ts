@@ -18,8 +18,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
-import type { Decision } from '../../dist/src/types/Policy.js';
-import type { AddonHost } from '../../dist/src/utils/addonHost.js';
+import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';

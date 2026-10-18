@@ -4,13 +4,10 @@
  * export that is permissioned, audited with its hash, and refused without a
  * record. Each test opens its own temporary database and removes only it.
  */
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { testLedgerParts, testFormatters } from './host.js';
-import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
+import { openTestLedgerDatabase } from './host.js';
 import LedgerManager, { type LedgerActor, type LedgerAuditRecord, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
 import { renderLedgerView } from '../plugins/LedgerPlugin.js';
@@ -24,8 +21,7 @@ const actor = (granted: string[] = ALL): LedgerActor => ({
 });
 
 describe('reports', () => {
-  let dir: string;
-  let provider: SqliteDatabaseProvider;
+  let provider: { handle: unknown; close(): void };
   let audit: LedgerAuditRecord[];
   let auditFails: boolean;
   let ledger: LedgerManager;
@@ -33,8 +29,7 @@ describe('reports', () => {
   let roof: string;
 
   beforeEach(async () => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-reports-'));
-    provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
+    provider = openTestLedgerDatabase();
     audit = [];
     auditFails = false;
     ledger = new LedgerManager({ ...testLedgerParts,
@@ -64,7 +59,6 @@ describe('reports', () => {
 
   afterEach(() => {
     provider.close();
-    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   test('period: current, previous, a named month, and explicit dates', () => {

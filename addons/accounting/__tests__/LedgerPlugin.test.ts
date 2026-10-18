@@ -3,12 +3,9 @@
  * permissions, with ngdpbase's shared plugin formatting. Each test opens its
  * own temporary database and removes only that folder.
  */
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { testLedgerParts, testFormatters } from './host.js';
-import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
+import { openTestLedgerDatabase } from './host.js';
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
 import LedgerPlugin, { renderLedgerView } from '../plugins/LedgerPlugin.js';
@@ -26,16 +23,14 @@ const GRANTS: Record<string, string[]> = {
 };
 
 describe('LedgerPlugin', () => {
-  let dir: string;
-  let provider: SqliteDatabaseProvider;
+  let provider: { handle: unknown; close(): void };
   let ledger: LedgerManager;
   // What /api/accounting/view renders for a reader (the page itself holds only a placeholder).
   const render = (viewer: string | null, params: Record<string, string>) =>
     renderLedgerView(testFormatters, ledger, ledger.viewerActor(viewer ? { username: viewer } : null), params);
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-plugin-'));
-    provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
+    provider = openTestLedgerDatabase();
     ledger = new LedgerManager({ ...testLedgerParts,
       db: provider.handle as unknown as LedgerDb,
       currency: 'USD',
@@ -48,7 +43,6 @@ describe('LedgerPlugin', () => {
 
   afterEach(() => {
     provider.close();
-    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   test('balances: money in the site currency, escaped names, and a total', async () => {

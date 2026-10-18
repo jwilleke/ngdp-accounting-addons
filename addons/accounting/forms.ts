@@ -11,8 +11,7 @@
  *
  * When the forms add-on is not enabled, nothing here runs; the JSON API stays.
  */
-import type { ApiContext } from '../../dist/src/context/ApiContext.js';
-import type { AddonHost } from '../../dist/src/utils/addonHost.js';
+import type { AddonHost, ApiContext } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from './managers/LedgerManager.js';
 import { LedgerError, type NewTransaction } from './managers/LedgerManager.js';
 
@@ -154,7 +153,7 @@ export function fieldOf(ledgerForm: LedgerForm, message: string): string | undef
 }
 
 export async function registerForms(engine: Engine, host: AddonHost): Promise<void> {
-  const log = (message: string): void => host.logger.info(message);
+  const log = (message: string): void => { host.logger.info(message); };
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
   if (!forms || !definitions) { log('[accounting] Forms add-on not enabled: treasurer screens are off; the API still works'); return; }

@@ -47,16 +47,15 @@ One path for each thing, never a local copy:
   into ngdpbase's refusal with `ctx.enforceDeny` (D-025). No role names in code.
 - __Caching__: after each write the manager bumps the `LedgerManager` topic in `CacheManager`.
 
-From `../../dist` the runtime code imports types only. Tests may import core values (the host
-builder, the SQLite provider, the CSV writer, the plugin formatters).
+Types come from `@jwilleke/ngdpbase-types` (a dev dependency, published with each ngdpbase
+release); the tests use its `/testing` kit (the host builder, an in-memory add-on database checked
+against our declaration, the CSV writer, the plugin formatters). Nothing imports ngdpbase's files.
 
 ## Develop
 
-The repository root needs a `dist` link to a built ngdpbase checkout at or above `minVersion`
-(types, and core modules for the tests):
+No ngdpbase checkout is needed to build or test:
 
 ```bash
-ln -s ../ngdpbase/dist dist     # once, at the repository root
 cd addons/accounting
 npm install
 npm test                        # builds (tsc) first, then runs vitest

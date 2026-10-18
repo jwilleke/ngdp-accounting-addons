@@ -18,9 +18,7 @@
  * emitter.
  */
 import { randomUUID } from 'node:crypto';
-import type { ActorContext } from '../../../dist/src/context/ActorContext.js';
-import type { Decision } from '../../../dist/src/types/Policy.js';
-import type { AddonHost } from '../../../dist/src/utils/addonHost.js';
+import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { createHash } from 'node:crypto';
 
 /**

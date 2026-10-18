@@ -7,12 +7,9 @@
  * SqliteDatabaseProvider, in its own temporary folder, and removes only that
  * folder afterwards — never a live data directory.
  */
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { testLedgerParts } from './host.js';
-import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
+import { openTestLedgerDatabase } from './host.js';
 import LedgerManager, { LedgerError, type LedgerActor, type LedgerAuditRecord, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
 
@@ -35,16 +32,14 @@ const actor = (granted: string[] = ALL, username = 'treasurer-tess', viaProxy?: 
 });
 
 describe('LedgerManager', () => {
-  let dir: string;
-  let provider: SqliteDatabaseProvider;
+  let provider: { handle: unknown; close(): void };
   let db: LedgerDb & { exec(sql: string): unknown };
   let audit: LedgerAuditRecord[];
   let auditFails: boolean;
   let ledger: LedgerManager;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-ledger-'));
-    provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
+    provider = openTestLedgerDatabase();
     db = provider.handle as unknown as LedgerDb & { exec(sql: string): unknown };
     audit = [];
     auditFails = false;
@@ -63,7 +58,6 @@ describe('LedgerManager', () => {
   afterEach(() => {
     provider.close();
     // Only this test's temporary folder.
-    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   const count = (table: string): number => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;

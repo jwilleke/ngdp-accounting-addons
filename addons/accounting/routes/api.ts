@@ -9,8 +9,7 @@
  * types are imported from core.
  */
 import type { Request, Response, Router } from 'express';
-import type { ApiContext } from '../../../dist/src/context/ApiContext.js';
-import type { AddonHost } from '../../../dist/src/utils/addonHost.js';
+import type { AddonHost, ApiContext } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
 
