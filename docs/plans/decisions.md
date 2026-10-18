@@ -1007,4 +1007,3 @@ __Decision (operator, 2026-10-18):__
 __Defaults (operator, 2026-10-18):__ the payer is a name for now (a member link comes with dues); the
 "what it pays for" link is optional until dues, donations and events exist; existing "in" entries get
 no receipt numbers after the fact. Deposit batches come later.
-
