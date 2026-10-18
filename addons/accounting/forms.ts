@@ -53,10 +53,15 @@ const entryFields = (required: boolean): FieldDef[] => [
   { name: 'memo', type: 'textarea', label: 'Reason', required }
 ];
 
-/** An entry from a form: always money out, whatever an older saved form definition sends. */
+/**
+ * An entry from a form. The current form has no direction field and means money
+ * out. An older saved form still sends "in" or "out": "in" is passed on as it is,
+ * so the ledger refuses it and says to record a receipt, never turned into money
+ * out.
+ */
 export function entryFromForm(data: Data): NewTransaction {
   return {
-    direction: 'out',
+    direction: data.direction === 'in' ? 'in' : 'out',
     amount: data.amount as number,
     date: data.date as string,
     fundId: data.fundId as string,
@@ -89,7 +94,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
       [{ name: 'money', type: 'section', label: 'Money' }, ...entryFields(true).slice(0, 4),
         { name: 'who', type: 'section', label: 'Who, how and why' }, ...entryFields(true).slice(4)]),
     run: async ({ ledger }, ctx, data) => ({ transactionId: (await ledger.postTransaction(ctx, entryFromForm(data))).id }),
-    messageFields: [[/^fund '/, 'fundId']]
+    messageFields: [[/^fund '/, 'fundId'], [/^money in is recorded as a receipt/, 'direction']]
   },
   {
     definition: form('ledger-transfer', 'Move money between funds',
