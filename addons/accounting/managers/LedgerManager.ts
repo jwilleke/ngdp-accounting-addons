@@ -757,9 +757,12 @@ export default class LedgerManager {
     const description = text(input.description, 'description') ?? '';
     const openingBalance = input.openingBalance === undefined ? 0 : minorUnits(input.openingBalance, 'openingBalance', { positive: false });
     const openingDate = input.openingDate === undefined ? this.today() : isoDate(input.openingDate, 'openingDate');
-    if (this.db.prepare('SELECT id FROM accounting_funds WHERE name = ?').get(name)) {
-      throw new LedgerError(409, `a fund named '${name}' already exists`);
-    }
+    const nameTaken = (): void => {
+      if (this.db.prepare('SELECT id FROM accounting_funds WHERE name = ?').get(name)) {
+        throw new LedgerError(409, `a fund named '${name}' already exists`);
+      }
+    };
+    nameTaken();
     const fund: Fund = {
       id: this.newId(), name, description, restricted: input.restricted === true, active: true,
       openingBalance, openingDate, createdBy: user, createdAt: this.stamp()
@@ -771,6 +774,7 @@ export default class LedgerManager {
       metadata: { name, openingBalance, openingDate, restricted: fund.restricted }
     });
     await this.commit(() => {
+      nameTaken(); // again inside the transaction, as for an account's opening balance
       this.db.prepare(`INSERT INTO accounting_funds (id, name, description, restricted, active, opening_balance, opening_date, created_by, created_at)
         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`).run(fund.id, name, description, fund.restricted ? 1 : 0, openingBalance, openingDate, user, fund.createdAt);
       this.history(user, 'fund-create', 'fund', fund.id, null, fund);
@@ -847,9 +851,12 @@ export default class LedgerManager {
     if (!account.configured) throw new LedgerError(409, `account '${account.id}' is no longer configured`);
     const openingBalance = minorUnits(input.openingBalance, 'openingBalance', { positive: false });
     const openingDate = input.openingDate === undefined || input.openingDate === '' ? this.today() : isoDate(input.openingDate, 'openingDate');
-    if (this.db.prepare('SELECT account_id FROM accounting_account_openings WHERE account_id = ?').get(account.id)) {
-      throw new LedgerError(409, `account '${account.name}' already has its opening balance`);
-    }
+    const alreadySet = (): void => {
+      if (this.db.prepare('SELECT account_id FROM accounting_account_openings WHERE account_id = ?').get(account.id)) {
+        throw new LedgerError(409, `account '${account.name}' already has its opening balance`);
+      }
+    };
+    alreadySet();
     const opening = { accountId: account.id, openingBalance, openingDate, createdBy: user, createdAt: this.stamp() };
 
     await this.audit(actor, {
@@ -858,6 +865,8 @@ export default class LedgerManager {
       metadata: { name: account.name, openingBalance, openingDate }
     });
     await this.commit(() => {
+      // Again inside the transaction: a second submission can pass the first check while the audit is written.
+      alreadySet();
       this.db.prepare(`INSERT INTO accounting_account_openings (account_id, opening_balance, opening_date, created_by, created_at)
         VALUES (?, ?, ?, ?, ?)`).run(account.id, openingBalance, openingDate, user, opening.createdAt);
       this.history(user, 'account-opening', 'account', account.id, null, opening);
