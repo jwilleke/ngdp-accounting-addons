@@ -42,6 +42,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-026](#d-026-ledger-tables-stay-the-ledger-plugins-own-for-now) | 2026-10-16 | Ledger tables stay the `[{Ledger}]` plugin's own for now; DataFeed and wiki-table markup are not adopted yet | Accepted |
 | [D-027](#d-027-ledger-5-and-reports-7-are-done-their-leftovers-move-to-the-issues-that-need-them) | 2026-10-17 | Ledger (#5) and reports (#7) are done; their leftovers move to the issues that need them | Accepted |
 | [D-028](#d-028-receipts-for-money-in-statements-for-what-donors-get-payments-only-for-money-out) | 2026-10-18 | Receipts for money in, statements for what donors get, payments only for money out | Accepted |
+| [D-029](#d-029-how-receipts-are-recorded-numbered-corrected-and-refunded-every-money-movement-has-a-reason) | 2026-10-18 | How receipts are recorded, numbered, corrected and refunded; every money movement has a reason | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -975,3 +976,35 @@ __Decision (operator):__ one word per thing.
 
 Unchanged: "payment means" (UN/CEFACT UNCL 4461, D-018) names how money moves, in either direction;
 it stays in code (`paymentMethod`). Screens say "Method".
+
+## D-029: How receipts are recorded, numbered, corrected and refunded; every money movement has a reason
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-18
+- __Links:__ [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3),
+  [D-004](#d-004-paymentmanager-with-configurable-providers),
+  [D-028](#d-028-receipts-for-money-in-statements-for-what-donors-get-payments-only-for-money-out)
+
+__Decision (operator, 2026-10-18):__
+
+1. __Receipt numbers.__ Every receipt recorded by hand gets a number from the system, `R-0001`,
+   `R-0002`, one sequence per site. It is the manual provider's `confirmationNumber`, so the same
+   receipt cannot post twice, and the treasurer can write it on a paper slip. A check's own number is
+   still recorded, as the method reference (`paymentMethodId`). Numbers are never reused.
+2. __All money in is a receipt.__ "Record a Receipt" is the only way to record incoming money by hand,
+   so every amount in has a receipt number, a method and a payer (bank interest is a receipt from the
+   bank). The ledger refuses a plain "in" entry that does not come through receipts. "Record an
+   Entry" keeps money out and corrections.
+3. __Mistakes and refunds are different.__ A receipt entered wrongly is voided with a reason
+   (`ledger-adjust`, step-up) and recorded again; the new one gets a new number, and the voided one
+   stays visible. A refund is money actually returned: `receipt-refund` (step-up) posts an out entry
+   linked to the original, which stays posted; partial refunds are allowed.
+4. __Every money movement has a reason.__ A receipt, a money-out entry, a refund and a transfer each
+   need a reason (free text for now); voids already do. The reason is the plain-words why ("March
+   dues, Ann Lee"); the category stays the bookkeeping class. Entries recorded before this keep their
+   history as they are.
+
+__Defaults (operator, 2026-10-18):__ the payer is a name for now (a member link comes with dues); the
+"what it pays for" link is optional until dues, donations and events exist; existing "in" entries get
+no receipt numbers after the fact. Deposit batches come later.
+
