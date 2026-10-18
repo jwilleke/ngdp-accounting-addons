@@ -58,6 +58,10 @@ In the site's `app-custom-config.json`:
     "4100": "Dues",
     "4200": "Donations",
     "5200": "Supplies"
+  },
+  "ngdpbase.addons.accounting.accounts": {
+    "checking": { "name": "Checking at First Bank", "kind": "bank", "default": true },
+    "savings": { "name": "Savings", "kind": "bank" }
   }
 }
 ```
@@ -65,6 +69,19 @@ In the site's `app-custom-config.json`:
 Restart the site. On first start the add-on creates its database (`accounting.db` in the data
 folder), seeds its pages, and logs `Ledger ready`. The categories are UCOA account codes and labels;
 the receipt and entry forms offer exactly these.
+
+The __accounts__ say where the money sits; funds say what it is for
+([D-031](../plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)). One bank account
+holds money for several funds. The add-on ships one bank account, `checking` ("Checking"); rename it
+and add the others, keyed by an id of lowercase letters, digits and dashes. `false` removes the
+shipped one. The account marked `default` is where ACH, Zelle and bank transfers land and where
+money out comes from. __Cash on Hand__ is built in: cash, checks and card-reader receipts wait there
+until they are deposited. The treasurer then sets each account's opening balance on __Manage Funds__,
+so the accounts add up to the funds. Bank account and routing numbers are not stored yet.
+
+Entries recorded before accounts existed are in Checking. An account removed from the configuration
+while entries still name it is kept in the reports, marked "no longer configured", and the add-on
+warns at startup.
 
 Money coming in is recorded as a __receipt__ through the manual provider (cash, checks, bank
 transfers), which is always on. Online providers will be added to
@@ -133,6 +150,8 @@ older one.
 - __Admin → Add-ons__ shows accounting healthy: "Ledger ready".
 - The treasurer, signed in with a passkey, sees the __Accounting__ page and can create a fund and
   record an entry; the fund's balance follows.
+- After the treasurer sets the accounts' opening balances, the Ledger page's accounts add up to its
+  funds (otherwise it says by how much they differ).
 - Someone without the role who opens the Ledger page sees "You may not see the ledger." (or no page).
 - The board page shows the summary without names, and without download links.
 - `scripts/smoke.sh <site-url> <admin-password>` passes against a copy of the site (it needs the
@@ -144,6 +163,8 @@ older one.
 - No month lock: a closed month can still receive entries dated in it (#19).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
+- No deposits yet (#3): money in Cash on Hand stays there until "Make a Deposit" is built.
+- Bank account and routing numbers are not stored yet (#3).
 - No dues, donations or events modules yet.
 - A site that enabled accounting before receipts keeps the forms it first saved: its "Record an
   Entry" form still shows an In or out choice and an optional memo. The ledger records only money out

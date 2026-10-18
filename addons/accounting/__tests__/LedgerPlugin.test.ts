@@ -91,6 +91,6 @@ describe('LedgerPlugin', () => {
   });
 
   test('an unknown view says which views exist', async () => {
-    expect(await render('tess', { view: 'secrets' })).toContain('use balances, entries or summary');
+    expect(await render('tess', { view: 'secrets' })).toContain('use balances, accounts, entries or summary');
   });
 });

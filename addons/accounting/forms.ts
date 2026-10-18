@@ -39,6 +39,10 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 const fundsChoice = (name: string, label: string, required = true): FieldDef =>
   ({ name, type: 'dropdown', label, required, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' });
 
+/** Where the money sits (D-031). Blank lets the method pick: cash and checks to Cash on Hand, bank methods to the default bank account. */
+const accountChoice = (label = 'Account (blank: picked by method)'): FieldDef =>
+  ({ name: 'accountId', type: 'dropdown', label, required: false, optionsSource: 'fetch:LedgerManager.toFormOptions(list=accounts)' });
+
 const methodChoice = (required: boolean): FieldDef =>
   ({ name: 'paymentMethod', type: 'dropdown', label: 'Method', required, optionsSource: 'fetch:LedgerManager.toFormOptions(list=payment-methods)' });
 
@@ -47,6 +51,7 @@ const entryFields = (required: boolean): FieldDef[] => [
   { name: 'amount', type: 'amount', label: 'Amount', required },
   { name: 'date', type: 'date', label: 'Date', required },
   fundsChoice('fundId', 'Fund', required),
+  accountChoice(),
   { name: 'category', type: 'dropdown', label: 'Category', required, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories)' },
   { name: 'partyName', type: 'text', label: 'Paid to', required: false },
   methodChoice(false),
@@ -65,6 +70,7 @@ export function entryFromForm(data: Data): NewTransaction {
     amount: data.amount as number,
     date: data.date as string,
     fundId: data.fundId as string,
+    accountId: str(data.accountId),
     category: data.category as string,
     partyName: str(data.partyName),
     paymentMethod: str(data.paymentMethod),
@@ -91,10 +97,10 @@ export const LEDGER_FORMS: LedgerForm[] = [
   {
     definition: form('ledger-entry', 'Record money out',
       'Money paid out of a fund, and why. Money received is a receipt: use Record a Receipt. A posted entry is never edited: a mistake is voided and replaced.',
-      [{ name: 'money', type: 'section', label: 'Money' }, ...entryFields(true).slice(0, 4),
-        { name: 'who', type: 'section', label: 'Who, how and why' }, ...entryFields(true).slice(4)]),
+      [{ name: 'money', type: 'section', label: 'Money' }, ...entryFields(true).slice(0, 5),
+        { name: 'who', type: 'section', label: 'Who, how and why' }, ...entryFields(true).slice(5)]),
     run: async ({ ledger }, ctx, data) => ({ transactionId: (await ledger.postTransaction(ctx, entryFromForm(data))).id }),
-    messageFields: [[/^fund '/, 'fundId'], [/^money in is recorded as a receipt/, 'direction']]
+    messageFields: [[/^fund '/, 'fundId'], [/^account '/, 'accountId'], [/^money in is recorded as a receipt/, 'direction']]
   },
   {
     definition: form('ledger-transfer', 'Move money between funds',
@@ -123,7 +129,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
       return { replacementId: result.replacement?.id ?? null };
     },
     messageFields: [[/^this entry is already voided/, 'transactionId'], [/^this receipt has refunds/, 'transactionId'],
-      [/^a transfer is voided as a pair/, 'amount'], [/^a receipt is corrected/, 'amount'], [/^fund '/, 'fundId']]
+      [/^a transfer is voided as a pair/, 'amount'], [/^a receipt is corrected/, 'amount'], [/^fund '/, 'fundId'], [/^account '/, 'accountId']]
   },
   {
     definition: form('receipt-record', 'Record a receipt',
@@ -132,6 +138,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'amount', type: 'amount', label: 'Amount', required: true },
         { name: 'date', type: 'date', label: 'Date received', required: true },
         fundsChoice('fundId', 'Fund'),
+        accountChoice(),
         { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories)' },
         { name: 'who', type: 'section', label: 'Who, how and why' },
         { name: 'partyName', type: 'text', label: 'Received from', required: true },
@@ -140,13 +147,13 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => {
       const receipt = await receipts.recordReceipt(ctx, {
-        amount: data.amount as number, date: data.date as string, fundId: data.fundId as string, category: data.category as string,
+        amount: data.amount as number, date: data.date as string, fundId: data.fundId as string, accountId: str(data.accountId), category: data.category as string,
         partyName: data.partyName as string, paymentMethod: data.paymentMethod as string,
         paymentMethodId: str(data.paymentMethodId), memo: data.memo as string
       });
       return { transactionId: receipt.id, receiptNumber: receipt.confirmationNumber };
     },
-    messageFields: [[/^fund '/, 'fundId']]
+    messageFields: [[/^fund '/, 'fundId'], [/^account '/, 'accountId']]
   },
   {
     definition: form('receipt-refund', 'Refund a receipt',
@@ -155,15 +162,17 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'amount', type: 'amount', label: 'Amount (blank refunds what is left)', required: false },
         { name: 'date', type: 'date', label: 'Date refunded', required: true },
         methodChoice(false),
+        accountChoice('Paid back from (blank: picked by method)'),
         { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => ({
       transactionId: (await receipts.refundReceipt(ctx, data.receiptId as string, {
         amount: typeof data.amount === 'number' ? data.amount : undefined, date: data.date as string,
-        paymentMethod: str(data.paymentMethod), paymentMethodId: str(data.paymentMethodId), memo: data.memo as string
+        paymentMethod: str(data.paymentMethod), paymentMethodId: str(data.paymentMethodId), memo: data.memo as string,
+        accountId: str(data.accountId)
       })).id
     }),
-    messageFields: [[/^(only a receipt|this receipt)/, 'receiptId']]
+    messageFields: [[/^(only a receipt|this receipt)/, 'receiptId'], [/^account '/, 'accountId']]
   },
   {
     definition: form('fund-create', 'Create a fund', 'A new fund starts at its opening balance, on its opening date.',
@@ -195,6 +204,19 @@ export const LEDGER_FORMS: LedgerForm[] = [
       [fundsChoice('fundId', 'Fund'), { name: 'reason', type: 'textarea', label: 'Reason', required: false }]),
     run: async ({ ledger }, ctx, data) => ({ fundId: (await ledger.closeFund(ctx, data.fundId as string, str(data.reason))).id }),
     messageFields: [[/^fund '/, 'fundId']]
+  },
+  {
+    definition: form('account-opening', "Set an account's opening balance",
+      'What the account held on the day the books started: the bank statement for a bank account, the count for Cash on Hand. Set once; it never changes. All accounts added up should equal all funds.',
+      [{ name: 'accountId', type: 'dropdown', label: 'Account', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=accounts)' },
+        { name: 'openingBalance', type: 'amount', label: 'Opening balance', required: true },
+        { name: 'openingDate', type: 'date', label: 'Opening date (default today)', required: false }]),
+    run: async ({ ledger }, ctx, data) => ({
+      accountId: (await ledger.setAccountOpening(ctx, data.accountId as string, {
+        openingBalance: data.openingBalance as number, openingDate: str(data.openingDate)
+      })).accountId
+    }),
+    messageFields: [[/^account '/, 'accountId']]
   }
 ];
 

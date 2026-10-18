@@ -52,6 +52,11 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   router.post('/funds/:id/close', handle(200, (ctx, ledger, req) => ledger.closeFund(ctx, String(req.params.id), body(req).reason as string | undefined)));
   router.get('/balances', handle(200, (ctx, ledger) => ledger.fundBalances(ctx)));
 
+  // Accounts: where the money sits (D-031). Bank accounts are configuration; only their opening balance is set here.
+  router.get('/accounts', handle(200, (ctx, ledger) => ledger.listAccounts(ctx)));
+  router.get('/account-balances', handle(200, (ctx, ledger) => ledger.accountBalances(ctx)));
+  router.post('/accounts/:id/opening', handle(201, (ctx, ledger, req) => ledger.setAccountOpening(ctx, String(req.params.id), body(req) as never)));
+
   // Entries
   router.get('/transactions', handle(200, (ctx, ledger, req) => ledger.listTransactions(ctx, {
     fundId: query(req, 'fund'), from: query(req, 'from'), to: query(req, 'to'), includeVoided: query(req, 'voided') === 'true'

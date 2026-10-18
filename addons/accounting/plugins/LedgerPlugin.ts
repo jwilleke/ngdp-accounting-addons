@@ -2,6 +2,7 @@
  * LedgerPlugin — the ledger, shown live on a page for the person viewing it.
  *
  *   [{Ledger view='balances'}]                       fund balances, with a total
+ *   [{Ledger view='accounts'}]                       account balances (where the money sits), with a total (D-031)
  *   [{Ledger view='entries' max='20'}]               latest entries, newest first
  *   [{Ledger view='entries' fund='<fund id>' voided='true'}]
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
@@ -19,7 +20,7 @@
  */
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
-import type { FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
+import type { AccountBalance, FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
 
 type PluginParams = Record<string, string | number | boolean>;
 
@@ -56,6 +57,36 @@ function balancesTable(f: PluginFormatters, rows: FundBalance[], currency: strin
       footer: ['<strong>Total</strong>', money(sum(r => r.openingBalance)), money(sum(r => r.totalIn)), money(sum(r => r.totalOut)), `<strong>${money(sum(r => r.balance))}</strong>`]
     }
   );
+}
+
+const accountName = (f: PluginFormatters, name: string, configured: boolean): string =>
+  f.escapeHtml(name) + (configured ? '' : ' <span class="text-muted">(no longer configured)</span>');
+
+/** Said when the two ways of counting the same money disagree: an account's opening balance is missing or wrong. */
+const disagreement = (f: PluginFormatters, funds: number, accounts: number, currency: string): string =>
+  funds === accounts ? '' : note(f, `The accounts add up to ${f.formatMoney(accounts, currency)} and the funds to ${f.formatMoney(funds, currency)}. They count the same money: check the accounts' opening balances.`);
+
+function accountsTable(f: PluginFormatters, rows: AccountBalance[], fundsTotal: number, currency: string): string {
+  const { escapeHtml, formatAsTable, formatMoney } = f;
+  const money = (cents: number) => escapeHtml(formatMoney(cents, currency));
+  const sum = (pick: (r: AccountBalance) => number) => rows.reduce((total, r) => total + pick(r), 0);
+  const table = formatAsTable(
+    ['Account', 'Opening', 'In', 'Out', 'Balance'],
+    rows.map(r => [
+      accountName(f, r.name, r.configured) + (r.configured && !r.active ? ' <span class="text-muted">(closed)</span>' : ''),
+      r.openingDate ? money(r.openingBalance) : '<span class="text-muted">not set</span>',
+      money(r.totalIn),
+      money(r.totalOut),
+      `<strong>${money(r.balance)}</strong>`
+    ]),
+    {
+      sortable: true,
+      cellDataSort: sortOn(rows, { 0: r => r.name, 1: r => r.openingBalance, 2: r => r.totalIn, 3: r => r.totalOut, 4: r => r.balance }),
+      emptyMessage: 'No accounts.',
+      footer: ['<strong>Total</strong>', money(sum(r => r.openingBalance)), money(sum(r => r.totalIn)), money(sum(r => r.totalOut)), `<strong>${money(sum(r => r.balance))}</strong>`]
+    }
+  );
+  return table + disagreement(f, fundsTotal, sum(r => r.balance), currency);
 }
 
 function entriesTable(f: PluginFormatters, entries: Transaction[], fundNames: Map<string, string>): string {
@@ -98,6 +129,18 @@ function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolea
       footer: ['<strong>Total</strong>', money(s.totals.start), s.totals.opened ? money(s.totals.opened) : '', money(s.totals.moneyIn), money(s.totals.moneyOut), `<strong>${money(s.totals.end)}</strong>`]
     }
   );
+  const accounts = formatAsTable(
+    ['Account', 'Start', 'Opened', 'In', 'Out', 'End'],
+    s.accounts.map(a => [
+      accountName(f, a.name, a.configured),
+      money(a.start), a.opened ? money(a.opened) : '', money(a.moneyIn), money(a.moneyOut), `<strong>${money(a.end)}</strong>`
+    ]),
+    {
+      sortable: true,
+      cellDataSort: sortOn(s.accounts, { 0: a => a.name, 1: a => a.start, 2: a => a.opened, 3: a => a.moneyIn, 4: a => a.moneyOut, 5: a => a.end }),
+      emptyMessage: 'No accounts.'
+    }
+  ) + disagreement(f, s.totals.end, s.accounts.reduce((total, a) => total + a.end, 0), s.currency);
   const net = s.totals.income - s.totals.expense;
   const categories = formatAsTable(
     ['Category', 'Income', 'Expense'],
@@ -112,7 +155,7 @@ function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolea
   const link = (kind: string, label: string) =>
     `<a class="btn btn-sm btn-outline-secondary me-2" href="/api/accounting/export?kind=${kind}&amp;from=${encodeURIComponent(s.period.from)}&amp;to=${encodeURIComponent(s.period.to)}">${label}</a>`;
   const downloads = withExport ? `<p>${link('transactions', 'Download entries (CSV)')}${link('funds', 'Download fund summary (CSV)')}</p>` : '';
-  return `${heading}\n<h4>Funds</h4>\n${funds}\n<h4>Income and expense by category</h4>\n<p class="text-muted small">Transfers between funds are left out: they net to zero.</p>\n${categories}\n${downloads}`;
+  return `${heading}\n<h4>Funds</h4>\n${funds}\n<h4>Accounts</h4>\n<p class="text-muted small">The same money, by where it sits.</p>\n${accounts}\n<h4>Income and expense by category</h4>\n<p class="text-muted small">Transfers between funds are left out: they net to zero.</p>\n${categories}\n${downloads}`;
 }
 
 async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerActor, params: PluginParams): Promise<string> {
@@ -120,6 +163,10 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
   const view = String(params.view ?? 'balances');
   if (view === 'balances') {
     return balancesTable(f, await ledger.fundBalances(actor), ledger.currencyCode());
+  }
+  if (view === 'accounts') {
+    const fundsTotal = (await ledger.fundBalances(actor)).reduce((total, b) => total + b.balance, 0);
+    return accountsTable(f, await ledger.accountBalances(actor), fundsTotal, ledger.currencyCode());
   }
   if (view === 'entries') {
     const fund = typeof params.fund === 'string' && params.fund !== '' ? params.fund : undefined;
@@ -135,7 +182,7 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const period = ledger.period({ month: str(params.month), from: str(params.from), to: str(params.to) });
     return summaryTables(f, await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
   }
-  return note(f, `Ledger: unknown view '${view}'; use balances, entries or summary.`);
+  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries or summary.`);
 }
 
 /**

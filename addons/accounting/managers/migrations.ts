@@ -136,4 +136,47 @@ const FUNDS_TRANSACTIONS_HISTORY: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY];
+const ACCOUNTS: AccountingMigration = {
+  id: '20261018120000',
+  description: 'every entry names the account its money sits in; account opening balances (D-031)',
+  up: (db) => {
+    db.exec(`
+      -- Where the money sits, beside the fund it is for. Accounts are configuration, so this
+      -- is an id, not a foreign key. Entries posted before accounts existed are in Checking.
+      ALTER TABLE accounting_transactions ADD COLUMN account_id TEXT NOT NULL DEFAULT 'checking';
+      CREATE INDEX accounting_transactions_account ON accounting_transactions (account_id, date);
+
+      -- The money in an entry never changes, now including its account.
+      DROP TRIGGER accounting_transactions_money_fixed;
+      CREATE TRIGGER accounting_transactions_money_fixed BEFORE UPDATE ON accounting_transactions
+      WHEN NEW.id IS NOT OLD.id OR NEW.direction IS NOT OLD.direction OR NEW.amount IS NOT OLD.amount
+        OR NEW.currency IS NOT OLD.currency OR NEW.date IS NOT OLD.date OR NEW.fund_id IS NOT OLD.fund_id
+        OR NEW.account_id IS NOT OLD.account_id
+        OR NEW.category IS NOT OLD.category OR NEW.party_person_id IS NOT OLD.party_person_id
+        OR NEW.party_name IS NOT OLD.party_name OR NEW.payment_method IS NOT OLD.payment_method
+        OR NEW.payment_method_id IS NOT OLD.payment_method_id OR NEW.provider IS NOT OLD.provider
+        OR NEW.confirmation_number IS NOT OLD.confirmation_number OR NEW.source_type IS NOT OLD.source_type
+        OR NEW.source_id IS NOT OLD.source_id OR NEW.voids_id IS NOT OLD.voids_id
+        OR NEW.transfer_id IS NOT OLD.transfer_id OR NEW.created_by IS NOT OLD.created_by
+        OR NEW.created_at IS NOT OLD.created_at
+      BEGIN SELECT RAISE(ABORT, 'accounting: a posted entry''s money never changes; void it and post a replacement'); END;
+
+      -- What an account held on the day the books started, set once by the treasurer.
+      CREATE TABLE accounting_account_openings (
+        account_id      TEXT PRIMARY KEY,
+        opening_balance INTEGER NOT NULL,
+        opening_date    TEXT NOT NULL,
+        created_by      TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+      );
+
+      -- An account's opening balance and date are money; like a fund's, they do not change.
+      CREATE TRIGGER accounting_account_openings_fixed BEFORE UPDATE ON accounting_account_openings
+      BEGIN SELECT RAISE(ABORT, 'accounting: an account''s opening balance and date do not change'); END;
+      CREATE TRIGGER accounting_account_openings_no_delete BEFORE DELETE ON accounting_account_openings
+      BEGIN SELECT RAISE(ABORT, 'accounting: an account''s opening balance and date do not change'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS];
