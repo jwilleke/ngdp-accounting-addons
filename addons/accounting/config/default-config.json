@@ -3,7 +3,7 @@
   "ngdpbase.addons.accounting.enabled": false,
   "_comment_categories": "Income and expense categories offered on the entry form: { \"<UCOA account code>\": \"<label>\" } (D-023). Empty until the default set is decided; a site sets its own in app-custom-config.json. A map, so each layer adds codes rather than replacing the list.",
   "ngdpbase.addons.accounting.categories": {},
-  "_comment_accounts": "Where money sits (D-031): bank accounts, keyed by id so each layer adds or changes one; false removes a shipped one. Cash on Hand is built in. One active bank account is the default: ACH, Zelle and bank transfers land there, and money out comes from it. Opening balances are set by the treasurer on Manage Funds, not here.",
+  "_comment_accounts": "Where money sits (D-031): bank accounts, keyed by id so each layer adds or changes one; false removes a shipped one. Cash on Hand is built in. One active bank account is the default: ACH, Zelle and bank transfers land there, and money out comes from it. Opening balances are set by the treasurer on the Set an Account's Opening Balance page, not here.",
   "ngdpbase.addons.accounting.accounts": {
     "checking": { "name": "Checking", "kind": "bank", "default": true, "active": true }
   },

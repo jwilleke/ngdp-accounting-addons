@@ -76,7 +76,7 @@ holds money for several funds. The add-on ships one bank account, `checking` ("C
 and add the others, keyed by an id of lowercase letters, digits and dashes. `false` removes the
 shipped one. The account marked `default` is where ACH, Zelle and bank transfers land and where
 money out comes from. __Cash on Hand__ is built in: cash, checks and card-reader receipts wait there
-until they are deposited. The treasurer then sets each account's opening balance on __Manage Funds__,
+until they are deposited. The treasurer then sets each account's opening balance on __Set an Account's Opening Balance__,
 so the accounts add up to the funds. Bank account and routing numbers are not stored yet.
 
 Entries recorded before accounts existed are in Checking. An account removed from the configuration
@@ -104,7 +104,8 @@ keep the books (__Admin → Users__).
   written, the money does not move.
 
 The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move
-Money Between Funds, Void an Entry, Manage Funds, Monthly Summary) are visible to the treasurer role only, and only an administrator can
+Money Between Funds, Void an Entry, Create a Fund, Rename a Fund, Close a Fund, Set an Account's
+Opening Balance, Monthly Summary) are visible to the treasurer role only, and only an administrator can
 change them.
 
 ## Show the board the summary
