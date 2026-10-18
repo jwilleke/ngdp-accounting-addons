@@ -104,8 +104,14 @@ describe('the entry form', () => {
     expect(fieldOf(formById('ledger-void'), 'this receipt has refunds; void the refunds first')).toBe('transactionId');
   });
 
-  test('a submitted form becomes money out, whatever an older form sends; empty optional fields are left out', () => {
-    expect(entryFromForm({ direction: 'in', amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: '', paymentMethod: '10', memo: '' })).toEqual({
+  // The ledger then refuses it ("money in is recorded as a receipt"; receipts.test.ts).
+  test('an older form\'s "in" is never turned into money out, and the refusal lands on its direction field', () => {
+    expect(entryFromForm({ direction: 'in', amount: 500, date: '2026-10-18', fundId: 'f1', category: '4100', memo: 'dues' }).direction).toBe('in');
+    expect(fieldOf(formById('ledger-entry'), 'money in is recorded as a receipt (Record a Receipt), not as an entry')).toBe('direction');
+  });
+
+  test('a submitted form with no direction is money out; empty optional fields are left out', () => {
+    expect(entryFromForm({ amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: '', paymentMethod: '10', memo: '' })).toEqual({
       direction: 'out', amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: undefined, paymentMethod: '10', memo: undefined
     });
   });
