@@ -64,7 +64,11 @@ In the site's `app-custom-config.json`:
 
 Restart the site. On first start the add-on creates its database (`accounting.db` in the data
 folder), seeds its pages, and logs `Ledger ready`. The categories are UCOA account codes and labels;
-the entry form offers exactly these.
+the receipt and entry forms offer exactly these.
+
+Money coming in is recorded as a __receipt__ through the manual provider (cash, checks, bank
+transfers), which is always on. Online providers will be added to
+`ngdpbase.addons.accounting.receiptproviders`; see [ReceiptManager](../managers/ReceiptManager.md).
 
 If the database is off, the add-on starts nothing and says why on __Admin → Add-ons__.
 
@@ -74,13 +78,13 @@ The add-on ships a __treasurer__ role holding every accounting permission. Give 
 keep the books (__Admin → Users__).
 
 - The role needs a strong sign-in: a passkey (`required-aal: 2`, capped at what the account can reach).
-- Voiding, transfers and the CSV export ask for a fresh sign-in when the last one is more than a few
+- Voiding, transfers, refunds and the CSV export ask for a fresh sign-in when the last one is more than a few
   minutes old.
 - Every write is recorded in the audit log with who did it and when; if the record cannot be
   written, the money does not move.
 
-The treasurer's pages (Accounting, Ledger, Record an Entry, Move Money Between Funds, Void an Entry,
-Manage Funds, Monthly Summary) are visible to the treasurer role only, and only an administrator can
+The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move
+Money Between Funds, Void an Entry, Manage Funds, Monthly Summary) are visible to the treasurer role only, and only an administrator can
 change them.
 
 ## Show the board the summary
@@ -136,5 +140,9 @@ older one.
 - __Backups__ do not cover the ledger's database yet (ngdpbase #1723).
 - No month lock: a closed month can still receive entries dated in it (#19).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
-- No dues, payments, donations or events modules yet; entries are recorded by hand.
+- No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
+- No dues, donations or events modules yet.
+- A site that enabled accounting before receipts keeps the forms it first saved: its "Record an
+  Entry" form still shows an In or out choice and an optional memo. The ledger records only money out
+  there and asks for the reason; delete those saved form definitions to get the current forms.
 - Changing the database key, or encrypting a ledger that was started without one, is not built (#14).

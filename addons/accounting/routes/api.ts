@@ -12,6 +12,7 @@ import type { Request, Response, Router } from 'express';
 import type { AddonHost, ApiContext } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
+import type ReceiptManager from '../managers/ReceiptManager.js';
 
 interface Engine {
   getManager<T = unknown>(name: string): T | null | undefined;
@@ -19,7 +20,7 @@ interface Engine {
   createRouter(): Router;
 }
 
-type Handler = (ctx: ApiContext, ledger: LedgerManager, req: Request) => Promise<unknown>;
+type Handler = (ctx: ApiContext, ledger: LedgerManager, req: Request, receipts: ReceiptManager) => Promise<unknown>;
 
 export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   const { ApiContext, ApiError, sendApiError } = host;
@@ -28,9 +29,10 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   const handle = (status: number, fn: Handler) => async (req: Request, res: Response): Promise<void> => {
     try {
       const ledger = engine.getManager<LedgerManager>('LedgerManager');
-      if (!ledger) { res.status(503).json({ ok: false, error: 'the ledger is not available on this site' }); return; }
+      const receipts = engine.getManager<ReceiptManager>('ReceiptManager');
+      if (!ledger || !receipts) { res.status(503).json({ ok: false, error: 'the ledger is not available on this site' }); return; }
       const ctx = ApiContext.from(req, engine as never);
-      const result = await fn(ctx, ledger, req);
+      const result = await fn(ctx, ledger, req, receipts);
       res.status(status).json({ ok: true, result });
     } catch (err) {
       // A step-up refusal carries the way to re-authenticate (ngdpbase #1745).
@@ -60,6 +62,9 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
     const b = body(req);
     return ledger.voidTransaction(ctx, String(req.params.id), b.reason as string, b.replacement as never);
   }));
+  // Receipts: money coming in (D-028, D-029). The ledger numbers each one.
+  router.post('/receipts', handle(201, (ctx, _ledger, req, receipts) => receipts.recordReceipt(ctx, body(req) as never)));
+  router.post('/receipts/:id/refund', handle(201, (ctx, _ledger, req, receipts) => receipts.refundReceipt(ctx, String(req.params.id), body(req) as never)));
   router.post('/transfers', handle(201, (ctx, ledger, req) => ledger.transferBetweenFunds(ctx, body(req) as never)));
 
   // Reports: ?month=current|previous|YYYY-MM, or ?from=YYYY-MM-DD&to=YYYY-MM-DD

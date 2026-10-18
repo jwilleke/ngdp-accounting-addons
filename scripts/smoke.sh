@@ -5,7 +5,7 @@
 #   scripts/smoke.sh <base-url> <admin-password>
 #
 # The site must allow the admin to keep the ledger (deploy/smoke/app-custom-config.json
-# does, for tests only). Each run makes one fund and one entry; the ledger keeps them.
+# does, for tests only). Each run makes one fund and one receipt; the ledger keeps them.
 set -u
 BASE="${1:?base url, e.g. http://localhost:3003}"
 PASSWORD="${2:?admin password}"
@@ -33,14 +33,14 @@ case "$code" in 302\ *login\?error*) code="refused: ${code#302 }" ;; 302\ *) cod
 [ "$code" = 302 ] && [ -n "$token" ] && pass "signed in as admin" || fail "sign-in: $code"
 api() { curl -s -b "$JAR" -H "X-CSRF-Token: $token" -H 'Content-Type: application/json' "$@"; }
 
-# 4. A fund, an entry, and the balance that follows from them (written to the database, audited).
+# 4. A fund, a receipt (money in, numbered R-…), and the balance that follows (written to the database, audited).
 name="Smoke $(date -u +%Y%m%dT%H%M%S)"
 fund=$(api -d "{\"name\":\"$name\",\"openingBalance\":1000}" "$BASE/api/accounting/funds" | json "d['result']['id'] if d.get('ok') else ''" 2>/dev/null)
 [ -n "$fund" ] && pass "fund created" || fail "create fund"
-ok=$(api -d "{\"direction\":\"in\",\"amount\":2550,\"date\":\"$(date -u +%Y-%m-%d)\",\"fundId\":\"$fund\",\"category\":\"4100\"}" "$BASE/api/accounting/transactions" | json "d.get('ok')" 2>/dev/null)
-[ "$ok" = True ] && pass "entry posted" || fail "post entry"
+receipt=$(api -d "{\"amount\":2550,\"date\":\"$(date -u +%Y-%m-%d)\",\"fundId\":\"$fund\",\"category\":\"4100\",\"partyName\":\"Smoke Test\",\"paymentMethod\":\"10\",\"memo\":\"smoke test receipt\"}" "$BASE/api/accounting/receipts" | json "d['result']['confirmationNumber'] if d.get('ok') else ''" 2>/dev/null)
+case "$receipt" in R-*) pass "receipt recorded ($receipt)" ;; *) fail "record receipt" ;; esac
 balance=$(api "$BASE/api/accounting/balances" | json "next((b['balance'] for b in d['result'] if b['fundId']=='$fund'), None)" 2>/dev/null)
-[ "$balance" = 3550 ] && pass "balance is opening + entry (3550 cents)" || fail "balance: $balance"
+[ "$balance" = 3550 ] && pass "balance is opening + receipt (3550 cents)" || fail "balance: $balance"
 
 # 5. The CSV export (step-up applies; a fresh sign-in satisfies it).
 type=$(curl -s -b "$JAR" -o /dev/null -w '%{content_type}' "$BASE/api/accounting/export?kind=funds&month=current")

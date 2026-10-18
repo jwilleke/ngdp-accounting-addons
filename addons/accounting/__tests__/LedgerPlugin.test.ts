@@ -48,7 +48,7 @@ describe('LedgerPlugin', () => {
   test('balances: money in the site currency, escaped names, and a total', async () => {
     const general = await ledger.createFund(treasurer, { name: 'General <main>', openingBalance: 10000 });
     await ledger.createFund(treasurer, { name: 'Roof' });
-    await ledger.postTransaction(treasurer, { direction: 'in', amount: 125050, date: '2026-10-10', fundId: general.id, category: '4100' });
+    await ledger.postReceipt(treasurer, { amount: 125050, date: '2026-10-10', fundId: general.id, category: '4100', partyName: 'Pat', paymentMethod: '20', memo: 'dues' }, { provider: 'manual' });
     const html = await render('board', { view: 'balances' });
     expect(html).toContain('General &lt;main&gt;');
     expect(html).toContain('<strong>$1,350.50</strong>');

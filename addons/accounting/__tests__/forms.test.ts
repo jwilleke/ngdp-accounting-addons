@@ -63,8 +63,17 @@ describe('LedgerManager.toFormOptions', () => {
 
   test('entries: the latest posted, labelled so the right one can be picked, for a viewer who may read entries', async () => {
     const f = await ledger.createFund(treasurer, { name: 'General' });
-    const t = await ledger.postTransaction(treasurer, { direction: 'in', amount: 125050, date: '2026-10-10', fundId: f.id, category: '4100', partyName: 'Pat' });
-    expect(await ledger.toFormOptions({ list: 'entries' }, { username: 'tess' })).toEqual([{ value: t.id, label: '2026-10-10 · General · in $1,250.50 · Pat' }]);
+    const t = await ledger.postReceipt(treasurer, { amount: 125050, date: '2026-10-10', fundId: f.id, category: '4100', partyName: 'Pat', paymentMethod: '20', memo: 'dues' }, { provider: 'manual' });
+    expect(await ledger.toFormOptions({ list: 'entries' }, { username: 'tess' })).toEqual([{ value: t.id, label: 'R-0001 · 2026-10-10 · General · in $1,250.50 · Pat' }]);
+  });
+
+  test('receipts: only those with money left to refund', async () => {
+    const f = await ledger.createFund(treasurer, { name: 'General' });
+    const receive = (amount: number) => ledger.postReceipt(treasurer, { amount, date: '2026-10-10', fundId: f.id, category: '4100', partyName: 'Pat', paymentMethod: '10', memo: 'dues' }, { provider: 'manual' });
+    const kept = await receive(500);
+    const refunded = await receive(300);
+    await ledger.refundReceipt(treasurer, refunded.id, { date: '2026-10-11', memo: 'paid twice' });
+    expect((await ledger.toFormOptions({ list: 'receipts' }, { username: 'tess' })).map(o => o.value)).toEqual([kept.id]);
   });
 
   test('a viewer who may not see the ledger is offered nothing', async () => {
@@ -89,11 +98,15 @@ describe('the entry form', () => {
     expect(fieldOf(formById('ledger-transfer'), 'a transfer needs two different funds')).toBe('toFundId');
     expect(fieldOf(formById('ledger-void'), 'this entry is already voided')).toBe('transactionId');
     expect(fieldOf(formById('fund-create'), "a fund named 'General' already exists")).toBe('name');
+    expect(fieldOf(entry, 'memo is required')).toBe('memo');
+    expect(fieldOf(formById('receipt-record'), 'partyName is required')).toBe('partyName');
+    expect(fieldOf(formById('receipt-refund'), 'this receipt is already fully refunded')).toBe('receiptId');
+    expect(fieldOf(formById('ledger-void'), 'this receipt has refunds; void the refunds first')).toBe('transactionId');
   });
 
-  test('a submitted form becomes a ledger entry; empty optional fields are left out', () => {
+  test('a submitted form becomes money out, whatever an older form sends; empty optional fields are left out', () => {
     expect(entryFromForm({ direction: 'in', amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: '', paymentMethod: '10', memo: '' })).toEqual({
-      direction: 'in', amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: undefined, paymentMethod: '10', memo: undefined
+      direction: 'out', amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: undefined, paymentMethod: '10', memo: undefined
     });
   });
 
@@ -103,6 +116,6 @@ describe('the entry form', () => {
 
   test('every form posts through the ledger, which refuses a viewer without the permission', async () => {
     const ids = LEDGER_FORMS.map(f => f.definition.id);
-    expect(ids).toEqual(['ledger-entry', 'ledger-transfer', 'ledger-void', 'fund-create', 'fund-rename', 'fund-close']);
+    expect(ids).toEqual(['ledger-entry', 'ledger-transfer', 'ledger-void', 'receipt-record', 'receipt-refund', 'fund-create', 'fund-rename', 'fund-close']);
   });
 });

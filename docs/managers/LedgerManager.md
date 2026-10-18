@@ -1,6 +1,6 @@
 ---
 name: LedgerManager
-description: "The accounting add-on's one door to the ledger: funds, entries, voids, transfers, balances, period summaries and the CSV export, each asked of ngdpbase's decision point and audited"
+description: "The accounting add-on's one door to the ledger: funds, receipts, entries, refunds, voids, transfers, balances, period summaries and the CSV export, each asked of ngdpbase's decision point and audited"
 dateModified: '2026-10-18'
 category: managers
 code: addons/accounting/managers/LedgerManager.ts
@@ -14,6 +14,10 @@ __Registered as:__ `engine.getManager('LedgerManager')`
 The ledger behind every accounting add-on. It holds the organization's funds and a single-entry,
 fund-tagged list of money in and out, in integer cents. Other add-ons (dues, donations, events)
 post through it; nothing else writes the accounting tables ([D-016](../plans/decisions.md)).
+
+Money coming in is a __receipt__ ([D-028](../plans/decisions.md), [D-029](../plans/decisions.md)), recorded
+through [ReceiptManager](ReceiptManager.md); money going out is an __entry__. Every receipt, entry,
+refund and transfer carries a reason (`memo`, required).
 
 A posted entry is never edited or deleted. A mistake is voided, with a reason, and replaced. The
 database enforces this as well as the code: triggers refuse deleting a fund or an entry, changing an
@@ -29,8 +33,8 @@ rebuilt from a username.
 const ledger = engine.getManager<LedgerManager>('LedgerManager');
 const ctx = host.ApiContext.from(req, engine);
 await ledger.postTransaction(ctx, {
-  direction: 'in', amount: 3550, date: '2026-10-18',
-  fundId, category: '4100', partyName: 'Ann Lee', paymentMethod: 'check'
+  direction: 'out', amount: 3550, date: '2026-10-18',
+  fundId, category: '5200', partyName: 'Office Supply Co', paymentMethod: '20', memo: 'printer paper'
 });
 ```
 
@@ -48,7 +52,9 @@ the person to sign in again, recorded in the audit log. No role name appears in 
 | --- | --- | --- | --- |
 | `listFunds`, `fundBalances`, `periodSummary` | `ledger-summary-read` | no | — |
 | `listTransactions`, `getTransaction` | `ledger-read` | no | — |
-| `postTransaction` | `ledger-record` | no | `ledger-record` (`ledger-post`) |
+| `postTransaction` (money out) | `ledger-record` | no | `ledger-record` (`ledger-post`) |
+| `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
+| `refundReceipt` | `receipt-refund` | yes | `receipt-refund` (`receipt-refund`) |
 | `voidTransaction` | `ledger-adjust` | yes | `ledger-adjust` (`ledger-void`) |
 | `transferBetweenFunds` | `ledger-adjust` | yes | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
@@ -71,12 +77,25 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
 - `closeFund(actor, fundId, reason?)` → `Fund`. Funds are closed, never deleted; a closed fund
   takes no new entries.
 - `listFunds(actor)` → `Fund[]`.
-- `postTransaction(actor, { direction, amount, date, fundId, category, partyPersonId?, partyName?,
-  paymentMethod?, paymentMethodId?, memo? })` → `Transaction`. `category` is a UCOA account code;
-  `paymentMethod` a UN/CEFACT payment means.
+- `postTransaction(actor, { direction: 'out', amount, date, fundId, category, partyPersonId?,
+  partyName?, paymentMethod?, paymentMethodId?, memo })` → `Transaction`. Money out only: `in` is
+  refused ("money in is recorded as a receipt"). `category` is a UCOA account code; `paymentMethod` a
+  UN/CEFACT payment means; `memo` is the reason, required.
+- `postReceipt(actor, { amount, date, fundId, category, partyName, partyPersonId?, paymentMethod,
+  paymentMethodId?, memo, reference? }, { provider, confirmationNumber? })` → `Transaction`. Money in.
+  For the manual provider the ledger numbers it, `R-0001` onwards, in the same database transaction:
+  one sequence per site, never reused (a voided receipt keeps its number). Another provider passes
+  its own `confirmationNumber`; `provider` plus number is unique, so the same receipt never posts
+  twice. `reference: { type, id }` records what it pays for (e.g. a dues invoice). Called by
+  `ReceiptManager`, not by other add-ons directly.
+- `refundReceipt(actor, receiptId, { amount?, date, memo, paymentMethod?, paymentMethodId? })` →
+  `Transaction`. Money returned to the payer: an `out` entry in the receipt's fund and category,
+  `sourceType: 'receipt-refund'`, linked by `sourceId`. The receipt stays posted. Partial refunds add
+  up to at most the receipt's amount; a missing `amount` refunds what is left.
 - `voidTransaction(actor, transactionId, reason, replacement?)` → `{ voided, replacement }`. Voiding
-  one side of a transfer voids both, and takes no replacement: post a new transfer instead. The
-  original stays visible, marked voided.
+  one side of a transfer voids both, and takes no replacement: post a new transfer instead. A
+  receipt takes no replacement either: void it and record a new receipt. A receipt with posted
+  refunds is not voided until its refunds are. The original stays visible, marked voided.
 - `transferBetweenFunds(actor, { fromFundId, toFundId, amount, date, memo? })` → the linked out and
   in entries. The total across funds is unchanged.
 - `listTransactions(actor, { fundId?, from?, to?, includeVoided? })`, `getTransaction(actor, id)`.
@@ -89,8 +108,8 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   no names, so a summary reader never sees who paid.
 - `exportCsv(actor, 'transactions' | 'funds', period)` → `{ filename, body, sha256 }`. Built with
   ngdpbase's one CSV writer (`ExportManager.toCsv`); the audit record carries the file's SHA-256.
-- `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `entries`, `categories`
-  or `payment-methods`. Reached from a form definition as
+- `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `entries`, `receipts`
+  (posted receipts with money left to refund), `categories` or `payment-methods`. Reached from a form definition as
   `optionsSource: "fetch:LedgerManager.toFormOptions(list=funds)"`; each list asks its own
   permission of the viewer, so a dropdown never offers what its reader may not see.
 

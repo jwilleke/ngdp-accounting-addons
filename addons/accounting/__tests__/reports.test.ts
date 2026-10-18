@@ -45,15 +45,19 @@ describe('reports', () => {
       }
     });
     // September: General opens with $100, $50 dues. October: $200 dues, $30 supplies,
-    // a $40 transfer to Roof, a $10 entry voided and replaced by $12. Roof opens in October with $5.
+    // a $40 transfer to Roof, a $10 receipt voided and recorded again as $12. Roof opens in October with $5.
+    // Money in is a receipt (D-029); every entry says why.
+    const receive = (amount: number, date: string, extra: Record<string, unknown> = {}) =>
+      ledger.postReceipt(actor(), { amount, date, fundId: general, category: '4100', partyName: 'Pat', paymentMethod: '20', memo: 'dues', ...extra } as never, { provider: 'manual' });
     general = (await ledger.createFund(actor(), { name: 'General', openingBalance: 10000, openingDate: '2026-09-01' })).id;
-    await ledger.postTransaction(actor(), { direction: 'in', amount: 5000, date: '2026-09-20', fundId: general, category: '4100' });
+    await receive(5000, '2026-09-20');
     roof = (await ledger.createFund(actor(), { name: 'Roof', openingBalance: 500, openingDate: '2026-10-02' })).id;
-    await ledger.postTransaction(actor(), { direction: 'in', amount: 20000, date: '2026-10-03', fundId: general, category: '4100', partyName: 'Pat' });
+    await receive(20000, '2026-10-03');
     await ledger.postTransaction(actor(), { direction: 'out', amount: 3000, date: '2026-10-04', fundId: general, category: '5200', memo: '=SUM(A1)' });
-    await ledger.transferBetweenFunds(actor(), { fromFundId: general, toFundId: roof, amount: 4000, date: '2026-10-05' });
-    const wrong = await ledger.postTransaction(actor(), { direction: 'in', amount: 1000, date: '2026-10-06', fundId: general, category: '4100' });
-    await ledger.voidTransaction(actor(), wrong.id, 'typo', { direction: 'in', amount: 1200, date: '2026-10-06', fundId: general, category: '4100' });
+    await ledger.transferBetweenFunds(actor(), { fromFundId: general, toFundId: roof, amount: 4000, date: '2026-10-05', memo: 'roof reserve' });
+    const wrong = await receive(1000, '2026-10-06');
+    await ledger.voidTransaction(actor(), wrong.id, 'typo');
+    await receive(1200, '2026-10-06');
     audit = [];
   });
 
@@ -98,7 +102,7 @@ describe('reports', () => {
     const file = await ledger.exportCsv(actor(), 'transactions', ledger.period({ month: '2026-10' }));
     const lines = file.body.trimEnd().split('\r\n');
     expect(lines[0].split(',').slice(0, 6)).toEqual(['id', 'date', 'direction', 'amount_minor', 'amount', 'currency']);
-    expect(file.rows).toBe(6); // 2 entries, 2 transfer legs, the voided entry and its replacement
+    expect(file.rows).toBe(6); // a receipt, an out entry, 2 transfer legs, the voided receipt and the one recorded again
     expect(lines).toHaveLength(7);
     expect(file.body).toContain(',voided,');
     expect(file.body).toContain(",'=SUM(A1),"); // a formula-like memo is neutralised

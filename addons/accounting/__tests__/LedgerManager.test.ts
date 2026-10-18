@@ -3,9 +3,9 @@
  * rules the database enforces, permissions at the door, and "no money moves
  * without a record".
  *
- * Each test opens a real encrypted database through ngdpbase's own
- * SqliteDatabaseProvider, in its own temporary folder, and removes only that
- * folder afterwards — never a live data directory.
+ * Each test opens the accounting database in memory, as ngdpbase's
+ * openAddonDatabase opens it (the same migrations and triggers), from
+ * @jwilleke/ngdpbase-types/testing; nothing touches a data directory.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { testLedgerParts } from './host.js';
@@ -57,13 +57,15 @@ describe('LedgerManager', () => {
 
   afterEach(() => {
     provider.close();
-    // Only this test's temporary folder.
   });
 
   const count = (table: string): number => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
   const fund = (name: string, openingBalance = 0) => ledger.createFund(actor(), { name, openingBalance, openingDate: '2026-01-01' });
+  // Money in is a receipt (D-029); every entry says why.
   const entry = (fundId: string, direction: 'in' | 'out', amount: number, extra: Record<string, unknown> = {}) =>
-    ledger.postTransaction(actor(), { fundId, direction, amount, date: '2026-10-08', category: '4010', ...extra });
+    direction === 'in'
+      ? ledger.postReceipt(actor(), { fundId, amount, date: '2026-10-08', category: '4010', partyName: 'Pat Payer', paymentMethod: '10', memo: 'test receipt', ...extra } as never, { provider: 'manual' })
+      : ledger.postTransaction(actor(), { fundId, direction, amount, date: '2026-10-08', category: '5010', memo: 'test entry', ...extra });
 
   test('the migration is recorded in the add-on\'s own ledger table', () => {
     const rows = db.prepare(`SELECT id FROM ${ACCOUNTING_LEDGER_TABLE}`).all() as { id: string }[];
@@ -91,7 +93,7 @@ describe('LedgerManager', () => {
       const general = await fund('General', 5_000);
       const building = await fund('Building', 1_000);
       const before = (await ledger.fundBalances(actor())).reduce((sum, b) => sum + b.balance, 0);
-      const [out, into] = await ledger.transferBetweenFunds(actor(), { fromFundId: general.id, toFundId: building.id, amount: 1_500, date: '2026-10-08' });
+      const [out, into] = await ledger.transferBetweenFunds(actor(), { fromFundId: general.id, toFundId: building.id, amount: 1_500, date: '2026-10-08', memo: 'test move' });
       expect(out.transferId).toBe(into.transferId);
       const balances = Object.fromEntries((await ledger.fundBalances(actor())).map(b => [b.name, b.balance]));
       expect(balances).toEqual({ Building: 2_500, General: 3_500 });
@@ -101,7 +103,7 @@ describe('LedgerManager', () => {
     test('voiding one half of a transfer voids both halves, and allows no replacement', async () => {
       const a = await fund('A', 1_000);
       const b = await fund('B');
-      const [out] = await ledger.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 400, date: '2026-10-08' });
+      const [out] = await ledger.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 400, date: '2026-10-08', memo: 'test move' });
       await expect(ledger.voidTransaction(actor(), out.id, 'wrong fund', { fundId: a.id, direction: 'in', amount: 1, date: '2026-10-08', category: '4010' }))
         .rejects.toThrow(/voided as a pair/);
       const { voided } = await ledger.voidTransaction(actor(), out.id, 'wrong fund');
@@ -112,13 +114,13 @@ describe('LedgerManager', () => {
 
   describe('voids', () => {
     test('a void keeps the original, links its replacement, and only the replacement counts', async () => {
-      const general = await fund('General');
-      const wrong = await entry(general.id, 'in', 5_000);
+      const general = await fund('General', 10_000);
+      const wrong = await entry(general.id, 'out', 5_000);
       const { voided, replacement } = await ledger.voidTransaction(actor(), wrong.id, 'typed 50.00 for 5.00',
-        { fundId: general.id, direction: 'in', amount: 500, date: '2026-10-08', category: '4010' });
+        { fundId: general.id, direction: 'out', amount: 500, date: '2026-10-08', category: '5010', memo: 'supplies' });
       expect(voided[0]).toMatchObject({ id: wrong.id, status: 'voided', voidReason: 'typed 50.00 for 5.00', voidedById: replacement?.id });
       expect(replacement).toMatchObject({ voidsId: wrong.id, status: 'posted', sourceType: 'adjustment' });
-      expect((await ledger.fundBalances(actor()))[0].balance).toBe(500);
+      expect((await ledger.fundBalances(actor()))[0].balance).toBe(9_500);
       expect((await ledger.listTransactions(actor(), { includeVoided: true })).map(t => t.id)).toContain(wrong.id);
     });
 
@@ -177,10 +179,10 @@ describe('LedgerManager', () => {
       const b = await fund('B');
       const t = await entry(a.id, 'in', 100);
       await ledger.voidTransaction(actor(), t.id, 'test');
-      await ledger.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 10, date: '2026-10-08' });
+      await ledger.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 10, date: '2026-10-08', memo: 'test move' });
       await ledger.closeFund(actor(), b.id, 'event over');
       expect(audit.map(r => `${r.eventType}/${r.action}`)).toEqual([
-        'fund-manage/fund-create', 'fund-manage/fund-create', 'ledger-record/ledger-post',
+        'fund-manage/fund-create', 'fund-manage/fund-create', 'ledger-record/receipt-record',
         'ledger-adjust/ledger-void', 'ledger-adjust/ledger-transfer', 'fund-manage/fund-close'
       ]);
       expect(audit.every(r => r.user === 'treasurer-tess' && r.ipAddress === '203.0.113.7')).toBe(true);
@@ -198,7 +200,7 @@ describe('LedgerManager', () => {
         ['fund-manage', () => ledger.closeFund(nobody, general.id)],
         ['ledger-record', () => ledger.postTransaction(nobody, { fundId: general.id, direction: 'in', amount: 1, date: '2026-10-08', category: '4010' })],
         ['ledger-adjust', () => ledger.voidTransaction(nobody, t.id, 'x')],
-        ['ledger-adjust', () => ledger.transferBetweenFunds(nobody, { fromFundId: general.id, toFundId: general.id, amount: 1, date: '2026-10-08' })],
+        ['ledger-adjust', () => ledger.transferBetweenFunds(nobody, { fromFundId: general.id, toFundId: general.id, amount: 1, date: '2026-10-08', memo: 'test move' })],
         ['ledger-read', () => ledger.listTransactions(nobody)],
         ['ledger-summary-read', () => ledger.fundBalances(nobody)]
       ];
@@ -212,7 +214,7 @@ describe('LedgerManager', () => {
     test('the permission decides, whatever the role is called', async () => {
       const general = await fund('General');
       const bookkeeper = actor(['ledger-record'], 'not-a-treasurer');
-      expect((await ledger.postTransaction(bookkeeper, { fundId: general.id, direction: 'out', amount: 1, date: '2026-10-08', category: '5010' })).createdBy).toBe('not-a-treasurer');
+      expect((await ledger.postTransaction(bookkeeper, { fundId: general.id, direction: 'out', amount: 1, date: '2026-10-08', category: '5010', memo: 'stamps' })).createdBy).toBe('not-a-treasurer');
     });
   });
 
@@ -251,9 +253,9 @@ describe('LedgerManager', () => {
       const a = await tracked.createFund(actor(), { name: 'General' });
       const b = await tracked.createFund(actor(), { name: 'Roof' });
       await tracked.updateFund(actor(), b.id, { name: 'Roof Reserve' });
-      const t = await tracked.postTransaction(actor(), { direction: 'in', amount: 500, date: '2026-10-10', fundId: a.id, category: '4100' });
+      const t = await tracked.postReceipt(actor(), { amount: 500, date: '2026-10-10', fundId: a.id, category: '4100', partyName: 'Pat Payer', paymentMethod: '10', memo: 'dues' }, { provider: 'manual' });
       await tracked.voidTransaction(actor(), t.id, 'typo');
-      await tracked.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 100, date: '2026-10-10' });
+      await tracked.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 100, date: '2026-10-10', memo: 'test move' });
       await tracked.closeFund(actor(), b.id, 'done');
       expect(changes).toBe(7);
     });
@@ -261,8 +263,8 @@ describe('LedgerManager', () => {
     test('a refused or invalid write says nothing', async () => {
       const f = await tracked.createFund(actor(), { name: 'General' });
       changes = 0;
-      await expect(tracked.postTransaction(actor([]), { direction: 'in', amount: 5, date: '2026-10-10', fundId: f.id, category: '4100' })).rejects.toThrow();
-      await expect(tracked.postTransaction(actor(), { direction: 'in', amount: -5, date: '2026-10-10', fundId: f.id, category: '4100' })).rejects.toThrow();
+      await expect(tracked.postTransaction(actor([]), { direction: 'out', amount: 5, date: '2026-10-10', fundId: f.id, category: '5010', memo: 'x' })).rejects.toThrow();
+      await expect(tracked.postTransaction(actor(), { direction: 'out', amount: -5, date: '2026-10-10', fundId: f.id, category: '5010', memo: 'x' })).rejects.toThrow();
       expect(changes).toBe(0);
     });
 

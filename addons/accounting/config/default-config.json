@@ -18,16 +18,23 @@
       "audit": { "on-failure": "continue", "enabled": false, "description": "Ledger entries read" }
     },
     "ledger-record": {
-      "description": "Record money in or out of a fund",
+      "description": "Record money out of a fund, and money received (a receipt)",
       "icon": "pen",
       "color": "#198754",
-      "audit": { "on-failure": "refuse", "description": "Ledger entry posted; no money moves without a record" }
+      "audit": { "on-failure": "refuse", "description": "Ledger entry or receipt posted; no money moves without a record" }
     },
     "ledger-adjust": {
       "description": "Void a posted entry and post its replacement, or move money between funds",
       "icon": "pen-to-square",
       "color": "#fd7e14",
       "audit": { "on-failure": "refuse", "description": "Ledger entry voided or replaced, or money moved between funds" },
+      "step-up": true
+    },
+    "receipt-refund": {
+      "description": "Refund money received: return all or part of a receipt to the payer",
+      "icon": "rotate-left",
+      "color": "#fd7e14",
+      "audit": { "on-failure": "refuse", "description": "Receipt refunded; the record keeps the receipt number and amount" },
       "step-up": true
     },
     "ledger-export": {
@@ -74,6 +81,7 @@
         "ledger-read",
         "ledger-record",
         "ledger-adjust",
+        "receipt-refund",
         "ledger-export",
         "fund-manage",
         "form-submit"
@@ -81,5 +89,7 @@
     }
   ],
   "_comment_accounting_database": "The accounting database, declared so ngdpbase's DatabaseManager.openAddonDatabase will open it (ngdpbase #1860). encrypt 'optional' per D-010: SQLCipher when NGDPBASE_DATABASE_KEY is set, plain SQLite with a boot warning otherwise.",
-  "ngdpbase.addons.accounting.database": { "owner": "accounting", "ledgerTable": "accounting_schema_migrations", "encrypt": "optional" }
+  "ngdpbase.addons.accounting.database": { "owner": "accounting", "ledgerTable": "accounting_schema_migrations", "encrypt": "optional" },
+  "_comment_receiptproviders": "Providers for money coming in (D-017, D-028, D-029): a list merged by id. The manual provider (cash, check and other money recorded by hand) is always available; online providers (Stripe) come later.",
+  "ngdpbase.addons.accounting.receiptproviders": [{ "id": "manual", "enabled": true }]
 }
