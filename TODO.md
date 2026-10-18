@@ -30,7 +30,7 @@ last_updated: "2026-10-18"
 <!-- Issues labeled `epic`. This band outranks a priority label, so an epic does not get -->
 <!-- buried among the issues that implement it; the priority label orders this band instead. -->
 
-- [#15](https://github.com/jwilleke/ngdp-accounting-addons/issues/15) — [EPIC] MVP: the accounting add-on, a usable treasurer ledger
+*None.*
 
 ## 🟠 P1
 
