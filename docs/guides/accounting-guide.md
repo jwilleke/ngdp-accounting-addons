@@ -78,8 +78,11 @@ The add-on ships a __treasurer__ role holding every accounting permission. Give 
 keep the books (__Admin → Users__).
 
 - The role needs a strong sign-in: a passkey (`required-aal: 2`, capped at what the account can reach).
-- Voiding, transfers, refunds and the CSV export ask for a fresh sign-in when the last one is more than a few
-  minutes old.
+- For now, voiding, transfers, refunds and the CSV export do __not__ ask for a fresh sign-in
+  ([D-030](../plans/decisions.md#d-030-step-up-off-for-accountings-money-actions-for-now)): after the
+  sign-in, the form came back empty and had to be filled in again. The treasurer's passkey sign-in and
+  the audit record still apply. To turn it back on, add `"step-up": true` to `ledger-adjust`,
+  `receipt-refund` and `ledger-export` in the add-on's `config/default-config.json`.
 - Every write is recorded in the audit log with who did it and when; if the record cannot be
   written, the money does not move.
 

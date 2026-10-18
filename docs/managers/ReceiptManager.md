@@ -45,14 +45,14 @@ entry naming a provider this version does not ship is skipped, with a warning at
   means), `paymentMethodId` (a check's number), `memo` (the reason), and optionally `reference:
   { type, id }` (what it pays for). The result carries the receipt number in `confirmationNumber`.
 - `refundReceipt(actor, receiptId, { amount?, date, memo, paymentMethod?, paymentMethodId? })` →
-  `Transaction`, the linked out entry. Needs `receipt-refund` (step-up).
+  `Transaction`, the linked out entry. Needs `receipt-refund` (step-up off for now, D-030).
 - `providers()` → the enabled providers and their capabilities.
 
 ## Rules ([D-029](../plans/decisions.md))
 
 - Receipt numbers are `R-0001` onwards, one sequence per site, never reused.
 - All money in is a receipt: the ledger refuses a plain `in` entry.
-- A receipt entered wrongly is voided (`ledger-adjust`, step-up) and recorded again with a new
+- A receipt entered wrongly is voided (`ledger-adjust`) and recorded again with a new
   number. A refund is money actually returned, linked to the receipt, which stays posted.
 - Every receipt and refund carries a reason.
 

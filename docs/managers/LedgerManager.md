@@ -48,17 +48,19 @@ asks ngdpbase's `PolicyDecisionPoint.decide(subject, { action })`, and on a deny
 `actor.enforceDeny(action, decision)`. That is ngdpbase's own refusal: 401, 403, or a step-up asking
 the person to sign in again, recorded in the audit log. No role name appears in code; policy decides.
 
+Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-030](../plans/decisions.md#d-030-step-up-off-for-accountings-money-actions-for-now)): after the sign-in the form came back empty. The money actions were designed with it; turning it back on is adding `"step-up": true` to their entries.
+
 | Method | Permission | Step-up | Audit event (action) |
 | --- | --- | --- | --- |
 | `listFunds`, `fundBalances`, `periodSummary` | `ledger-summary-read` | no | — |
 | `listTransactions`, `getTransaction` | `ledger-read` | no | — |
 | `postTransaction` (money out) | `ledger-record` | no | `ledger-record` (`ledger-post`) |
 | `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
-| `refundReceipt` | `receipt-refund` | yes | `receipt-refund` (`receipt-refund`) |
-| `voidTransaction` | `ledger-adjust` | yes | `ledger-adjust` (`ledger-void`) |
-| `transferBetweenFunds` | `ledger-adjust` | yes | `ledger-adjust` (`ledger-transfer`) |
+| `refundReceipt` | `receipt-refund` | off for now | `receipt-refund` (`receipt-refund`) |
+| `voidTransaction` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-void`) |
+| `transferBetweenFunds` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
-| `exportCsv` | `ledger-export` | yes | `ledger-export` (`ledger-export`) |
+| `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
 | `toFormOptions` | each list its own: `funds` `ledger-summary-read`; `entries`, `receipts` `ledger-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
