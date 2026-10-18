@@ -179,4 +179,58 @@ const ACCOUNTS: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS];
+const DEPOSITS: AccountingMigration = {
+  id: '20261018200000',
+  description: 'deposits: receipts taken from Cash on Hand to a bank account (D-031)',
+  up: (db) => {
+    db.exec(`
+      -- A deposit: one line on the bank statement. Its money moves in paired ledger entries
+      -- (source_type 'deposit', source_id the deposit's id); this row and its receipts say why.
+      CREATE TABLE accounting_deposits (
+        id             TEXT PRIMARY KEY,
+        number         TEXT NOT NULL UNIQUE,
+        date           TEXT NOT NULL,
+        account_id     TEXT NOT NULL,
+        slip_reference TEXT,
+        total          INTEGER NOT NULL CHECK (total > 0),
+        memo           TEXT NOT NULL DEFAULT '',
+        status         TEXT NOT NULL CHECK (status IN ('posted', 'voided')),
+        void_reason    TEXT,
+        created_by     TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        CHECK (status <> 'voided' OR (void_reason IS NOT NULL AND void_reason <> ''))
+      );
+
+      -- The receipts in a deposit. A receipt is in at most one deposit that is not undone.
+      CREATE TABLE accounting_deposit_receipts (
+        deposit_id TEXT NOT NULL,
+        receipt_id TEXT NOT NULL,
+        amount     INTEGER NOT NULL CHECK (amount > 0),
+        undone     INTEGER NOT NULL DEFAULT 0 CHECK (undone IN (0, 1)),
+        PRIMARY KEY (deposit_id, receipt_id)
+      );
+      CREATE UNIQUE INDEX accounting_deposit_receipts_once ON accounting_deposit_receipts (receipt_id) WHERE undone = 0;
+
+      CREATE TRIGGER accounting_deposits_no_delete BEFORE DELETE ON accounting_deposits
+      BEGIN SELECT RAISE(ABORT, 'accounting: deposits are undone, never deleted'); END;
+
+      -- A deposit's money never changes; it only goes from posted to voided (undone), once, with a reason.
+      CREATE TRIGGER accounting_deposits_fixed BEFORE UPDATE ON accounting_deposits
+      WHEN NEW.id IS NOT OLD.id OR NEW.number IS NOT OLD.number OR NEW.date IS NOT OLD.date
+        OR NEW.account_id IS NOT OLD.account_id OR NEW.slip_reference IS NOT OLD.slip_reference
+        OR NEW.total IS NOT OLD.total OR NEW.memo IS NOT OLD.memo
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NOT (OLD.status = 'posted' AND NEW.status = 'voided' AND NEW.void_reason IS NOT NULL AND NEW.void_reason <> '')
+      BEGIN SELECT RAISE(ABORT, 'accounting: a deposit never changes; undo it, once, with a reason'); END;
+
+      CREATE TRIGGER accounting_deposit_receipts_no_delete BEFORE DELETE ON accounting_deposit_receipts
+      BEGIN SELECT RAISE(ABORT, 'accounting: a deposit keeps its receipts'); END;
+      CREATE TRIGGER accounting_deposit_receipts_fixed BEFORE UPDATE ON accounting_deposit_receipts
+      WHEN NEW.deposit_id IS NOT OLD.deposit_id OR NEW.receipt_id IS NOT OLD.receipt_id
+        OR NEW.amount IS NOT OLD.amount OR NOT (OLD.undone = 0 AND NEW.undone = 1)
+      BEGIN SELECT RAISE(ABORT, 'accounting: a deposit keeps its receipts'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS];

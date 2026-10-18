@@ -175,6 +175,14 @@ export const LEDGER_FORMS: LedgerForm[] = [
     messageFields: [[/^(only a receipt|this receipt)/, 'receiptId'], [/^account '/, 'accountId']]
   },
   {
+    definition: form('deposit-undo', 'Undo a deposit',
+      "Undoes a deposit, with the reason: its entries are voided and its receipts are back in Cash on Hand, ready for a new deposit. The deposit's number is not reused.",
+      [{ name: 'depositId', type: 'dropdown', label: 'Deposit', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=deposits)' },
+        { name: 'reason', type: 'textarea', label: 'Reason', required: true }]),
+    run: async ({ ledger }, ctx, data) => ({ depositId: (await ledger.undoDeposit(ctx, data.depositId as string, data.reason as string)).id }),
+    messageFields: [[/^deposit /, 'depositId']]
+  },
+  {
     definition: form('fund-create', 'Create a fund', 'A new fund starts at its opening balance, on its opening date.',
       [{ name: 'name', type: 'text', label: 'Name', required: true },
         { name: 'description', type: 'textarea', label: 'Description', required: false },

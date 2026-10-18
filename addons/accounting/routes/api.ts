@@ -70,6 +70,12 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   // Receipts: money coming in (D-028, D-029). The ledger numbers each one.
   router.post('/receipts', handle(201, (ctx, _ledger, req, receipts) => receipts.recordReceipt(ctx, body(req) as never)));
   router.post('/receipts/:id/refund', handle(201, (ctx, _ledger, req, receipts) => receipts.refundReceipt(ctx, String(req.params.id), body(req) as never)));
+  // Deposits: receipts from Cash on Hand to a bank account (D-031).
+  router.get('/deposits', handle(200, (ctx, ledger, req) => ledger.listDeposits(ctx, { includeVoided: query(req, 'voided') === 'true' })));
+  router.get('/deposits/:id', handle(200, (ctx, ledger, req) => ledger.getDeposit(ctx, String(req.params.id))));
+  router.get('/deposit-receipts', handle(200, (ctx, ledger) => ledger.receiptsToDeposit(ctx)));
+  router.post('/deposits', handle(201, (ctx, ledger, req) => ledger.makeDeposit(ctx, body(req) as never)));
+  router.post('/deposits/:id/undo', handle(200, (ctx, ledger, req) => ledger.undoDeposit(ctx, String(req.params.id), body(req).reason as string)));
   router.post('/transfers', handle(201, (ctx, ledger, req) => ledger.transferBetweenFunds(ctx, body(req) as never)));
 
   // Reports: ?month=current|previous|YYYY-MM, or ?from=YYYY-MM-DD&to=YYYY-MM-DD
