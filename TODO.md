@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-17"
+last_updated: "2026-10-18"
 ---
 
 # TODO
@@ -52,8 +52,7 @@ last_updated: "2026-10-17"
 <!-- Issues labeled `in-review` — shipped and pushed, awaiting the operator's decision to close. -->
 <!-- This band outranks an issue's priority, so finished work surfaces as "ready for your call". -->
 
-- [#7](https://github.com/jwilleke/ngdp-accounting-addons/issues/7) — Treasurer reports and CSV / QuickBooks / Wave export
-- [#5](https://github.com/jwilleke/ngdp-accounting-addons/issues/5) — Fund tracking and the shared single-entry ledger
+*None.*
 
 ## ⏸ Deferred
 
