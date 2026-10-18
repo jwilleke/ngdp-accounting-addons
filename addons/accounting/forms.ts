@@ -131,7 +131,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'who', type: 'section', label: 'Who, how and why' },
         { name: 'partyName', type: 'text', label: 'Received from', required: true },
         methodChoice(true),
-        { name: 'paymentMethodId', type: 'text', label: 'Check number (for a check)', required: false },
+        { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => {
       const receipt = await receipts.recordReceipt(ctx, {
@@ -150,7 +150,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'amount', type: 'amount', label: 'Amount (blank refunds what is left)', required: false },
         { name: 'date', type: 'date', label: 'Date refunded', required: true },
         methodChoice(false),
-        { name: 'paymentMethodId', type: 'text', label: 'Check number (for a check)', required: false },
+        { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => ({
       transactionId: (await receipts.refundReceipt(ctx, data.receiptId as string, {
