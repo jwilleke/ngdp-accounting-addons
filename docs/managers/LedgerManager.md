@@ -53,16 +53,18 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | Method | Permission | Step-up | Audit event (action) |
 | --- | --- | --- | --- |
 | `listFunds`, `fundBalances`, `periodSummary`, `listAccounts`, `accountBalances` | `ledger-summary-read` | no | — |
-| `listTransactions`, `getTransaction` | `ledger-read` | no | — |
+| `listTransactions`, `getTransaction`, `listDeposits`, `getDeposit`, `receiptsToDeposit` | `ledger-read` | no | — |
 | `postTransaction` (money out) | `ledger-record` | no | `ledger-record` (`ledger-post`) |
 | `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
+| `makeDeposit` | `ledger-record` | no | `ledger-record` (`deposit-make`) |
+| `undoDeposit` | `ledger-adjust` | off for now | `ledger-adjust` (`deposit-undo`) |
 | `refundReceipt` | `receipt-refund` | off for now | `receipt-refund` (`receipt-refund`) |
 | `voidTransaction` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-void`) |
 | `transferBetweenFunds` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
-| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts` `ledger-read`; `categories`, `payment-methods` `ledger-record` | no | — |
+| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `deposit-receipts`, `deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
 `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit
@@ -114,17 +116,31 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   refunds is not voided until its refunds are. The original stays visible, marked voided.
 - `transferBetweenFunds(actor, { fromFundId, toFundId, amount, date, memo? })` → the linked out and
   in entries. The total across funds is unchanged.
+- `makeDeposit(actor, { accountId, date, receiptIds, total, slipReference?, memo? })` → `Deposit`.
+  Receipts taken from Cash on Hand to a bank account together
+  ([D-031](../plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)): numbered `D-0001`
+  onwards, with an out entry from Cash on Hand and an in entry to the bank account for each fund
+  (`sourceType: 'deposit'`, `sourceId` the deposit). Fund balances do not change. Each receipt must
+  be posted, in Cash on Hand, in no standing deposit and dated on or before the deposit; `total` (the
+  slip's) must equal theirs. Whole receipts only.
+- `undoDeposit(actor, depositId, reason)` → `Deposit`. Voids its entries; its receipts are back in
+  Cash on Hand. Its number is not reused. A deposit's entries are never voided one by one, and a
+  receipt in a standing deposit is not voided until the deposit is undone.
+- `listDeposits(actor, { includeVoided? })`, `getDeposit(actor, id)`, `receiptsToDeposit(actor)`
+  (receipts a deposit can take, oldest first).
+- Receipt and deposit numbers share one rule: the letter, a dash, and one past the highest number
+  used, at least four digits with no upper limit (`R-9999`, `R-10000`).
 - `listTransactions(actor, { fundId?, from?, to?, includeVoided? })`, `getTransaction(actor, id)`.
 - `fundBalances(actor)` → per fund: opening balance, money in, money out, balance (opening + in −
   out, posted entries only).
 - `period({ month?, from?, to? })` → `{ from, to }`. `month` is `current`, `previous` or `YYYY-MM`;
   the default is the current month.
 - `periodSummary(actor, period)` → per fund and per account start, opened, in, out and end, and per category income
-  and expense, with totals. Transfers are left out of the categories; they net to zero. It carries
+  and expense, with totals. Transfers and deposits are left out of the categories; they net to zero. It carries
   no names, so a summary reader never sees who paid.
 - `exportCsv(actor, 'transactions' | 'funds', period)` → `{ filename, body, sha256 }`. Built with
   ngdpbase's one CSV writer (`ExportManager.toCsv`); the audit record carries the file's SHA-256.
-- `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `accounts`, `entries`, `receipts`
+- `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `accounts`, `bank-accounts`, `entries`, `receipts`, `deposit-receipts`, `deposits`
   (posted receipts with money left to refund), `categories` or `payment-methods`. Reached from a form definition as
   `optionsSource: "fetch:LedgerManager.toFormOptions(list=funds)"`; each list asks its own
   permission of the viewer, so a dropdown never offers what its reader may not see.

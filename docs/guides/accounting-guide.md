@@ -104,7 +104,7 @@ keep the books (__Admin → Users__).
   written, the money does not move.
 
 The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move
-Money Between Funds, Void an Entry, Create a Fund, Rename a Fund, Close a Fund, Set an Account's
+Money Between Funds, Void an Entry, Deposits, Undo a Deposit, Create a Fund, Rename a Fund, Close a Fund, Set an Account's
 Opening Balance, Monthly Summary) are visible to the treasurer role only, and only an administrator can
 change them.
 
@@ -164,7 +164,8 @@ older one.
 - No month lock: a closed month can still receive entries dated in it (#19).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
-- No deposits yet (#3): money in Cash on Hand stays there until "Make a Deposit" is built.
+- No "Make a Deposit" form yet (#3): deposits are made through the API (`POST /api/accounting/deposits`);
+  Deposits and Undo a Deposit work.
 - Bank account and routing numbers are not stored yet (#3).
 - No dues, donations or events modules yet.
 - A site that enabled accounting before receipts keeps the forms it first saved: its "Record an

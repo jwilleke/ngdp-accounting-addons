@@ -124,6 +124,38 @@ export interface AccountBalance {
   balance: number;
 }
 
+/**
+ * Receipts taken from Cash on Hand to a bank account together: one line on the
+ * bank statement (D-031). Its money moves in paired ledger entries per fund,
+ * out of Cash on Hand and into the bank account, so no fund balance changes.
+ */
+export interface Deposit {
+  id: string;
+  /** D-0001 onwards: one sequence per site, never reused. */
+  number: string;
+  date: string;
+  accountId: string;
+  /** The bank's deposit slip number, if any. */
+  slipReference: string | null;
+  total: number;
+  memo: string;
+  status: 'posted' | 'voided';
+  voidReason: string | null;
+  receipts: { receiptId: string; amount: number }[];
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface NewDeposit {
+  accountId: string;
+  date: string;
+  receiptIds: string[];
+  /** The deposit slip's total; the deposit is refused unless the receipts add up to it. */
+  total: number;
+  slipReference?: string;
+  memo?: string;
+}
+
 /** One account over a period, like FundPeriod. */
 export interface AccountPeriod {
   accountId: string; name: string; configured: boolean;
@@ -372,12 +404,18 @@ export function accountsFrom(entries: unknown, warn: (message: string) => void =
   return accounts.map(a => ({ ...a, isDefault: a === chosen }));
 }
 const RECEIPT_REFUND = 'receipt-refund';
+const DEPOSIT = 'deposit';
 const MONEY_IN_IS_A_RECEIPT = 'money in is recorded as a receipt (Record a Receipt), not as an entry';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** UN/CEFACT payment means code (UNCL 4461): digits, or ZZZ for "mutually defined". */
 const PAYMENT_MEANS = /^(\d{1,3}|ZZZ)$/;
 const CURRENCY = /^[A-Z]{3}$/;
+
+interface DepositRow {
+  id: string; number: string; date: string; account_id: string; slip_reference: string | null; total: number;
+  memo: string; status: 'posted' | 'voided'; void_reason: string | null; created_by: string; created_at: string;
+}
 
 interface FundRow {
   id: string; name: string; description: string; restricted: number; active: number;
@@ -577,7 +615,7 @@ export default class LedgerManager {
         COALESCE(SUM(CASE WHEN direction = 'in'  THEN amount END), 0) AS income,
         COALESCE(SUM(CASE WHEN direction = 'out' THEN amount END), 0) AS expense
       FROM accounting_transactions
-      WHERE status = 'posted' AND transfer_id IS NULL AND date >= ? AND date <= ?
+      WHERE status = 'posted' AND transfer_id IS NULL AND source_type <> '${DEPOSIT}' AND date >= ? AND date <= ?
       GROUP BY category ORDER BY category`).all(from, to) as { category: string; income: number; expense: number }[])
       .map(r => ({ category: r.category, label: typeof labels[r.category] === 'string' ? labels[r.category] : '', income: r.income, expense: r.expense }));
 
@@ -701,6 +739,9 @@ export default class LedgerManager {
    * shows, through the ledger's own reads where there is one:
    *   funds            open funds                   ledger-summary-read (listFunds)
    *   accounts         active accounts              ledger-summary-read (listAccounts)
+   *   bank-accounts    active bank accounts         ledger-summary-read (listAccounts)
+   *   deposit-receipts receipts in Cash on Hand     ledger-read (receiptsToDeposit)
+   *   deposits         standing deposits            ledger-read (listDeposits)
    *   entries          latest posted entries        ledger-read (listTransactions)
    *   categories       site's UCOA categories       ledger-record
    *   payment-methods  manual UN/CEFACT codes       ledger-record
@@ -714,9 +755,22 @@ export default class LedgerManager {
           return (await this.listFunds(actor)).filter(f => f.active).map(f => ({ value: f.id, label: f.name }));
         case 'accounts':
           return (await this.listAccounts(actor)).filter(a => a.configured && a.active).map(a => ({ value: a.id, label: a.name }));
+        case 'bank-accounts':
+          return (await this.listAccounts(actor)).filter(a => a.kind === 'bank' && a.configured && a.active).map(a => ({ value: a.id, label: a.name }));
+        case 'deposit-receipts': {
+          const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
+          return (await this.receiptsToDeposit(actor)).map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
+        }
+        case 'deposits': {
+          const accounts = new Map(this.accountsInUse().map(a => [a.id, a.name]));
+          return (await this.listDeposits(actor)).slice(0, ENTRY_CHOICES).map(d => ({
+            value: d.id, label: [d.number, d.date, accounts.get(d.accountId) ?? d.accountId, this.formatMoney(d.total, this.currency)].join(' · ')
+          }));
+        }
         case 'entries': {
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
-          const latest = (await this.listTransactions(actor))
+          // A deposit's entries are undone with the deposit, never one by one.
+          const latest = (await this.listTransactions(actor)).filter(t => t.sourceType !== DEPOSIT)
             .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
             .slice(0, ENTRY_CHOICES);
           return latest.map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
@@ -943,6 +997,9 @@ export default class LedgerManager {
     if (replacement?.direction === 'in') {
       throw new LedgerError(400, 'a receipt is corrected by voiding it and recording a new receipt, not by a replacement');
     }
+    if (original.sourceType === DEPOSIT) throw new LedgerError(409, 'this entry is part of a deposit; undo the deposit instead');
+    const inDeposit = original.confirmationNumber ? this.depositOf(original.id) : null;
+    if (inDeposit) throw new LedgerError(409, `this receipt is in deposit ${inDeposit}; undo the deposit first`);
     if (original.confirmationNumber && this.refunded(original) > 0) {
       throw new LedgerError(409, 'this receipt has refunds; void the refunds first');
     }
@@ -1064,6 +1121,107 @@ export default class LedgerManager {
     return refund;
   }
 
+  // ── Deposits (D-031) ───────────────────────────────────────────────────
+
+  /**
+   * Take receipts from Cash on Hand to a bank account: one deposit, numbered
+   * D-0001 onwards, and for each fund an out entry from Cash on Hand and an in
+   * entry to the bank account. Fund balances do not change. Whole receipts only;
+   * the slip total must equal theirs.
+   */
+  async makeDeposit(actor: LedgerActor, input: NewDeposit): Promise<Deposit> {
+    await this.authorize(actor, 'ledger-record');
+    const user = actor.actingUsername();
+    const account = this.account(text(input.accountId, 'accountId', { required: true, max: 32 }) as string);
+    if (account.kind !== 'bank' || !account.configured || !account.active) throw new LedgerError(400, 'accountId: a deposit goes into an open bank account');
+    const date = isoDate(input.date, 'date');
+    const ids = [...new Set((Array.isArray(input.receiptIds) ? input.receiptIds : []).filter((id): id is string => typeof id === 'string' && id !== ''))];
+    if (ids.length === 0) throw new LedgerError(400, 'receiptIds: choose at least one receipt');
+    const total = minorUnits(input.total, 'total', { positive: true });
+    const slipReference = text(input.slipReference, 'slipReference', { max: 64 }) ?? null;
+    const memo = text(input.memo, 'memo', { max: 2000 }) ?? '';
+    const receipts = this.depositable(ids, date);
+    const sum = receipts.reduce((t, r) => t + r.amount, 0);
+    if (sum !== total) {
+      throw new LedgerError(400, `total: the slip says ${this.formatMoney(total, this.currency)} but the receipts add up to ${this.formatMoney(sum, this.currency)}`);
+    }
+    const id = this.newId();
+    const byFund = new Map<string, number>();
+    for (const r of receipts) byFund.set(r.fundId, (byFund.get(r.fundId) ?? 0) + r.amount);
+    const legs = [...byFund].flatMap(([fundId, amount]) => [
+      this.newEntry(user, { direction: 'out', amount, date, fundId, accountId: CASH_ON_HAND, category: DEPOSIT, memo: 'deposit' }, { sourceType: DEPOSIT, sourceId: id }),
+      this.newEntry(user, { direction: 'in', amount, date, fundId, accountId: account.id, category: DEPOSIT, memo: 'deposit' }, { sourceType: DEPOSIT, sourceId: id })
+    ]);
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('ledger-record'), action: 'deposit-make',
+      severity: 'medium', resource: id, resourceType: 'accounting-deposit',
+      metadata: { accountId: account.id, date, total, currency: this.currency, receipts: receipts.map(r => r.confirmationNumber), slipReference }
+    });
+    let number = '';
+    await this.commit(() => {
+      this.depositable(ids, date); // again inside the transaction: another deposit may have taken one
+      number = this.nextNumber('D', 'number', 'accounting_deposits WHERE 1 = 1');
+      const createdAt = this.stamp();
+      this.db.prepare(`INSERT INTO accounting_deposits (id, number, date, account_id, slip_reference, total, memo, status, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'posted', ?, ?)`).run(id, number, date, account.id, slipReference, total, memo, user, createdAt);
+      for (const r of receipts) {
+        this.db.prepare('INSERT INTO accounting_deposit_receipts (deposit_id, receipt_id, amount) VALUES (?, ?, ?)').run(id, r.id, r.amount);
+      }
+      for (const leg of legs) this.insert({ ...leg, memo: memo ? `Deposit ${number}: ${memo}` : `Deposit ${number}` });
+      this.history(user, 'deposit-make', 'deposit', id, null, { number, date, accountId: account.id, total, receipts: receipts.map(r => r.id), legs: legs.map(l => l.id) });
+    });
+    return this.deposit(id);
+  }
+
+  /** Undo a deposit, with a reason: its entries are voided and its receipts are back in Cash on Hand. */
+  async undoDeposit(actor: LedgerActor, depositId: string, reason: string): Promise<Deposit> {
+    await this.authorize(actor, 'ledger-adjust');
+    const user = actor.actingUsername();
+    const why = text(reason, 'reason', { required: true }) as string;
+    const before = this.deposit(text(depositId, 'depositId', { required: true }) as string);
+    if (before.status === 'voided') throw new LedgerError(409, `deposit ${before.number} is already undone`);
+    const legs = this.depositLegs(before.id);
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('ledger-adjust'), action: 'deposit-undo',
+      severity: 'high', resource: before.id, resourceType: 'accounting-deposit', reason: why,
+      metadata: { number: before.number, total: before.total, voided: legs.map(l => l.id) }
+    });
+    await this.commit(() => {
+      if (this.deposit(before.id).status === 'voided') throw new LedgerError(409, `deposit ${before.number} is already undone`);
+      this.db.prepare("UPDATE accounting_deposits SET status = 'voided', void_reason = ? WHERE id = ?").run(why, before.id);
+      this.db.prepare('UPDATE accounting_deposit_receipts SET undone = 1 WHERE deposit_id = ?').run(before.id);
+      for (const leg of legs) {
+        this.db.prepare("UPDATE accounting_transactions SET status = 'voided', void_reason = ? WHERE id = ?").run(why, leg.id);
+      }
+      this.history(user, 'deposit-undo', 'deposit', before.id, before, { ...before, status: 'voided', voidReason: why }, why);
+    });
+    return this.deposit(before.id);
+  }
+
+  /** Deposits, newest first; undone ones only when asked. */
+  async listDeposits(actor: LedgerActor, filter: { includeVoided?: boolean } = {}): Promise<Deposit[]> {
+    await this.authorize(actor, 'ledger-read');
+    const rows = this.db.prepare(`SELECT id FROM accounting_deposits ${filter.includeVoided ? '' : "WHERE status = 'posted'"}
+      ORDER BY date DESC, created_at DESC`).all() as { id: string }[];
+    return rows.map(r => this.deposit(r.id));
+  }
+
+  async getDeposit(actor: LedgerActor, depositId: string): Promise<Deposit> {
+    await this.authorize(actor, 'ledger-read');
+    return this.deposit(depositId);
+  }
+
+  /** The receipts a deposit can take: posted, in Cash on Hand, in no deposit that stands. Oldest first. */
+  async receiptsToDeposit(actor: LedgerActor): Promise<Transaction[]> {
+    await this.authorize(actor, 'ledger-read');
+    return (this.db.prepare(`SELECT * FROM accounting_transactions t
+      WHERE t.direction = 'in' AND t.confirmation_number IS NOT NULL AND t.status = 'posted' AND t.account_id = ?
+        AND NOT EXISTS (SELECT 1 FROM accounting_deposit_receipts d WHERE d.receipt_id = t.id AND d.undone = 0)
+      ORDER BY t.date, t.created_at`).all(CASH_ON_HAND) as TransactionRow[]).map(toTransaction);
+  }
+
   async listTransactions(actor: LedgerActor, filter: { fundId?: string; from?: string; to?: string; includeVoided?: boolean } = {}): Promise<Transaction[]> {
     await this.authorize(actor, 'ledger-read');
     const where: string[] = [];
@@ -1179,6 +1337,45 @@ export default class LedgerManager {
     return accounts.find(a => a.isDefault) ?? CASH_ON_HAND_ACCOUNT;
   }
 
+  private deposit(depositId: string): Deposit {
+    const row = this.db.prepare('SELECT * FROM accounting_deposits WHERE id = ?').get(depositId) as DepositRow | undefined;
+    if (!row) throw new LedgerError(404, 'unknown deposit');
+    const receipts = (this.db.prepare('SELECT receipt_id, amount FROM accounting_deposit_receipts WHERE deposit_id = ? ORDER BY rowid')
+      .all(depositId) as { receipt_id: string; amount: number }[]).map(r => ({ receiptId: r.receipt_id, amount: r.amount }));
+    return {
+      id: row.id, number: row.number, date: row.date, accountId: row.account_id, slipReference: row.slip_reference, total: row.total,
+      memo: row.memo, status: row.status, voidReason: row.void_reason, receipts, createdBy: row.created_by, createdAt: row.created_at
+    };
+  }
+
+  /** The posted entries a deposit made. */
+  private depositLegs(depositId: string): Transaction[] {
+    return (this.db.prepare("SELECT * FROM accounting_transactions WHERE source_type = ? AND source_id = ? AND status = 'posted'")
+      .all(DEPOSIT, depositId) as TransactionRow[]).map(toTransaction);
+  }
+
+  /** The number of the standing deposit a receipt is in, if any. */
+  private depositOf(receiptId: string): string | null {
+    const row = this.db.prepare(`SELECT d.number FROM accounting_deposit_receipts r JOIN accounting_deposits d ON d.id = r.deposit_id
+      WHERE r.receipt_id = ? AND r.undone = 0`).get(receiptId) as { number: string } | undefined;
+    return row?.number ?? null;
+  }
+
+  /** The receipts, checked one by one: each must be able to go into a deposit dated `date`. */
+  private depositable(ids: string[], date: string): Transaction[] {
+    return ids.map(id => {
+      const t = this.transaction(id);
+      const name = t.confirmationNumber ?? 'this entry';
+      if (t.direction !== 'in' || !t.confirmationNumber) throw new LedgerError(400, `receiptIds: ${name} is not a receipt`);
+      if (t.status !== 'posted') throw new LedgerError(409, `receiptIds: ${name} is voided`);
+      if (t.accountId !== CASH_ON_HAND) throw new LedgerError(409, `receiptIds: ${name} is not in Cash on Hand`);
+      const already = this.depositOf(t.id);
+      if (already) throw new LedgerError(409, `receiptIds: ${name} is already in deposit ${already}`);
+      if (t.date > date) throw new LedgerError(400, `receiptIds: ${name} is dated after the deposit`);
+      return t;
+    });
+  }
+
   private openings(): Map<string, { opening_balance: number; opening_date: string }> {
     return new Map((this.db.prepare('SELECT account_id, opening_balance, opening_date FROM accounting_account_openings').all() as
       { account_id: string; opening_balance: number; opening_date: string }[]).map(r => [r.account_id, r]));
@@ -1198,9 +1395,18 @@ export default class LedgerManager {
 
   /** The next manual receipt number: one past the highest ever used, voided ones included. */
   private nextReceiptNumber(): string {
-    const row = this.db.prepare(`SELECT MAX(CAST(SUBSTR(confirmation_number, 3) AS INTEGER)) AS last
-      FROM accounting_transactions WHERE provider = ? AND confirmation_number LIKE 'R-%'`).get(MANUAL_PROVIDER) as { last: number | null };
-    return `R-${String((row.last ?? 0) + 1).padStart(4, '0')}`;
+    return this.nextNumber('R', 'confirmation_number', 'accounting_transactions WHERE provider = ?', MANUAL_PROVIDER);
+  }
+
+  /**
+   * One sequence's next number: the prefix, a dash, and one past the highest
+   * number ever used, at least four digits and with no upper limit (R-0001,
+   * R-10000, D-30000000). Only the digits count, never the prefix (D-031).
+   */
+  private nextNumber(prefix: 'R' | 'D', column: string, fromWhere: string, ...params: unknown[]): string {
+    const row = this.db.prepare(`SELECT MAX(CAST(SUBSTR(${column}, ${prefix.length + 2}) AS INTEGER)) AS last
+      FROM ${fromWhere} AND ${column} LIKE '${prefix}-%'`).get(...params) as { last: number | null };
+    return `${prefix}-${String((row.last ?? 0) + 1).padStart(4, '0')}`;
   }
 
   /** What has been refunded of a receipt so far (posted refunds only). */

@@ -3,7 +3,8 @@
  *
  *   [{Ledger view='balances'}]                       fund balances, with a total
  *   [{Ledger view='accounts'}]                       account balances (where the money sits), with a total (D-031)
- *   [{Ledger view='entries' max='20'}]               latest entries, newest first
+ *   [{Ledger view='entries' max='20'}]               latest entries, newest first, with receipt and deposit numbers
+ *   [{Ledger view='deposits'}]                       deposits, newest first, with their receipts (D-031)
  *   [{Ledger view='entries' fund='<fund id>' voided='true'}]
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
  *   [{Ledger view='summary' from='2026-01-01' to='2026-06-30' export='true'}]   with CSV download links
@@ -20,7 +21,7 @@
  */
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
-import type { AccountBalance, FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
+import type { AccountBalance, Deposit, FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
 
 type PluginParams = Record<string, string | number | boolean>;
 
@@ -89,14 +90,23 @@ function accountsTable(f: PluginFormatters, rows: AccountBalance[], fundsTotal: 
   return table + disagreement(f, fundsTotal, sum(r => r.balance), currency);
 }
 
-function entriesTable(f: PluginFormatters, entries: Transaction[], fundNames: Map<string, string>): string {
+/** Names to show for ids: funds, accounts, and each receipt's standing deposit number. */
+interface Names { funds: Map<string, string>; accounts: Map<string, string>; depositOf: Map<string, string> }
+
+function entriesTable(f: PluginFormatters, entries: Transaction[], names: Names): string {
   const { escapeHtml, formatAsTable, formatMoney } = f;
   const money = (t: Transaction) => escapeHtml(formatMoney(t.amount, t.currency));
+  const number = (t: Transaction) => {
+    const deposit = names.depositOf.get(t.id);
+    return escapeHtml(t.confirmationNumber ?? '') + (deposit ? ` <span class="text-muted">(${escapeHtml(deposit)})</span>` : '');
+  };
   return formatAsTable(
-    ['Date', 'Fund', 'Category', 'In', 'Out', 'Paid by / to', 'Memo', 'Status'],
+    ['Date', 'No.', 'Fund', 'Account', 'Category', 'In', 'Out', 'Paid by / to', 'Memo', 'Status'],
     entries.map(t => [
       escapeHtml(t.date),
-      escapeHtml(fundNames.get(t.fundId) ?? t.fundId),
+      number(t),
+      escapeHtml(names.funds.get(t.fundId) ?? t.fundId),
+      escapeHtml(names.accounts.get(t.accountId) ?? t.accountId),
       escapeHtml(t.category),
       t.direction === 'in' ? money(t) : '',
       t.direction === 'out' ? money(t) : '',
@@ -106,10 +116,41 @@ function entriesTable(f: PluginFormatters, entries: Transaction[], fundNames: Ma
     ]),
     {
       sortable: true,
-      cellDataSort: sortOn(entries, { 3: t => (t.direction === 'in' ? t.amount : ''), 4: t => (t.direction === 'out' ? t.amount : '') }),
+      cellDataSort: sortOn(entries, { 1: t => t.confirmationNumber ?? '', 5: t => (t.direction === 'in' ? t.amount : ''), 6: t => (t.direction === 'out' ? t.amount : '') }),
       emptyMessage: 'No entries yet.'
     }
   );
+}
+
+function depositsTable(f: PluginFormatters, deposits: Deposit[], names: Names & { receiptNumbers: Map<string, string> }, currency: string): string {
+  const { escapeHtml, formatAsTable, formatMoney } = f;
+  return formatAsTable(
+    ['Number', 'Date', 'Account', 'Slip', 'Receipts', 'Total', 'Status'],
+    deposits.map(d => [
+      escapeHtml(d.number),
+      escapeHtml(d.date),
+      escapeHtml(names.accounts.get(d.accountId) ?? d.accountId),
+      escapeHtml(d.slipReference ?? ''),
+      escapeHtml(d.receipts.map(r => names.receiptNumbers.get(r.receiptId) ?? r.receiptId).join(', ')),
+      `<strong>${escapeHtml(formatMoney(d.total, currency))}</strong>`,
+      d.status === 'voided' ? `undone: ${escapeHtml(d.voidReason ?? '')}` : 'posted'
+    ]),
+    {
+      sortable: true,
+      cellDataSort: sortOn(deposits, { 0: d => d.number.slice(2).padStart(12, '0'), 5: d => d.total }),
+      emptyMessage: 'No deposits yet.'
+    }
+  );
+}
+
+/** The names the entries and deposits tables show; read as the viewer, who already needed ledger-read. */
+async function namesFor(ledger: LedgerManager, actor: LedgerActor): Promise<Names> {
+  const deposits = await ledger.listDeposits(actor);
+  return {
+    funds: new Map((await ledger.fundBalances(actor)).map(b => [b.fundId, b.name])),
+    accounts: new Map((await ledger.listAccounts(actor)).map(a => [a.id, a.name])),
+    depositOf: new Map(deposits.flatMap(d => d.receipts.map(r => [r.receiptId, d.number] as [string, string])))
+  };
 }
 
 function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolean): string {
@@ -174,15 +215,20 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const max = parseMaxParam(params.max as string | number | undefined, DEFAULT_MAX_ENTRIES);
     const entries = await ledger.listTransactions(actor, { fundId: fund, includeVoided });
     const newestFirst = [...entries].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-    const fundNames = new Map((await ledger.fundBalances(actor)).map(f => [f.fundId, f.name]));
-    return entriesTable(f, applyMax(newestFirst, max), fundNames);
+    return entriesTable(f, applyMax(newestFirst, max), await namesFor(ledger, actor));
+  }
+  if (view === 'deposits') {
+    const deposits = await ledger.listDeposits(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
+    const receiptNumbers = new Map((await ledger.listTransactions(actor, { includeVoided: true }))
+      .filter(t => t.confirmationNumber).map(t => [t.id, t.confirmationNumber as string]));
+    return depositsTable(f, deposits, { ...(await namesFor(ledger, actor)), receiptNumbers }, ledger.currencyCode());
   }
   if (view === 'summary') {
     const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
     const period = ledger.period({ month: str(params.month), from: str(params.from), to: str(params.to) });
     return summaryTables(f, await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
   }
-  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries or summary.`);
+  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries, deposits or summary.`);
 }
 
 /**
