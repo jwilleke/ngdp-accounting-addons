@@ -348,7 +348,8 @@ Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the pl
 
 - __PII:__ names, emails, addresses, phone numbers, membership status. Shown only to people with the matching permission; board summaries are aggregate by default.
 - __Donor data:__ individual gifts are sensitive. Support anonymous gifts. Donor-level views and exports need `ledger-read` or `ledger-export`.
-- __No card or bank data stored.__ Card and bank receipts go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
+- __No payer card or bank data stored.__ Card and bank receipts go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
+- __The organization's own bank accounts__ carry their routing and account numbers. The account number is a secret, referenced from config as `$VAR`; only `fund-manage` holders see it in full, and it never goes into logs, audit events or exports ([D-031](plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)).
 - __Provider events:__ fetch events from the provider over an authenticated outbound call (`guardedFetch`), process each event id once, and fetch the authoritative object from the provider where it matters. There is no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
 - __Secrets:__ receipt provider keys are environment variables, referenced from config as `$VAR`, never literals in a JSON file ([D-008](plans/decisions.md#d-008-where-secret-values-live)). They are named in `ngdpbase.config.secret-keys` so the admin screen masks them; never log them. Changing one is an operator action: change the environment, then restart.
 - __Outbound HTTP__ to Stripe goes through `guardedFetch` (`addons/README.md`); the egress policy must allow it.

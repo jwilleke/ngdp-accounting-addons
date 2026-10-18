@@ -85,12 +85,25 @@ linted instead.
 ## Project Context
 
 Suite of [ngdpbase](https://github.com/jwilleke/ngdpbase) add-ons giving small organizations dues,
-payments, donations, fund tracking, event fees and treasurer reports. Planning stage: no code yet.
+payments, donations, fund tracking, event fees and treasurer reports. The base `accounting` add-on
+(ledger, funds, receipts) is built; the other modules are planned.
 
 - What and why: [README.md](README.md)
 - Goals, personas, modules, ledger model, roles, open questions: [docs/requirements.md](docs/requirements.md)
 - Decisions log (record every confirmed decision here): [docs/plans/decisions.md](docs/plans/decisions.md)
 - Add-on contract (`AddonModule`, `register(engine, config)`): ngdpbase `docs/guides/addons-developer-guide.md`
+
+## Security and secrets
+
+- __Payers' card and bank numbers are never stored.__ Stripe (or another receipt provider) holds
+  them; the add-on keeps only the provider's ids.
+- __The organization's own bank account numbers are stored as secrets__
+  ([D-031](docs/plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)): a `$VAR`
+  reference in config, named in `ngdpbase.config.secret-keys`, never a literal. Only `fund-manage`
+  holders see the full number; it never goes into logs, audit events, exports or pages.
+- Provider keys are environment variables, never literals
+  ([D-008](docs/plans/decisions.md#d-008-where-secret-values-live)).
+- Never commit keys, account numbers, or donor or member data.
 
 ## Development
 

@@ -44,6 +44,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-028](#d-028-receipts-for-money-in-statements-for-what-donors-get-payments-only-for-money-out) | 2026-10-18 | Receipts for money in, statements for what donors get, payments only for money out | Accepted |
 | [D-029](#d-029-how-receipts-are-recorded-numbered-corrected-and-refunded-every-money-movement-has-a-reason) | 2026-10-18 | How receipts are recorded, numbered, corrected and refunded; every money movement has a reason | Accepted |
 | [D-030](#d-030-step-up-off-for-accountings-money-actions-for-now) | 2026-10-18 | Step-up off for accounting's money actions, for now | Accepted |
+| [D-031](#d-031-bank-accounts-cash-on-hand-and-deposits) | 2026-10-18 | Bank accounts, Cash on Hand and deposits: every entry has a fund and an account | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -1034,3 +1035,56 @@ cannot be written.
 __Turning it back on:__ when the form keeps its fields across a fresh sign-in, add `"step-up": true`
 back to those three entries in `addons/accounting/config/default-config.json` and restore the
 sentences in the docs and pages.
+
+## D-031: Bank accounts, Cash on Hand and deposits
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-18
+- __Links:__ [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3),
+  [D-008](#d-008-where-secret-values-live), [D-025](#d-025-accounting-records-follow-ngdpbases-access-control-model),
+  [D-029](#d-029-how-receipts-are-recorded-numbered-corrected-and-refunded-every-money-movement-has-a-reason)
+
+__Context:__ Cash and checks are taken to the bank in batches, and the bank statement shows one line
+per deposit. To match that line, the books need to know where money sits, not only what it is for.
+
+__Decision (operator, 2026-10-18):__
+
+- __Two labels on every entry.__ A __fund__ says what the money is for; an __account__ says where it
+  sits. One bank account holds money for several funds. All funds added up always equals all
+  accounts added up. A fund does not care where its money is.
+- __Accounts are configuration__, under `ngdpbase.addons.accounting.accounts`, keyed by id: name,
+  kind (`bank` or `cash`), default bank account, active, routing number, account number. The
+  defaults ship one bank account, `checking` ("Checking"), with no numbers. __Cash on Hand__ is built
+  in and needs no configuration.
+- __Bank accounts carry their account and routing numbers.__ They are the organization's own
+  accounts, not a payer's. The account number is a secret: a `$VAR` reference in the config, named
+  in `ngdpbase.config.secret-keys` (D-008). Holders of `fund-manage` (treasurer; admin) see the full
+  number; everyone else sees the last four digits. It never goes into logs, audit events, exports
+  or wiki pages. Payers' card and bank numbers are still never stored.
+- __Opening balance and date__ of each account are set by the treasurer in the UI (`fund-manage`),
+  audited, the same as a fund's.
+- __Where a receipt lands:__ the method picks the starting account, and the treasurer can change it.
+  Cash, check and card (event reader) go to Cash on Hand; ACH, Zelle and bank transfer go to the
+  default bank account. Money-out entries pick an account, defaulting to the default bank account.
+  Moving money between funds leaves the account unchanged.
+- __A deposit is a record plus ledger entries.__ It lists its receipts and posts paired entries per
+  fund: out of Cash on Hand, into the bank account. Each fund nets to zero, so fund balances never
+  change; account balances are right on any date. Undoing a deposit voids its entries
+  (`ledger-adjust`, with a reason) and its receipts return to Cash on Hand. Nothing posted changes.
+- __What goes into a deposit:__ receipts in Cash on Hand, not voided, not already deposited; a
+  receipt is in at most one deposit. A partly refunded receipt goes in at its full amount. Whole
+  receipts only for now. The treasurer enters the deposit slip total; the deposit is refused unless
+  it matches.
+- __Deposit numbers__ are a counter shown as `D-` plus at least four digits, with no upper limit
+  (`D-0001`, `D-10000`, `D-30000000`): one past the highest ever used, voided included. Receipt
+  numbers work the same way and share the helper.
+- __Permissions:__ none new. Making a deposit is `ledger-record`; undoing one is `ledger-adjust`;
+  accounts and their opening balances are `fund-manage`.
+- __Existing entries__ get `checking` when the database is upgraded; earlier receipts count as
+  already in the bank. An account removed from config while entries still point at it is shown as
+  with "(no longer configured)" after its name, and the add-on warns at startup.
+- __Screens:__ "Make a Deposit"; a Deposits page that opens each deposit to its receipts; undo on the
+  deposit; a balance per account beside the balance per fund on Balances and the board report; the
+  receipt list shows each receipt's deposit number.
+
+__Build order:__ two PRs. Accounts first, then deposits.
