@@ -11,9 +11,10 @@ Requirements: ngdpbase v5.17.0 or later (declared as `minVersion`; the ledger ne
 (`ngdpbase.database.provider: sqlite`), and the forms add-on for the treasurer's screens.
 
 At runtime the add-on imports nothing from ngdpbase's files: core values come from the `host` passed
-to `register()`, routes from `engine.createRouter()`, and the rest from ngdpbase's managers. Only the
-build and the tests need a built ngdpbase (`dist`) beside the repository. So installing it needs no
-`dist` path; it does need its compiled `.js` files, which `npm run build` writes beside the `.ts`.
+to `register()`, routes from `engine.createRouter()`, and the rest from ngdpbase's managers. The build
+and the tests take ngdpbase's types and test kit from `@jwilleke/ngdpbase-types`, so no ngdpbase
+checkout is needed anywhere. Installing it needs its compiled `.js` files, which `npm run build` writes
+beside the `.ts`.
 
 Setting it up for a real site (access, the board's view, backups): the
 [accounting site guide](../docs/guides/accounting-guide.md).

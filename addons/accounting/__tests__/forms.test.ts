@@ -3,12 +3,9 @@
  * a submitted form becomes a ledger entry. Each test opens its own temporary
  * database and removes only that folder.
  */
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { testLedgerParts } from './host.js';
-import SqliteDatabaseProvider from '../../../dist/src/providers/SqliteDatabaseProvider.js';
+import { openTestLedgerDatabase } from './host.js';
 import LedgerManager, { MANUAL_PAYMENT_MEANS, type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
 import { LEDGER_FORMS, entryFromForm, fieldOf } from '../forms.js';
@@ -23,14 +20,12 @@ const treasurer: LedgerActor = {
 };
 
 describe('LedgerManager.toFormOptions', () => {
-  let dir: string;
-  let provider: SqliteDatabaseProvider;
+  let provider: { handle: unknown; close(): void };
   let asked: unknown[];
   let ledger: LedgerManager;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accounting-forms-'));
-    provider = new SqliteDatabaseProvider(path.join(dir, 'accounting.db'), 'test-key-not-a-secret', ACCOUNTING_MIGRATIONS as never, ACCOUNTING_LEDGER_TABLE);
+    provider = openTestLedgerDatabase();
     asked = [];
     ledger = new LedgerManager({ ...testLedgerParts,
       db: provider.handle as unknown as LedgerDb,
@@ -46,7 +41,6 @@ describe('LedgerManager.toFormOptions', () => {
 
   afterEach(() => {
     provider.close();
-    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   test('offers open funds only, by id and name, asking the viewer for ledger-summary-read', async () => {
