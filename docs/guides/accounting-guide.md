@@ -16,7 +16,7 @@ books of record stay in QuickBooks or Wave, and accounting hands them a CSV.
 
 ## Before you start
 
-- ngdpbase __5.17.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
+- ngdpbase __5.18.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
   to load it.
 - The site's database on: `ngdpbase.database.provider` set to `sqlite`.
 - The __forms__ add-on enabled. The treasurer's screens are forms; without it the ledger still works
