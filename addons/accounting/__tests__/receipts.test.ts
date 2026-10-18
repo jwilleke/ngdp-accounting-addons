@@ -151,6 +151,13 @@ describe('receipts', () => {
       expect(await balance()).toBe(1_000);
     });
 
+    test('the refund form lists receipts for a reader of the ledger; refunding still needs receipt-refund', async () => {
+      const r = await receipts.recordReceipt(actor(), dues(100));
+      const reader = { username: 'board-bea', granted: ['ledger-read', 'ledger-summary-read'] };
+      expect((await ledger.toFormOptions({ list: 'receipts' }, reader)).map(o => o.value)).toEqual([r.id]);
+      expect(await ledger.toFormOptions({ list: 'receipts' }, { username: 'nobody', granted: [] })).toEqual([]);
+    });
+
     test('refunding needs receipt-refund, refused before anything is written', async () => {
       const r = await receipts.recordReceipt(actor(), dues(100));
       audit.length = 0;
