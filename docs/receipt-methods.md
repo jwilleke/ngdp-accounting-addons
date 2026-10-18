@@ -1,10 +1,13 @@
 ---
 title: Receipt methods
-description: How money can arrive, as the receipt form offers it, with the UN/CEFACT code each is stored as
+description: Source of truth for receipt methods, their UN/CEFACT codes, and which are implemented
 last_updated: "2026-10-18"
 ---
 
 # Receipt methods
+
+__This page is the source of truth__ for the methods money can arrive by, their codes, and which are
+implemented. Code and other documents follow it; change it first.
 
 A receipt records how the money arrived: its __method__. The receipt form offers the methods below.
 Each is stored as a code from the UN/CEFACT list of payment means, __UNCL 4461__
@@ -16,17 +19,21 @@ The same list is used for money going out (an entry's method) and for refunds.
 
 ## The methods
 
-| Label | Code | UNCL 4461 name | Use it for | Reference to record |
-| --- | --- | --- | --- | --- |
-| Cash | `10` | In cash | Notes and coins handed over | none |
-| Check | `20` | Cheque | A paper check | the check number |
-| ACH | `2` | Automated clearing house credit | Money the payer sends to the organization's bank: direct deposit, online bill pay | the bank's confirmation or trace number |
-| Zelle | `68` | Online payment service | A Zelle transfer | Zelle's confirmation code |
-| Bank transfer | `30` | Credit transfer | A wire, or another transfer that is not ACH or Zelle | the bank's reference |
-| Card | `48` | Bank card | A card payment taken outside this system (a card reader at an event) | the last four digits are not stored; the reader's receipt number, if any |
+| Label | Code | UNCL 4461 name | Implemented | Use it for | Reference to record |
+| --- | --- | --- | --- | --- | --- |
+| Cash | `10` | In cash | yes | Notes and coins handed over | none |
+| Check | `20` | Cheque | yes | A paper check | the check number |
+| ACH | `2` | Automated clearing house credit | no | Money the payer sends to the organization's bank: direct deposit, online bill pay | the bank's confirmation or trace number |
+| Zelle | `68` | Online payment service | no | A Zelle transfer | Zelle's confirmation code |
+| Bank transfer | `30` | Credit transfer | yes | A wire, or another transfer that is not ACH or Zelle | the bank's reference |
+| Card | `48` | Bank card | yes | A card payment taken outside this system (a card reader at an event) | the reader's receipt number, if any; never the card number |
+| ACH debit | `3` | Automated clearing house debit | no, later | Money the organization pulls from a payer's account; needs a processor (see Notes) | set by the processor |
 
-The reference goes in the receipt's "Check number or confirmation code" field
-(`paymentMethodId`). It is what the treasurer matches against the bank statement. Never record a
+__Implemented__ means the receipt form offers it today. "No" rows are decided and waiting to be
+built; "no, later" waits on something else.
+
+The reference goes in the receipt's reference field (`paymentMethodId`; see
+[Where it lives in code](#where-it-lives-in-code) for its label). It is what the treasurer matches against the bank statement. Never record a
 full card or bank account number ([requirements](requirements.md), section 9).
 
 ## Notes
@@ -43,11 +50,8 @@ full card or bank account number ([requirements](requirements.md), section 9).
 
 ## Where it lives in code
 
-`MANUAL_PAYMENT_MEANS` in `addons/accounting/managers/LedgerManager.ts` is this list, in this order;
-the form reads it through `LedgerManager.toFormOptions({ list: 'payment-methods' })`. Change this page
-and that list together.
-
-| Label | In the code today |
-| --- | --- |
-| Cash, Check, Bank transfer, Card | yes |
-| ACH, Zelle | not yet: to be added with the field label "Check number or confirmation code" |
+`MANUAL_PAYMENT_MEANS` in `addons/accounting/managers/LedgerManager.ts` holds the rows marked
+"yes", in this order; the form reads it through `LedgerManager.toFormOptions({ list: 'payment-methods' })`.
+When a row is implemented, change this page and that list in the same commit. Until ACH and Zelle are
+added, the form's reference field is labelled "Check number"; it becomes "Check number or confirmation
+code" with them.
