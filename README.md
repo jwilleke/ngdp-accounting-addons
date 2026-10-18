@@ -1,10 +1,10 @@
 # ngdp-accounting-addons
 
-Add-ons for [ngdpbase](https://github.com/jwilleke/ngdpbase) that give small organizations dues, payments, donations, fund tracking, event fees and treasurer reports, all in the same wiki where they keep the rest of their records.
+Add-ons for [ngdpbase](https://github.com/jwilleke/ngdpbase) that give small organizations dues, receipts (cash, check, card), donations, fund tracking, event fees and treasurer reports, all in the same wiki where they keep the rest of their records.
 
 __Status:__ the base `accounting` add-on (the MVP) is built: funds, a ledger with voids and
 transfers, the treasurer's screens, the `[{Ledger}]` plugin, a monthly summary and CSV export. The
-module add-ons (dues, payments, donations, events) are not built yet.
+module add-ons (dues, receipts, donations, events) are not built yet.
 
 - Setting it up on a site: [docs/guides/accounting-guide.md](docs/guides/accounting-guide.md)
 - The ledger's API for other add-ons: [docs/managers/LedgerManager.md](docs/managers/LedgerManager.md)
@@ -27,7 +27,7 @@ Clubs first, then churches and associations: groups run by volunteers whose offi
 | Phase | Module | What it does |
 | --- | --- | --- |
 | 1 | Dues and invoicing | Membership tiers, renewal dates, automatic reminders, paid or lapsed status |
-| 1 | Payments | Stripe for cards and ACH, plus manual recording of cash and checks |
+| 1 | Receipts | Money coming in: Stripe for cards and ACH, plus recording cash and checks by hand |
 | 1 | Donations and giving statements | Year-end tax receipts for each donor |
 | 1 | Fund tracking | Every transaction is tagged to a fund (general, building, youth, an event) |
 | 1 | Event fees and registrations | Paid sign-ups that post to the same ledger |

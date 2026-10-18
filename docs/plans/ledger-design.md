@@ -15,7 +15,7 @@ transfers, balances, audit, permissions and the treasurer role). The CSV export 
 
 - Keep a list of __funds__ (general, building, youth, an event). A fund can be closed, never deleted.
 - Record __money in and money out__, each entry tagged to exactly one fund: cash, checks and other
-  payments the treasurer enters by hand.
+  money received that the treasurer enters by hand.
 - __Correct mistakes without erasing them__: a posted entry is never edited or deleted. A
   correction voids it, with a reason, and posts a replacement linked to it.
 - __Move money between funds__ as a linked out-and-in pair that leaves the total unchanged.
@@ -23,7 +23,7 @@ transfers, balances, audit, permissions and the treasurer role). The CSV export 
 - Record __every money action__ in ngdpbase's audit log, and refuse the action if the record cannot
   be written.
 
-Not in the MVP: online payments, dues, donations, events, scheduled jobs, QuickBooks and Wave
+Not in the MVP: online receipts, dues, donations, events, scheduled jobs, QuickBooks and Wave
 formats, and the period lock (see [Open questions](#open-questions)). The monthly summary and CSV
 export are designed with the reports work, on top of this ledger.
 
@@ -66,9 +66,9 @@ export are designed with the reports work, on top of this ledger.
 | `party_person_id` / `party_name` | TEXT | an ngdpbase Person, or free text |
 | `payment_method` | TEXT | UN/CEFACT payment means code, e.g. `10` cash, `20` cheque |
 | `payment_method_id` | TEXT | check number or similar |
-| `provider`, `confirmation_number` | TEXT | for payments a provider recorded; unique together when set |
+| `provider`, `confirmation_number` | TEXT | for receipts a provider recorded; unique together when set |
 | `source_type`, `source_id` | TEXT | what created it: `manual`, `adjustment`, `transfer` (later: `dues-invoice`, `donation`, …) |
-| `status` | TEXT | `posted` or `voided` (`pending` arrives with online payments) |
+| `status` | TEXT | `posted` or `voided` (`pending` arrives with online receipts) |
 | `voids_id` / `voided_by_id` | TEXT | links between a voided entry and its replacement |
 | `void_reason` | TEXT | required when voided |
 | `transfer_id` | TEXT | pairs the two halves of a fund transfer |
@@ -164,7 +164,7 @@ One policy, `accounting-treasurer`, grants all six permissions to `treasurer`. A
 ## Concurrency
 
 Two copies of the site share the database during a rolling update (D-006). SQLite's locking keeps
-writes safe. Every write is one short transaction. Re-posting the same provider payment is refused by
+writes safe. Every write is one short transaction. Re-posting the same provider receipt is refused by
 the unique `provider` plus `confirmation_number` index.
 
 ## Tests

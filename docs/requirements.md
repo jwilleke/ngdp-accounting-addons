@@ -12,9 +12,9 @@ Decisions made since this draft are recorded in [docs/plans/decisions.md](plans/
 
 - Replace WildApricot for small organizations put off by its price increases and per-contact billing.
 - Keep __board memory__: financial records, giving history and the treasurer's working notes belong to the organization and survive officer changes.
-- Cover the money tasks a volunteer treasurer does every month: collect dues, take payments and donations, track money by fund, run event sign-ups, report to the board, and hand the numbers to the real books.
+- Cover the money tasks a volunteer treasurer does every month: collect dues and donations, record money received, track money by fund, run event sign-ups, report to the board, and hand the numbers to the real books.
 - Keep accounting deliberately small. The books of record stay in QuickBooks or Wave; these add-ons export to them.
-- Protect higher-risk actions (refunds, voids, exports, payment settings, role changes, tax receipts) with stronger sign-in than everyday member actions.
+- Protect higher-risk actions (refunds, voids, exports, receipt settings, role changes, giving statements) with stronger sign-in than everyday member actions.
 
 ### Non-goals (Phase 1)
 
@@ -47,7 +47,7 @@ Where a published standard names a thing, these add-ons use its name and codes r
 | --- | --- | --- |
 | __Treasurer__ | Volunteer officer, often not an accountant, serving one or two years | Record money quickly, chase lapsed dues, produce a board report and year-end receipts, hand off cleanly |
 | __Board member__ | President, secretary, other officers | See fund balances and the monthly summary; approve things; trust the numbers without seeing every donor |
-| __Member__ | Pays dues, registers for events | Pay online, see their own status and history, get reminders and receipts |
+| __Member__ | Pays dues, registers for events | Pay online, see their own status and history, get reminders and statements |
 | __Donor__ | May or may not be a member; may never sign in | Give online or by check, receive a correct year-end giving statement |
 | __Admin__ | Runs the ngdpbase site (may be the same person as an officer in a small club) | Install and configure the add-ons, manage roles, set Stripe keys, keep the site secure |
 
@@ -73,9 +73,9 @@ One repository with a required base add-on and optional module add-ons. Each mod
 
 | Add-on | Phase | Contents | Depends on |
 | --- | --- | --- | --- |
-| `accounting` | 1 (MVP) | Funds, ledger, audit trail, monthly summary and CSV export, `PaymentManager` and payment providers ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), the accounting database, base permissions | none |
+| `accounting` | 1 (MVP) | Funds, ledger, audit trail, monthly summary and CSV export, `ReceiptManager` and receipt providers ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), the accounting database, base permissions | none |
 | `accounting-dues` | 1 | Tiers, memberships, invoices, reminders | `accounting` |
-| `accounting-donations` | 1 | Donations, giving statements, tax receipts | `accounting` |
+| `accounting-donations` | 1 | Donations and giving statements | `accounting` |
 | `accounting-events` | 1 | Paid registrations | `accounting` |
 | `accounting-loyalty` | to be decided | Loyalty members and gift cards ([#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18)) | `accounting` |
 | `accounting-reimbursements` | 2 | Expense reimbursement requests and approvals | `accounting` |
@@ -100,14 +100,14 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 | `category` | Income or expense category: dues, donation, event fee, processing fee, refund, supplies, and so on (configurable list) |
 | `party` | Who paid or was paid: a reference to an ngdpbase Person (`PersonManager`, `src/managers/PersonManager.ts`), or a free-text name |
 | `paymentMethod` | How the money moved, as a UN/CEFACT payment means code (UNCL 4461) with a readable label: `10` in cash, `20` cheque, `30` credit transfer, `42` payment to bank account, `48` bank card, `49` direct debit, ... ([D-018](plans/decisions.md#d-018-use-published-standards-schemaorg-and-uncefact-payment-means)) |
-| `provider` | The payment provider that recorded it (`manual`, `stripe`, ...), or empty for an entry made directly in the ledger ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers), [D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)) |
-| `confirmationNumber` | The provider's own id confirming the payment (schema.org `confirmationNumber`). `provider` plus `confirmationNumber` is unique, so a payment delivered twice is posted once |
+| `provider` | The receipt provider that recorded it (`manual`, `stripe`, ...), or empty for an entry made directly in the ledger ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers), [D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)) |
+| `confirmationNumber` | The provider's own id confirming the money received (schema.org `confirmationNumber`). `provider` plus `confirmationNumber` is unique, so a receipt delivered twice is posted once |
 | `paymentMethodId` | Check number or other identifier of the payment instrument a person reads (schema.org `paymentMethodId`) |
 | `source` | Link to what created it: `{ type: dues-invoice, donation, event-registration, reimbursement, manual, adjustment; id }` |
 | `status` | `pending` (for example ACH not yet settled), `posted`, `voided` |
 | `deductible` | For donations: the tax-deductible amount, and the value of goods or services received, if any |
 | `memo` | Free text |
-| `attachments` | Optional receipt or check images |
+| `attachments` | Optional images (a check, a proof of purchase) |
 | `createdBy`, `createdAt` | Actor and time, from the request's context |
 | `voids` / `voidedBy` | Links between a voided transaction and its correction |
 
@@ -135,7 +135,7 @@ __Requirements:__
 - Each membership links a Person to a tier, with a start date, renewal date and status: `active`, `due`, `grace`, `lapsed`, `cancelled`.
 - Generate an invoice at renewal (or on demand) and post it as payable; a paid invoice creates a ledger transaction tagged to the configured fund.
 - Send reminders by email before the renewal date, on the due date, and after (schedule configurable), through `EmailManager` (`src/managers/EmailManager.ts`). Members can stop non-essential reminders.
-- Show members their own status, invoices and payment history; let them pay online.
+- Show members their own status, invoices and what they have paid; let them pay online.
 - Show the treasurer a roster filtered by status, with bulk reminder sending.
 
 __Acceptance criteria:__
@@ -146,22 +146,24 @@ __Acceptance criteria:__
 - [ ] Paying an invoice (online or recorded manually) marks it paid, renews the membership, and posts one ledger transaction.
 - [ ] A member sees only their own invoices.
 
-### 5.2 Payments (Phase 1)
+### 5.2 Receipts (Phase 1)
+
+Receipts are money coming in, of any kind, and refunds of it ([D-028](plans/decisions.md#d-028-receipts-for-money-in-statements-for-what-donors-get-payments-only-for-money-out)).
 
 __Requirements:__
 
-- All payments go through the `accounting` add-on's `PaymentManager` ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), whose providers are chosen by configuration ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers)). Stripe is the first online provider; manual cash and check is always available.
-- Take card and ACH payments through Stripe, using a Stripe-hosted payment page or Stripe-hosted fields so card and bank details never reach the ngdpbase server.
-- Learn payment results by asking the provider on a schedule and when a payer returns from the hosted page; no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)). Process each event once.
-- Record cash and check payments manually: amount, date, payer, check number, fund, and a link to the invoice, donation or registration it pays.
+- All money received goes through the `accounting` add-on's `ReceiptManager` ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), whose providers are chosen by configuration ([D-004](plans/decisions.md#d-004-paymentmanager-with-configurable-providers)). Stripe is the first online provider; manual cash and check is always available.
+- Take card and ACH receipts through Stripe, using a Stripe-hosted checkout page or Stripe-hosted fields so card and bank details never reach the ngdpbase server.
+- Learn the outcome of an online receipt by asking the provider on a schedule and when a payer returns from the hosted page; no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)). Process each event once.
+- Record cash and check receipts by hand: amount, date, payer, check number, fund, and a link to the invoice, donation or registration it pays.
 - Record deposits of cash and checks as a batch (optional in Phase 1).
-- Refund a Stripe payment fully or partly; record a manual refund for cash or check. A refund posts an `out` transaction linked to the original.
+- Refund a Stripe receipt fully or partly; record a manual refund for cash or check. A refund posts an `out` transaction linked to the original.
 - Treat ACH as pending until Stripe reports it settled; handle a failed ACH by reverting the paid status and notifying the treasurer.
 
 __Acceptance criteria:__
 
-- [ ] A test-mode card payment and a test-mode ACH payment each produce exactly one posted transaction, even when the same event is synced more than once.
-- [ ] Switching or adding a payment provider is a configuration change only.
+- [ ] A test-mode card receipt and a test-mode ACH receipt each produce exactly one posted transaction, even when the same event is synced more than once.
+- [ ] Switching or adding a receipt provider is a configuration change only.
 - [ ] No card number, CVC or bank account number is stored or logged anywhere.
 - [ ] A refund requires the high-assurance refund permission and appears in the audit trail.
 - [ ] A treasurer can record a check in under a minute.
@@ -170,7 +172,7 @@ __Acceptance criteria:__
 
 __Requirements:__
 
-- Take one-time and recurring donations online (via Payments) and record offline gifts (cash, check, in-kind).
+- Take one-time and recurring donations online (via Receipts) and record offline gifts (cash, check, in-kind).
 - Each gift has a donor, date, amount, fund, deductible amount, and the value of any goods or services received.
 - Support anonymous gifts (no name shown to the board) and donors who never sign in.
 - Generate a year-end giving statement per donor: organization name and tax id, donor name, each gift with date and amount, totals, and the required wording for gifts with goods or services received. Wording is configurable; the organization is responsible for checking it with its accountant.
@@ -180,7 +182,7 @@ __Requirements:__
 __Acceptance criteria:__
 
 - [ ] Statement totals equal the sum of that donor's posted, non-voided gifts for the year.
-- [ ] Issuing, reissuing or bulk-sending statements requires the high-assurance receipt permission.
+- [ ] Issuing, reissuing or bulk-sending statements requires the high-assurance statement permission.
 - [ ] Each issued statement is stored, immutable, and linked to the gifts it covers.
 - [ ] Board members see donation totals by fund without seeing individual donors unless granted.
 
@@ -205,8 +207,8 @@ __Acceptance criteria:__
 __Requirements:__
 
 - Define a paid event: name, date, price options (member and non-member prices, early-bird dates), capacity, and fund.
-- Registration form collects attendee details and payment; free events work without payment.
-- Registrations post to the shared ledger through Payments.
+- Registration form collects attendee details and the fee; free events need no fee.
+- Registrations post to the shared ledger through Receipts.
 - Waitlist when full (optional), cancellation and refund rules.
 - Roster and check-in list for organizers.
 - Integrate with the ngdpbase `calendar` add-on (`addons/calendar/`) and `forms` add-on (`addons/forms/`, which offers `registerHandler` for other add-ons) where it helps, but do not require them. Whether to build on them is an open question.
@@ -239,7 +241,7 @@ __Acceptance criteria:__
 
 __Requirements:__
 
-- A member or officer submits a request: amount, date, purpose, fund, receipt images.
+- A member or officer submits a request: amount, date, purpose, fund, proof-of-purchase images.
 - The treasurer (and optionally a second approver above a configurable amount) approves or rejects with a comment.
 - Marking a request paid records the payment method and reference and posts an `out` transaction.
 - The requester sees the status of their own requests.
@@ -289,13 +291,13 @@ Each add-on declares these in its `config/default-config.json`. Names are propos
 | `ledger-summary-read` | Fund balances and monthly report, no donor names | | | yes | yes | yes | no |
 | `handover-read` (Phase 2) | Read handover records | | | yes | yes | yes | no |
 | `ledger-read` | Transaction detail, including names | | | | yes | optional | no |
-| `ledger-record` | Record manual payments and gifts, create invoices, manage registrations | | | | yes | | no |
+| `ledger-record` | Record money received by hand and gifts, create invoices, manage registrations | | | | yes | | no |
 | `accounting-settings` | Tiers, funds, categories, reminder schedule, statement wording | | | | yes | yes | no (funds: open question) |
 | `ledger-adjust` | Edit or void posted transactions, post into a locked period, fund transfers | | | | yes | | __yes__ |
-| `payment-refund` | Refund payments | | | | yes | | __yes__ |
+| `receipt-refund` | Refund money received | | | | yes | | __yes__ |
 | `ledger-export` | CSV, QuickBooks and Wave export, donor lists | | | | yes | | __yes__ |
-| `receipt-issue` | Issue, reissue or bulk-send tax statements | | | | yes | | __yes__ |
-| `payment-settings` | Payment provider selection, provider keys, payment methods | | | | | yes | __yes__ |
+| `statement-issue` | Issue, reissue or bulk-send giving statements | | | | yes | | __yes__ |
+| `receipt-settings` | Receipt provider selection, provider keys, methods | | | | | yes | __yes__ |
 | `reimbursement-approve` (Phase 2) | Approve, reject, mark paid | | | | yes | | __yes__ |
 | `handover-manage` (Phase 2) | Create and finalize a handover | | | | yes | yes | __yes__ (finalize) |
 | Role changes (core) | Grant or remove roles, including treasurer | | | | | yes (`admin`, `user-admin`) | __yes__ (core) |
@@ -323,9 +325,9 @@ Checked against the code on 2026-10-03; `docs/planning/authentication.md` has th
 ### Requirements
 
 - __Low assurance (AAL1):__ magic link and Google sign-in stay sufficient for members, donors and board members: paying, giving, registering, viewing own history, viewing board summaries.
-- __High assurance:__ the actions marked "High assurance" in section 6 require a sign-in at AAL2 or above (`acr` of `aal2`, `aal3`, `phr` or `phrh`): refunds; editing or voiding posted transactions and posting into a locked period; exports; changing Stripe keys and payment settings; role changes; issuing or reissuing tax receipts; approving and paying reimbursements; finalizing a handover.
+- __High assurance:__ the actions marked "High assurance" in section 6 require a sign-in at AAL2 or above (`acr` of `aal2`, `aal3`, `phr` or `phrh`): refunds; editing or voiding posted transactions and posting into a locked period; exports; changing Stripe keys and receipt settings; role changes; issuing or reissuing giving statements; approving and paying reimbursements; finalizing a handover.
 - __Decided ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)):__ the `treasurer` role has `required-aal: 2`, the same as ngdpbase's `admin` and `user-admin`. A treasurer signed in below AAL2 (magic link, Google) steps down to their other roles until they sign in at AAL2. Any factor combination ngdpbase rates AAL2 qualifies: a passkey today, password plus TOTP once available.
-- __Step-up on money actions (decided, [D-022](plans/decisions.md#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up)):__ the money permissions (`ledger-adjust`, `payment-refund`, `ledger-export`, `receipt-issue`) carry `"step-up": true` on their permission entries, so each asks for a fresh sign-in within `ngdpbase.auth.step-up.max-age-minutes` at the strength the person's roles require. There is no per-permission sign-in strength; granting a money permission to another role is a recorded `config-change`.
+- __Step-up on money actions (decided, [D-022](plans/decisions.md#d-022-sign-in-strength-stays-on-roles-money-permissions-use-step-up)):__ the money permissions (`ledger-adjust`, `receipt-refund`, `ledger-export`, `statement-issue`) carry `"step-up": true` on their permission entries, so each asks for a fresh sign-in within `ngdpbase.auth.step-up.max-age-minutes` at the strength the person's roles require. There is no per-permission sign-in strength; granting a money permission to another role is a recorded `config-change`.
 - Delegated credentials (agent tokens, share links) never satisfy a high-assurance permission; #1525 already states this for step-up.
 - Each step-up prompt, success and refusal is audited.
 
@@ -346,11 +348,11 @@ Under ngdpbase's factor rules, TOTP (`amr: ["otp"]`, AAL1, not primary in the pl
 
 - __PII:__ names, emails, addresses, phone numbers, membership status. Shown only to people with the matching permission; board summaries are aggregate by default.
 - __Donor data:__ individual gifts are sensitive. Support anonymous gifts. Donor-level views and exports need `ledger-read` or `ledger-export`.
-- __No card or bank data stored.__ Payments go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
+- __No card or bank data stored.__ Card and bank receipts go through Stripe-hosted pages or fields; store only Stripe object ids and, at most, display details Stripe returns (such as card brand and last four), if needed.
 - __Provider events:__ fetch events from the provider over an authenticated outbound call (`guardedFetch`), process each event id once, and fetch the authoritative object from the provider where it matters. There is no inbound webhook ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
-- __Secrets:__ payment provider keys are environment variables, referenced from config as `$VAR`, never literals in a JSON file ([D-008](plans/decisions.md#d-008-where-secret-values-live)). They are named in `ngdpbase.config.secret-keys` so the admin screen masks them; never log them. Changing one is an operator action: change the environment, then restart.
+- __Secrets:__ receipt provider keys are environment variables, referenced from config as `$VAR`, never literals in a JSON file ([D-008](plans/decisions.md#d-008-where-secret-values-live)). They are named in `ngdpbase.config.secret-keys` so the admin screen masks them; never log them. Changing one is an operator action: change the environment, then restart.
 - __Outbound HTTP__ to Stripe goes through `guardedFetch` (`addons/README.md`); the egress policy must allow it.
-- __CSRF:__ every browser POST carries the CSRF token. There are no exceptions; payments need no inbound route ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
+- __CSRF:__ every browser POST carries the CSRF token. There are no exceptions; receipts need no inbound route ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
 - __Encryption at rest:__ the ledger lives in ngdpbase's database ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)), encrypted with SQLCipher when `NGDPBASE_DATABASE_KEY` is set in the environment. Without the key it is plain SQLite and boot warns.
 - __Audit:__ all high-assurance actions, exports, settings changes and failed provider syncs are audited.
 - __Least privilege:__ the admin role does not get donor-level detail by default.
@@ -361,8 +363,8 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 
 ### Stripe
 
-- Use a Stripe-hosted payment flow (for example Stripe Checkout) for cards and US bank accounts (ACH), so the server never handles card or bank details.
-- Stripe's Events API, polled on a schedule, is the source of truth for payment success, failure, ACH settlement, refunds and disputes ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
+- Use a Stripe-hosted checkout (for example Stripe Checkout) for cards and US bank accounts (ACH), so the server never handles card or bank details.
+- Stripe's Events API, polled on a schedule, is the source of truth for receipt success, failure, ACH settlement, refunds and disputes ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)).
 - Use Stripe test mode in development and acceptance tests.
 - Record Stripe's processing fees so payouts can be reconciled (how to obtain fee amounts is to be confirmed in Stripe's documentation).
 - Open: whether to use the Stripe Node SDK or call Stripe's REST API through `guardedFetch`. The SDK makes its own HTTP requests, which may conflict with ngdpbase's `lint:http` boundary check (`addons/README.md`).
@@ -392,9 +394,9 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 | Alternative: an assurance condition on policies (`Policy.ts`, `PolicyEvaluator`) | Not built; only `role` subjects are matched | Only if step-up is not the chosen mechanism |
 | TOTP | Not built: [#421](https://github.com/jwilleke/ngdpbase/issues/421) | A second high-assurance option (password plus TOTP only) |
 | Passkeys | Built ([#448](https://github.com/jwilleke/ngdpbase/issues/448)); needs an explicit HTTPS base URL | Treasurer AAL2 ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)) |
-| Webhook ingress for add-ons | Not needed: payments are polled, not pushed ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)) | n/a |
+| Webhook ingress for add-ons | Not needed: receipts are polled, not pushed ([D-003](plans/decisions.md#d-003-learn-payment-outcomes-by-asking-not-by-webhook)) | n/a |
 | Add-ons can add keys to `ngdpbase.config.secret-keys` | Bug [ngdpbase#1612](https://github.com/jwilleke/ngdpbase/issues/1612); fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613) (merged 2026-10-04, `7d119b6c`): becomes a set that every layer extends ([D-008](plans/decisions.md#d-008-where-secret-values-live)) | Payment provider keys |
-| Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, payment sync. Tracked in [ngdpbase#1611](https://github.com/jwilleke/ngdpbase/issues/1611) and [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) ([D-002](plans/decisions.md#d-002-recurring-jobs-come-from-ngdpbase-core)) |
+| Scheduled jobs | `BackgroundJobManager` registers and runs jobs but has no recurring schedule; the journal add-on uses its own `setTimeout` (`addons/journal/index.ts`) | Dues reminders, receipt sync. Tracked in [ngdpbase#1611](https://github.com/jwilleke/ngdpbase/issues/1611) and [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) ([D-002](plans/decisions.md#d-002-recurring-jobs-come-from-ngdpbase-core)) |
 | Add-on-owned system-category and vault | Planned, [#1507](https://github.com/jwilleke/ngdpbase/issues/1507) | Board memory pages (Phase 2) |
 | Add-on tables and migrations in `DatabaseManager` | Not supported or documented. To be worked out on the one path, `DatabaseManager` → `SqliteDatabaseProvider` ([#13](https://github.com/jwilleke/ngdp-accounting-addons/issues/13), [D-011](plans/decisions.md#d-011-one-path-to-the-database)) | Ledger storage |
 | Consistent database backup and restore | Not built: `DatabaseManager` has no `backup()`, so no database is in ngdpbase backups ([ngdpbase#1723](https://github.com/jwilleke/ngdpbase/issues/1723), P1; parent [#1536](https://github.com/jwilleke/ngdpbase/issues/1536)) | Ledger backups ([D-010](plans/decisions.md#d-010-ledger-data-lives-in-ngdpbases-database)) |
@@ -403,7 +405,7 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 
 ## 12. Phasing
 
-- __Phase 1:__ the `accounting` add-on (MVP: funds, ledger, audit, monthly summary and CSV) first, then Payments (manual entry before Stripe), Dues, Donations, Events, Reports. Treasurer at `required-aal: 2` ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)).
+- __Phase 1:__ the `accounting` add-on (MVP: funds, ledger, audit, monthly summary and CSV) first, then Receipts (by hand before Stripe), Dues, Donations, Events, Reports. Treasurer at `required-aal: 2` ([D-009](plans/decisions.md#d-009-treasurer-requires-aal2-like-admin-roles)).
 - __Phase 2:__ Reimbursements, Treasurer handover.
 
 ## 13. Open questions
@@ -420,6 +422,6 @@ These notes describe intent only. Specific API calls, fields and file formats mu
 10. __Stripe fees:__ record gross plus a fee expense, or net?
 11. __Stripe account model:__ one Stripe account per organization with keys entered by the admin, or Stripe Connect? (Affects onboarding and any platform fee.)
 12. __Events:__ build on the ngdpbase `calendar` and `forms` add-ons, or stand alone?
-13. __Tax receipts:__ which countries first (US only?), and who supplies the receipt wording?
+13. __Giving statements:__ which countries first (US only?), and who supplies the statement wording?
 14. __Core issues:__ scheduled jobs is ngdpbase#1611; secret-keys and step-up extension are fixed in [ngdpbase#1613](https://github.com/jwilleke/ngdpbase/pull/1613).
 15. __Distribution:__ private npm package on GitHub Packages (recommended in `docs/platform/deployment/addon-packaged.md`), or a drop-in directory? Whatever is chosen must cover bare metal, Docker and Kubernetes ([D-006](plans/decisions.md#d-006-every-add-on-runs-on-bare-metal-docker-and-kubernetes)).
