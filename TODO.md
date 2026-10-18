@@ -44,7 +44,7 @@ last_updated: "2026-10-18"
 - [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled jobs from ngdpbase core (blocked by jwilleke/ngdpbase#1611)
 - [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
 - [#4](https://github.com/jwilleke/ngdp-accounting-addons/issues/4) — Donations and year-end giving statements
-- [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3) — Payments: Stripe cards and ACH, manual cash and check recording, refunds
+- [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3) — Receipts: cash and check by hand, Stripe cards and ACH, refunds
 - [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 
 ## 🔵 In review
