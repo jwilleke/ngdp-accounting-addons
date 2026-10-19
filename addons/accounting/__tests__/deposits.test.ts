@@ -159,7 +159,8 @@ describe('deposits', () => {
     const b = await receipt(general, 200);
     const viewer = { username: 'tess', granted: ALL };
     expect(await ledger.toFormOptions({ list: 'bank-accounts' }, viewer)).toEqual([{ value: 'checking', label: 'Checking' }]);
-    expect((await ledger.toFormOptions({ list: 'deposit-receipts' }, viewer)).map(o => o.value)).toEqual([a.id, b.id]);
+    // Each carries its amount, for the checklist's running total (ngdpbase #1904).
+    expect((await ledger.toFormOptions({ list: 'deposit-receipts' }, viewer)).map(o => [o.value, o.amount])).toEqual([[a.id, 100], [b.id, 200]]);
     const made = await deposit([a]);
     expect((await ledger.toFormOptions({ list: 'deposit-receipts' }, viewer)).map(o => o.value)).toEqual([b.id]);
     expect(await ledger.toFormOptions({ list: 'deposits' }, viewer)).toEqual([{ value: made.id, label: 'D-0001 · 2026-10-12 · Checking · $1.00' }]);
