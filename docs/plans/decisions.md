@@ -45,6 +45,9 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-029](#d-029-how-receipts-are-recorded-numbered-corrected-and-refunded-every-money-movement-has-a-reason) | 2026-10-18 | How receipts are recorded, numbered, corrected and refunded; every money movement has a reason | Accepted |
 | [D-030](#d-030-step-up-off-for-accountings-money-actions-for-now) | 2026-10-18 | Step-up off for accounting's money actions, for now | Accepted |
 | [D-031](#d-031-bank-accounts-cash-on-hand-and-deposits) | 2026-10-18 | Bank accounts, Cash on Hand and deposits: every entry has a fund and an account | Accepted |
+| [D-032](#d-032-cleared-deposits-and-bounced-checks) | 2026-10-19 | Checks count when recorded; deposits are marked cleared; a bounced check is a returned-check entry | Accepted |
+| [D-033](#d-033-receipts-and-refunds-are-made-of-lines) | 2026-10-19 | Receipts and refunds are made of lines, shown once; refunds are numbered RF-0001 | Accepted |
+| [D-034](#d-034-a-generic-starter-chart-with-account-types) | 2026-10-19 | A generic starter chart that follows QuickBooks' types, detail types and names | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -816,7 +819,7 @@ __Consequences:__
 
 - A ledger entry's `category` holds a UCOA account code, kept in the site's configuration with its
   label, not in code.
-- The specific default code set the add-on ships is decided separately.
+- The specific default code set the add-on ships is decided separately: [D-034](#d-034-a-generic-starter-chart-with-account-types).
 - UCOA is added to the standards list in requirements.md section 1a.
 
 ## D-024: Treasurer screens are forms of an improved ngdpbase forms add-on
@@ -1088,3 +1091,122 @@ __Decision (operator, 2026-10-18):__
   receipt list shows each receipt's deposit number.
 
 __Build order:__ two PRs. Accounts first, then deposits.
+
+## D-032: Cleared deposits and bounced checks
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-19
+- __Links:__ [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3),
+  [D-031](#d-031-bank-accounts-cash-on-hand-and-deposits), [D-033](#d-033-receipts-and-refunds-are-made-of-lines),
+  [D-034](#d-034-a-generic-starter-chart-with-account-types)
+
+__Context:__ A check is received, deposited, and days later cleared by the bank, or returned unpaid.
+The books keep cash-basis records per fund and per account.
+
+__Decision (operator, 2026-10-19):__
+
+- __A check counts in the balances as soon as it is recorded.__ There is no "pending" status that
+  changes balances; one may come with Stripe's online ACH, which can fail days later.
+- __Clear by deposit.__ The bank statement shows one credit per deposit, so the treasurer marks a
+  deposit cleared with the date the bank shows, and its receipts count as cleared. ACH, Zelle and
+  bank transfers land straight in the bank and count as cleared when recorded. Clearing moves no
+  money (`ledger-record`). A wrong mark can be taken off with a reason; a deposit with a bounced
+  check stays cleared. The Deposits page shows each deposit's cleared date and a "Not yet cleared"
+  list (deposits in transit).
+- __Bounce by check.__ The original receipt never changes. Marking a deposited check bounced
+  (`ledger-adjust`) posts:
+  1. a __returned check__ entry: the full amount, out of the bank account it was deposited into, in
+     the receipt's own fund and category;
+  2. the bank's fee, if entered, as an expense in the site's bank-charges category, from the same
+     account and fund.
+- __What the payer owes__ (check + fee + an optional penalty) is recorded on the bounce. A Bounced
+  Checks page shows owed, repaid and still owed. Once invoices exist (#2), a bounce creates the
+  invoice for that total. Until then, "Repay a Bounced Check" records one receipt whose lines fill
+  in order: the check amount in the original category, the fee against bank charges, the penalty as
+  other income; anything short stays owed.
+- Only a deposited check can bounce; its deposit cannot then be undone. A new check from the payer
+  is a new receipt. "Chargeback" is kept for card disputes, when Stripe comes.
+- __Configuration:__ `ngdpbase.addons.accounting.bounced-check-penalty` (minor units, shipped as
+  0), `.bank-charges-category` and `.other-income-category` (category codes, defaulting to the
+  starter chart's). The bounce form is off, and says why, until both categories exist.
+
+## D-033: Receipts and refunds are made of lines
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-19
+- __Links:__ [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3),
+  [D-029](#d-029-how-receipts-are-recorded-numbered-corrected-and-refunded-every-money-movement-has-a-reason)
+
+__Decision (operator, 2026-10-19):__ __invoices and receipts are always made of lines__: one
+document, one number, one or more lines, each with its own amount, fund and category, even when
+there is only one. __Statements show one line per transaction.__ This is the standard header-and-lines
+shape (QuickBooks' sales receipt with split lines).
+
+- __A receipt is one record, shown once__ at its total everywhere a receipt is listed: the payer's
+  slip, the receipt list, its deposit, the payer's statement, and the Ledger page (with its lines
+  under it). Each line counts separately only in fund and category totals.
+- One payment lands in one account. A deposit takes the whole receipt; a void voids every line; a
+  bounce returns every line.
+- Existing receipts become receipts with one line, keeping their numbers.
+- __Refunds have lines too:__ each refund line names a line of the receipt and an amount, never more
+  than is left on that line, and is money out in that line's fund and category.
+- __Refunds are numbered RF-0001 onwards__, by the same rule as R- and D- (only the digits count, at
+  least four, no upper limit), given when saved and never reused: "Refund RF-0001 of R-0012".
+- The Ledger page's list shows each money movement once with its own number: R-, RF-, D- (no In or
+  Out amount there, since a deposit changes no fund), and money paid out (unnumbered for now).
+
+## D-034: A generic starter chart with account types
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-19
+- __Links:__ [D-023](#d-023-categories-follow-the-unified-chart-of-accounts-ucoa),
+  [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20)
+
+__Context:__ No law fixes a U.S. chart of accounts. UCOA has no official, maintained list; the FASB
+GAAP Financial Reporting Taxonomy is a reporting vocabulary without account numbers. Accountants
+use the usual numbering and the starter chart of their software; QuickBooks fixes account types, not
+numbers. Accounting here is not only for nonprofits.
+
+__Decision (operator, 2026-10-19):__ the add-on ships a generic starter chart that __follows
+QuickBooks' chart, as most accountants know it__. Every category has QuickBooks' __type__ (`income`,
+`other-income`, `cost-of-goods`, `expense`, `other-expense`) and its __detail type__, and uses the
+detail type's name wherever one fits, so an accountant recognises it and the export (#20) maps one to
+one. Numbering: 4000s income, 5000s cost of goods, 6000s–7000s expenses, 8000s other income, 9000s
+other expense.
+
+| Code | Name | QuickBooks type | QuickBooks detail type |
+| --- | --- | --- | --- |
+| 4100 | Dues and memberships | Income | Service/Fee Income |
+| 4200 | Donations and gifts | Income | Non-Profit Income |
+| 4300 | Grants | Income | Non-Profit Income |
+| 4400 | Sales | Income | Sales of Product Income |
+| 4500 | Event and program fees | Income | Service/Fee Income |
+| 5100 | Supplies & Materials – COGS | Cost of Goods Sold | Supplies & Materials – COGS |
+| 6100 | Bank Charges | Expenses | Bank Charges |
+| 6200 | Office Supplies & Software | Expenses | Office Supplies & Software |
+| 6300 | Shipping, Freight & Delivery | Expenses | Shipping, Freight & Delivery |
+| 6400 | Advertising/Promotional | Expenses | Advertising/Promotional |
+| 6500 | Rent & Lease | Expenses | Rent & Lease |
+| 6600 | Utilities | Expenses | Utilities |
+| 6700 | Insurance | Expenses | Insurance |
+| 6800 | Legal & Professional Fees | Expenses | Legal & Professional Fees |
+| 6900 | Dues & Subscriptions | Expenses | Dues & Subscriptions |
+| 7000 | Contractors | Expenses | Contractors |
+| 7100 | Payroll Expenses | Expenses | Payroll Expenses |
+| 7200 | Repair & Maintenance | Expenses | Repair & Maintenance |
+| 7300 | Travel | Expenses | Travel |
+| 7400 | Taxes & Licenses | Expenses | Taxes & Licenses |
+| 7900 | Other Business Expenses | Expenses | Other Business Expenses |
+| 8100 | Interest Earned | Other Income | Interest Earned |
+| 8900 | Other Miscellaneous Income | Other Income | Other Miscellaneous Income |
+
+Source for QuickBooks' types and detail types: the QuickBooks Online chart of accounts reference
+(Dancing Numbers, a QuickBooks consultancy, 2026), checked against Intuit's help pages where possible.
+
+- A site changes or replaces it in configuration. Bank charges defaults to 6100; other income
+  (bounced-check penalties) to 8900.
+- __Reporting maps__ for a kind of organization (a nonprofit's Form 990 lines, a business's
+  tax-form lines, GAAP taxonomy elements) are optional and added later as code sets, never built
+  into the categories.
+- Our accounts map to QuickBooks' Bank type; Cash on Hand is its Undeposited Funds. Receivables,
+  payables and equity are not in this ledger; owing and owed come with invoices (#2).

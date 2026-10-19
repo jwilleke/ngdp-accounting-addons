@@ -104,7 +104,7 @@ A single-entry, fund-tagged list of money in and money out. Every module posts t
 | `confirmationNumber` | The provider's own id confirming the money received (schema.org `confirmationNumber`). `provider` plus `confirmationNumber` is unique, so a receipt delivered twice is posted once |
 | `paymentMethodId` | Check number or other identifier of the payment instrument a person reads (schema.org `paymentMethodId`) |
 | `source` | Link to what created it: `{ type: dues-invoice, donation, event-registration, reimbursement, manual, adjustment; id }` |
-| `status` | `pending` (for example ACH not yet settled), `posted`, `voided` |
+| `status` | `posted`, `voided`. A check counts when recorded; clearing is a mark on its deposit ([D-032](plans/decisions.md#d-032-cleared-deposits-and-bounced-checks)). A `pending` status may come with Stripe's online ACH |
 | `deductible` | For donations: the tax-deductible amount, and the value of goods or services received, if any |
 | `memo` | Free text |
 | `attachments` | Optional images (a check, a proof of purchase) |
