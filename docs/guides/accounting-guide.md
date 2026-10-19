@@ -81,7 +81,8 @@ where type is `income`, `other-income`, `cost-of-goods`, `expense` or `other-exp
 `"4100": "Dues"` still works, its type read from the number. Receipts offer income categories; money
 out offers the rest. `ngdpbase.addons.accounting.bank-charges-category` (6100) and
 `.other-income-category` (8900) name the categories a bounced check uses; the add-on warns at startup
-if either is missing from the chart.
+if either is missing from the chart. The [Chart of accounts guide](chart-of-accounts-guide.md) lists the
+shipped categories and how to change them.
 
 The __accounts__ say where the money sits; funds say what it is for
 ([D-031](../plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)). One bank account
