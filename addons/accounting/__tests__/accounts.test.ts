@@ -233,7 +233,7 @@ describe('the ledger\'s accounts', () => {
   test('an entry\'s account never changes', async () => {
     const general = await fund('General');
     const r = await receipt(general.id, 100, '20');
-    expect(() => db.prepare("UPDATE accounting_transactions SET account_id = 'savings' WHERE id = ?").run(r.id)).toThrow(/money never changes/);
+    expect(() => db.prepare("UPDATE accounting_transactions SET account_id = 'savings' WHERE id = ?").run(r.lines[0].id)).toThrow(/money never changes/);
   });
 
   test('the form offers the active, configured accounts; the export names each entry\'s account', async () => {

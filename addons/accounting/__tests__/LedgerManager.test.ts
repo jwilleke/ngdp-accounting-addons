@@ -61,10 +61,10 @@ describe('LedgerManager', () => {
 
   const count = (table: string): number => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
   const fund = (name: string, openingBalance = 0) => ledger.createFund(actor(), { name, openingBalance, openingDate: '2026-01-01' });
-  // Money in is a receipt (D-029); every entry says why.
-  const entry = (fundId: string, direction: 'in' | 'out', amount: number, extra: Record<string, unknown> = {}) =>
+  // Money in is a receipt (D-029); every entry says why. For money in, the entry is the receipt's one line (D-033).
+  const entry = async (fundId: string, direction: 'in' | 'out', amount: number, extra: Record<string, unknown> = {}) =>
     direction === 'in'
-      ? ledger.postReceipt(actor(), { fundId, amount, date: '2026-10-08', category: '4010', partyName: 'Pat Payer', paymentMethod: '10', memo: 'test receipt', ...extra } as never, { provider: 'manual' })
+      ? ledger.getTransaction(actor(), (await ledger.postReceipt(actor(), { fundId, amount, date: '2026-10-08', category: '4010', partyName: 'Pat Payer', paymentMethod: '10', memo: 'test receipt', ...extra } as never, { provider: 'manual' })).lines[0].id)
       : ledger.postTransaction(actor(), { fundId, direction, amount, date: '2026-10-08', category: '5010', memo: 'test entry', ...extra });
 
   test('the migration is recorded in the add-on\'s own ledger table', () => {
@@ -126,10 +126,11 @@ describe('LedgerManager', () => {
 
     test('a void needs a reason, and an entry is voided only once', async () => {
       const general = await fund('General');
-      const t = await entry(general.id, 'in', 100);
-      await expect(ledger.voidTransaction(actor(), t.id, '  ')).rejects.toThrow(/reason is required/);
-      await ledger.voidTransaction(actor(), t.id, 'duplicate');
-      await expect(ledger.voidTransaction(actor(), t.id, 'again')).rejects.toThrow(/already voided/);
+      // A receipt is voided whole (D-033): by its own id, not a line's.
+      const receipt = (await entry(general.id, 'in', 100)).documentId as string;
+      await expect(ledger.voidTransaction(actor(), receipt, '  ')).rejects.toThrow(/reason is required/);
+      await ledger.voidTransaction(actor(), receipt, 'duplicate');
+      await expect(ledger.voidTransaction(actor(), receipt, 'again')).rejects.toThrow(/already voided/);
     });
   });
 
@@ -178,7 +179,7 @@ describe('LedgerManager', () => {
       const a = await fund('A', 1_000);
       const b = await fund('B');
       const t = await entry(a.id, 'in', 100);
-      await ledger.voidTransaction(actor(), t.id, 'test');
+      await ledger.voidTransaction(actor(), t.documentId as string, 'test');
       await ledger.transferBetweenFunds(actor(), { fromFundId: a.id, toFundId: b.id, amount: 10, date: '2026-10-08', memo: 'test move' });
       await ledger.closeFund(actor(), b.id, 'event over');
       expect(audit.map(r => `${r.eventType}/${r.action}`)).toEqual([

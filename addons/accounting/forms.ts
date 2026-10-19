@@ -155,7 +155,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
         partyName: data.partyName as string, paymentMethod: data.paymentMethod as string,
         paymentMethodId: str(data.paymentMethodId), memo: data.memo as string
       });
-      return { transactionId: receipt.id, receiptNumber: receipt.confirmationNumber };
+      return { receiptId: receipt.id, receiptNumber: receipt.number };
     },
     messageFields: [[/^fund '/, 'fundId'], [/^account '/, 'accountId']]
   },
@@ -170,13 +170,13 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => ({
-      transactionId: (await receipts.refundReceipt(ctx, data.receiptId as string, {
+      refundId: (await receipts.refundReceipt(ctx, data.receiptId as string, {
         amount: typeof data.amount === 'number' ? data.amount : undefined, date: data.date as string,
         paymentMethod: str(data.paymentMethod), paymentMethodId: str(data.paymentMethodId), memo: data.memo as string,
         accountId: str(data.accountId)
       })).id
     }),
-    messageFields: [[/^(only a receipt|this receipt)/, 'receiptId'], [/^account '/, 'accountId']]
+    messageFields: [[/^(only a receipt|this receipt|lines: )/, 'receiptId'], [/^account '/, 'accountId']]
   },
   {
     definition: form('deposit-make', 'Make a deposit',

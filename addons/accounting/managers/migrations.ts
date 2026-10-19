@@ -233,4 +233,89 @@ const DEPOSITS: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS];
+const DOCUMENTS: AccountingMigration = {
+  id: '20261019120000',
+  description: 'receipts and refunds are documents with lines; refunds numbered RF- (D-033)',
+  up: (db) => {
+    db.exec(`
+      -- A receipt or a refund: one record, one number, shown once; its lines are ledger entries
+      -- (document_id), each with its own amount, fund and category. Balances still add up entries.
+      CREATE TABLE accounting_documents (
+        id                TEXT PRIMARY KEY,
+        kind              TEXT NOT NULL CHECK (kind IN ('receipt', 'refund')),
+        number            TEXT,
+        provider          TEXT,
+        date              TEXT NOT NULL,
+        party_person_id   TEXT,
+        party_name        TEXT,
+        payment_method    TEXT,
+        payment_method_id TEXT,
+        account_id        TEXT NOT NULL,
+        total             INTEGER NOT NULL CHECK (total > 0),
+        memo              TEXT NOT NULL DEFAULT '',
+        source_type       TEXT,
+        source_id         TEXT,
+        status            TEXT NOT NULL CHECK (status IN ('posted', 'voided')),
+        void_reason       TEXT,
+        created_by        TEXT NOT NULL,
+        created_at        TEXT NOT NULL,
+        CHECK (status <> 'voided' OR (void_reason IS NOT NULL AND void_reason <> ''))
+      );
+      CREATE UNIQUE INDEX accounting_documents_number ON accounting_documents (kind, provider, number) WHERE number IS NOT NULL;
+
+      ALTER TABLE accounting_transactions ADD COLUMN document_id TEXT;
+      -- A refund line: the receipt line it gives back.
+      ALTER TABLE accounting_transactions ADD COLUMN line_of TEXT;
+      CREATE INDEX accounting_transactions_document ON accounting_transactions (document_id);
+
+      -- Existing receipts become one-line receipts, keeping their ids and numbers. The number moves
+      -- to the document; the entry is the receipt's one line.
+      DROP TRIGGER accounting_transactions_money_fixed;
+      INSERT INTO accounting_documents (id, kind, number, provider, date, party_person_id, party_name, payment_method,
+          payment_method_id, account_id, total, memo, source_type, source_id, status, void_reason, created_by, created_at)
+        SELECT id, 'receipt', confirmation_number, provider, date, party_person_id, party_name, payment_method,
+          payment_method_id, account_id, amount, memo, CASE WHEN source_type = 'receipt' THEN NULL ELSE source_type END,
+          CASE WHEN source_type = 'receipt' THEN NULL ELSE source_id END, status, void_reason, created_by, created_at
+        FROM accounting_transactions WHERE direction = 'in' AND confirmation_number IS NOT NULL;
+      UPDATE accounting_transactions SET document_id = id, confirmation_number = NULL, provider = NULL
+        WHERE direction = 'in' AND confirmation_number IS NOT NULL;
+
+      -- Existing refunds become one-line refunds, numbered RF-0001 onwards in the order they were made.
+      INSERT INTO accounting_documents (id, kind, number, provider, date, party_person_id, party_name, payment_method,
+          payment_method_id, account_id, total, memo, source_type, source_id, status, void_reason, created_by, created_at)
+        SELECT id, 'refund', 'RF-' || printf('%04d', ROW_NUMBER() OVER (ORDER BY created_at, id)), 'manual', date,
+          party_person_id, party_name, payment_method, payment_method_id, account_id, amount, memo, 'receipt', source_id,
+          status, void_reason, created_by, created_at
+        FROM accounting_transactions WHERE source_type = 'receipt-refund';
+      UPDATE accounting_transactions SET document_id = id, line_of = source_id WHERE source_type = 'receipt-refund';
+
+      -- The money in an entry never changes, now including the document it belongs to.
+      CREATE TRIGGER accounting_transactions_money_fixed BEFORE UPDATE ON accounting_transactions
+      WHEN NEW.id IS NOT OLD.id OR NEW.direction IS NOT OLD.direction OR NEW.amount IS NOT OLD.amount
+        OR NEW.currency IS NOT OLD.currency OR NEW.date IS NOT OLD.date OR NEW.fund_id IS NOT OLD.fund_id
+        OR NEW.account_id IS NOT OLD.account_id OR NEW.document_id IS NOT OLD.document_id OR NEW.line_of IS NOT OLD.line_of
+        OR NEW.category IS NOT OLD.category OR NEW.party_person_id IS NOT OLD.party_person_id
+        OR NEW.party_name IS NOT OLD.party_name OR NEW.payment_method IS NOT OLD.payment_method
+        OR NEW.payment_method_id IS NOT OLD.payment_method_id OR NEW.provider IS NOT OLD.provider
+        OR NEW.confirmation_number IS NOT OLD.confirmation_number OR NEW.source_type IS NOT OLD.source_type
+        OR NEW.source_id IS NOT OLD.source_id OR NEW.voids_id IS NOT OLD.voids_id
+        OR NEW.transfer_id IS NOT OLD.transfer_id OR NEW.created_by IS NOT OLD.created_by
+        OR NEW.created_at IS NOT OLD.created_at
+      BEGIN SELECT RAISE(ABORT, 'accounting: a posted entry''s money never changes; void it and post a replacement'); END;
+
+      CREATE TRIGGER accounting_documents_no_delete BEFORE DELETE ON accounting_documents
+      BEGIN SELECT RAISE(ABORT, 'accounting: receipts and refunds are voided, never deleted'); END;
+      CREATE TRIGGER accounting_documents_fixed BEFORE UPDATE ON accounting_documents
+      WHEN NEW.id IS NOT OLD.id OR NEW.kind IS NOT OLD.kind OR NEW.number IS NOT OLD.number OR NEW.provider IS NOT OLD.provider
+        OR NEW.date IS NOT OLD.date OR NEW.party_person_id IS NOT OLD.party_person_id OR NEW.party_name IS NOT OLD.party_name
+        OR NEW.payment_method IS NOT OLD.payment_method OR NEW.payment_method_id IS NOT OLD.payment_method_id
+        OR NEW.account_id IS NOT OLD.account_id OR NEW.total IS NOT OLD.total OR NEW.memo IS NOT OLD.memo
+        OR NEW.source_type IS NOT OLD.source_type OR NEW.source_id IS NOT OLD.source_id
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NOT (OLD.status = 'posted' AND NEW.status = 'voided' AND NEW.void_reason IS NOT NULL AND NEW.void_reason <> '')
+      BEGIN SELECT RAISE(ABORT, 'accounting: a receipt or refund never changes; void it, once, with a reason'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS];
