@@ -11,7 +11,8 @@
  * Configuration keys:
  *   ngdpbase.addons.accounting.enabled — true/false (defaults to false)
  *   ngdpbase.default.currency          — ISO 4217 code read from ngdpbase; USD until ngdpbase ships it
- *   ngdpbase.addons.accounting.categories — { "<UCOA code>": "<label>" } for the entry form (D-023)
+ *   ngdpbase.addons.accounting.categories — { "<code>": { "name", "type", "detailType" } }, the chart (D-023, D-034)
+ *   ngdpbase.addons.accounting.bank-charges-category, .other-income-category, .bounced-check-penalty (D-032)
  *   ngdpbase.addons.accounting.accounts — { "<id>": { "name", "kind": "bank", "default", "active" } } bank accounts (D-031)
  *   ngdpbase.addons.accounting.receiptproviders — [{ "id": "manual", "enabled": true }, …] (D-017, D-029)
  *
@@ -24,7 +25,7 @@ import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
-import LedgerManager, { accountsFrom, type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
+import LedgerManager, { accountsFrom, categoriesFrom, type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import ReceiptManager, { receiptProvidersFrom } from './managers/ReceiptManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
 
@@ -90,10 +91,7 @@ const AccountingAddon = {
     // The ledger asks ngdpbase's decision point for every action (D-025).
     const decide = async (subject: unknown, request: { action: string }): Promise<Decision> =>
       pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' };
-    const categories = (): Record<string, string> => {
-      const value = config?.getProperty('ngdpbase.addons.accounting.categories', {});
-      return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, string> : {};
-    };
+    const categories = (): unknown => config?.getProperty('ngdpbase.addons.accounting.categories', {});
 
     const accounts = (): unknown => config?.getProperty('ngdpbase.addons.accounting.accounts', {});
 
@@ -116,6 +114,14 @@ const AccountingAddon = {
     engine.registerManager('LedgerManager', ledger);
     // Say once, at startup, what the account configuration gets wrong; history is never lost (D-031).
     accountsFrom(accounts(), (m) => logger.warn(m));
+    // The chart, and the two categories a bounced check needs (D-032, D-034).
+    const chart = new Map(categoriesFrom(categories(), (m) => logger.warn(m)).map(c => [c.code, c]));
+    for (const [key, wanted] of [['bank-charges-category', 'expense'], ['other-income-category', 'other-income']] as const) {
+      const code = config?.getProperty(`ngdpbase.addons.accounting.${key}`, '');
+      const found = typeof code === 'string' ? chart.get(code) : undefined;
+      if (!found) logger.warn(`[accounting] ${key} names no category in the chart: the bounced-check form stays off until it does`);
+      else if (found.type !== wanted) logger.warn(`[accounting] ${key} names '${found.code} ${found.name}', a ${found.type} category; expected ${wanted}`);
+    }
     for (const id of ledger.droppedAccounts()) {
       logger.warn(`[accounting] account '${id}' is named by ledger entries but no longer configured: it is shown as no longer configured`);
     }

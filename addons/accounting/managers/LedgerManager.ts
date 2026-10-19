@@ -272,6 +272,50 @@ export interface FundBalance {
 /** A reporting period, both ends included, as YYYY-MM-DD. */
 export interface Period { from: string; to: string }
 
+/** QuickBooks' fixed account types, which every category carries (D-034). */
+export type CategoryType = 'income' | 'other-income' | 'cost-of-goods' | 'expense' | 'other-expense';
+const CATEGORY_TYPES: readonly CategoryType[] = ['income', 'other-income', 'cost-of-goods', 'expense', 'other-expense'];
+/** Types money in is recorded under; every other type is money out. */
+const MONEY_IN_TYPES: readonly CategoryType[] = ['income', 'other-income'];
+
+/**
+ * An income or expense category (D-023, D-034): an account code, a name, and
+ * QuickBooks' type and detail type, so an accountant knows it and an export
+ * maps one to one.
+ */
+export interface Category { code: string; name: string; type: CategoryType; detailType: string | null }
+
+const CATEGORY_CODE = /^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$/;
+
+/** The usual numbering (D-034): 4000s income, 5000s cost of goods, 6000s–7000s expenses, 8000s other income, 9000s other expense. */
+function typeByNumber(code: string): CategoryType | null {
+  return ({ 4: 'income', 5: 'cost-of-goods', 6: 'expense', 7: 'expense', 8: 'other-income', 9: 'other-expense' } as Record<string, CategoryType>)[code.length === 4 ? code[0] : ''] ?? null;
+}
+
+/**
+ * The categories from `ngdpbase.addons.accounting.categories`, a map keyed by
+ * code, sorted by code. Each entry is `{ "name", "type", "detailType" }`; the
+ * older `"<code>": "<name>"` still works, its type read from the number. False
+ * or null removes a shipped one. Anything it cannot use is skipped, with a warning.
+ */
+export function categoriesFrom(entries: unknown, warn: (message: string) => void = () => undefined): Category[] {
+  const map = entries && typeof entries === 'object' && !Array.isArray(entries) ? entries as Record<string, unknown> : {};
+  const categories: Category[] = [];
+  for (const [code, value] of Object.entries(map)) {
+    if (value === null || value === false) continue;
+    if (!CATEGORY_CODE.test(code)) { warn(`[accounting] category '${code}': the code must be letters, digits, dots or dashes; skipped`); continue; }
+    const entry = typeof value === 'string' ? { name: value } : value as { name?: unknown; type?: unknown; detailType?: unknown };
+    if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || entry.name.trim() === '') {
+      warn(`[accounting] category '${code}' has no name; skipped`);
+      continue;
+    }
+    const type = entry.type === undefined ? typeByNumber(code) : (CATEGORY_TYPES as readonly unknown[]).includes(entry.type) ? entry.type as CategoryType : null;
+    if (!type) { warn(`[accounting] category '${code}': type must be one of ${CATEGORY_TYPES.join(', ')}; skipped`); continue; }
+    categories.push({ code, name: entry.name.trim(), type, detailType: typeof entry.detailType === 'string' && entry.detailType !== '' ? entry.detailType : null });
+  }
+  return categories.sort((a, b) => a.code.localeCompare(b.code));
+}
+
 /** One fund over a period. end = start + opened + moneyIn - moneyOut. */
 export interface FundPeriod {
   fundId: string; name: string; active: boolean;
@@ -283,7 +327,7 @@ export interface FundPeriod {
 }
 
 /** Income and expense of one category over a period; transfers are left out, they net to zero. */
-export interface CategoryPeriod { category: string; label: string; income: number; expense: number }
+export interface CategoryPeriod { category: string; label: string; type: CategoryType | null; income: number; expense: number }
 
 export interface PeriodSummary {
   period: Period;
@@ -319,8 +363,8 @@ export interface LedgerOptions {
    * and asks it for every action (D-025). Without it every action is refused.
    */
   decide?: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
-  /** Income and expense categories: UCOA account code to label (D-023), from site configuration. */
-  categories?: () => Record<string, string>;
+  /** Income and expense categories: `ngdpbase.addons.accounting.categories` from site configuration, read by categoriesFrom (D-023, D-034). */
+  categories?: () => unknown;
   /** Bank accounts: `ngdpbase.addons.accounting.accounts` from site configuration (D-031), read by accountsFrom. */
   accounts?: () => unknown;
   /** ngdpbase's money formatter (PluginManager.formatters.formatMoney, #1820), for form choice labels. */
@@ -539,7 +583,7 @@ export default class LedgerManager {
   private readonly now: () => Date;
   private readonly newId: () => string;
   private readonly decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
-  private readonly categories: () => Record<string, string>;
+  private readonly categoriesConfig: () => unknown;
   private readonly accountsConfig: () => unknown;
   private readonly formatMoney: LedgerOptions['formatMoney'];
   private readonly toCsv: LedgerOptions['toCsv'];
@@ -554,7 +598,7 @@ export default class LedgerManager {
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? randomUUID;
     this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point' }));
-    this.categories = options.categories ?? (() => ({}));
+    this.categoriesConfig = options.categories ?? (() => ({}));
     this.accountsConfig = options.accounts ?? (() => ({}));
     this.formatMoney = options.formatMoney;
     this.toCsv = options.toCsv;
@@ -659,7 +703,7 @@ export default class LedgerManager {
       return { accountId: a.id, name: a.name, configured: a.configured, start, opened, moneyIn: m.period_in, moneyOut: m.period_out, end: start + opened + m.period_in - m.period_out };
     });
 
-    const labels = this.categories();
+    const known = new Map(this.categories().map(c => [c.code, c]));
     const categories = (this.db.prepare(`
       SELECT category,
         COALESCE(SUM(CASE WHEN direction = 'in'  THEN amount END), 0) AS income,
@@ -667,7 +711,7 @@ export default class LedgerManager {
       FROM accounting_transactions
       WHERE status = 'posted' AND transfer_id IS NULL AND source_type <> '${DEPOSIT}' AND date >= ? AND date <= ?
       GROUP BY category ORDER BY category`).all(from, to) as { category: string; income: number; expense: number }[])
-      .map(r => ({ category: r.category, label: typeof labels[r.category] === 'string' ? labels[r.category] : '', income: r.income, expense: r.expense }));
+      .map(r => ({ category: r.category, label: known.get(r.category)?.name ?? '', type: known.get(r.category)?.type ?? null, income: r.income, expense: r.expense }));
 
     const sum = <T>(rows: T[], pick: (r: T) => number) => rows.reduce((total, r) => total + pick(r), 0);
     return {
@@ -793,7 +837,7 @@ export default class LedgerManager {
    *   deposit-receipts receipts in Cash on Hand     ledger-read (receiptsToDeposit)
    *   deposits         standing deposits            ledger-read (listDeposits)
    *   entries          latest posted entries        ledger-read (listTransactions)
-   *   categories       site's UCOA categories       ledger-record
+   *   categories       site's categories            ledger-record (kind=in: income; kind=out: the rest)
    *   payment-methods  manual UN/CEFACT codes       ledger-record
    * A refusal is no choices. No side effects: this runs on every render.
    */
@@ -835,11 +879,13 @@ export default class LedgerManager {
             .slice(0, ENTRY_CHOICES)
             .map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
         }
-        case 'categories':
+        case 'categories': {
+          // kind=in offers income types (receipts), kind=out the rest (money out); no kind, all.
           await this.authorize(actor, 'ledger-record');
-          return Object.entries(this.categories())
-            .filter(([code, label]) => code !== '' && typeof label === 'string')
-            .map(([code, label]) => ({ value: code, label: `${code} ${label}` }));
+          const fits = (c: Category) => options.kind === 'in' ? MONEY_IN_TYPES.includes(c.type)
+            : options.kind === 'out' ? !MONEY_IN_TYPES.includes(c.type) : true;
+          return this.categories().filter(fits).map(c => ({ value: c.code, label: `${c.code} ${c.name}` }));
+        }
         case 'payment-methods':
           await this.authorize(actor, 'ledger-record');
           return [...MANUAL_PAYMENT_MEANS];
@@ -1441,6 +1487,11 @@ export default class LedgerManager {
       if (t.date > date) throw new LedgerError(400, `receiptIds: ${name} is dated after the deposit`);
       return t;
     });
+  }
+
+  /** The site's categories, parsed on each read: configuration is the source (D-034). */
+  categories(): Category[] {
+    return categoriesFrom(this.categoriesConfig());
   }
 
   private openings(): Map<string, { opening_balance: number; opening_date: string }> {

@@ -133,6 +133,9 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   receipt in a standing deposit is not voided until the deposit is undone.
 - `listDeposits(actor, { includeVoided? })`, `getDeposit(actor, id)`, `receiptsToDeposit(actor)`
   (receipts a deposit can take, oldest first).
+- `categories()` → the site's chart, parsed from `ngdpbase.addons.accounting.categories`
+  ([D-034](../plans/decisions.md#d-034-a-generic-starter-chart-with-account-types)): each `{ code,
+  name, type, detailType }`, sorted by code. The period summary carries each category's type.
 - Receipt and deposit numbers share one rule: the letter, a dash, and one past the highest number
   used, at least four digits with no upper limit (`R-9999`, `R-10000`).
 - `listTransactions(actor, { fundId?, from?, to?, includeVoided? })`, `getTransaction(actor, id)`.
@@ -146,7 +149,8 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
 - `exportCsv(actor, 'transactions' | 'funds', period)` → `{ filename, body, sha256 }`. Built with
   ngdpbase's one CSV writer (`ExportManager.toCsv`); the audit record carries the file's SHA-256.
 - `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `accounts`, `bank-accounts`, `entries`, `receipts`, `deposit-receipts`, `deposits`
-  (posted receipts with money left to refund), `categories` or `payment-methods`. Reached from a form definition as
+  (posted receipts with money left to refund), `categories` (with `kind=in` only income types,
+  `kind=out` the rest) or `payment-methods`. Reached from a form definition as
   `optionsSource: "fetch:LedgerManager.toFormOptions(list=funds)"`; each list asks its own
   permission of the viewer, so a dropdown never offers what its reader may not see.
 

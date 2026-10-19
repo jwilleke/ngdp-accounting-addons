@@ -56,7 +56,7 @@ const entryFields = (required: boolean): FieldDef[] => [
   { name: 'date', type: 'date', label: 'Date', required },
   fundsChoice('fundId', 'Fund', required),
   accountChoice(),
-  { name: 'category', type: 'dropdown', label: 'Category', required, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories)' },
+  { name: 'category', type: 'dropdown', label: 'Category', required, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories,kind=out)' },
   { name: 'partyName', type: 'text', label: 'Paid to', required: false },
   methodChoice(false),
   { name: 'memo', type: 'textarea', label: 'Reason', required }
@@ -143,7 +143,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'date', type: 'date', label: 'Date received', required: true },
         fundsChoice('fundId', 'Fund'),
         accountChoice(),
-        { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories)' },
+        { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories,kind=in)' },
         { name: 'who', type: 'section', label: 'Who, how and why' },
         { name: 'partyName', type: 'text', label: 'Received from', required: true },
         methodChoice(true),
