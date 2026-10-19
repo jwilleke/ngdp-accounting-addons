@@ -246,7 +246,7 @@ describe('receipts', () => {
 });
 
 test('upgrading the database turns each receipt into a one-line receipt and numbers the refunds RF- in order (D-033)', async () => {
-  const [funds, accounts, deposits, documents] = ACCOUNTING_MIGRATIONS;
+  const [funds, accounts, deposits, documents, ...later] = ACCOUNTING_MIGRATIONS;
   const handle = openAddonTestDatabase<LedgerDb & { close(): void }>('accounting',
     { migrations: [funds, accounts, deposits] as never, ledgerTable: ACCOUNTING_LEDGER_TABLE });
   try {
@@ -260,6 +260,7 @@ test('upgrading the database turns each receipt into a one-line receipt and numb
     row('x2', 'out', 300, "NULL, NULL, 'receipt-refund', 'r1'", '2026-10-02T09:00:00Z');
     row('x1', 'out', 200, "NULL, NULL, 'receipt-refund', 'r1'", '2026-10-01T12:00:00Z');
     documents.up(handle as never);
+    for (const migration of later) migration.up(handle as never);
 
     const upgraded = new LedgerManager({ ...testLedgerParts, db: handle, decide, currency: 'USD', recordAudit: () => Promise.resolve() });
     expect(await upgraded.getDocument(actor(), 'r1')).toMatchObject({ kind: 'receipt', number: 'R-0001', total: 5_000, lines: [{ id: 'r1', amount: 5_000 }] });

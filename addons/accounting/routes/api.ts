@@ -80,6 +80,10 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   router.get('/deposits/:id', handle(200, (ctx, ledger, req) => ledger.getDeposit(ctx, String(req.params.id))));
   router.get('/deposit-receipts', handle(200, (ctx, ledger) => ledger.receiptsToDeposit(ctx)));
   router.post('/deposits', handle(201, (ctx, ledger, req) => ledger.makeDeposit(ctx, body(req) as never)));
+  // Bounced checks (D-032).
+  router.get('/bounces', handle(200, (ctx, ledger, req) => ledger.listBounces(ctx, { settled: query(req, 'settled') === undefined ? undefined : query(req, 'settled') === 'true' })));
+  router.post('/receipts/:id/bounce', handle(201, (ctx, ledger, req) => ledger.recordBounce(ctx, String(req.params.id), body(req) as never)));
+  router.post('/bounces/:id/repay', handle(201, (ctx, ledger, req) => ledger.repayBounce(ctx, String(req.params.id), body(req) as never)));
   router.post('/deposits/:id/clear', handle(200, (ctx, ledger, req) => ledger.clearDeposit(ctx, String(req.params.id), body(req).date as string)));
   router.post('/deposits/:id/unclear', handle(200, (ctx, ledger, req) => ledger.unclearDeposit(ctx, String(req.params.id), body(req).reason as string)));
   router.post('/deposits/:id/undo', handle(200, (ctx, ledger, req) => ledger.undoDeposit(ctx, String(req.params.id), body(req).reason as string)));

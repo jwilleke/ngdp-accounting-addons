@@ -348,4 +348,35 @@ const CLEARINGS: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS];
+const BOUNCES: AccountingMigration = {
+  id: '20261019200000',
+  description: 'bounced checks: the returned check, the bank fee and what the payer owes (D-032)',
+  up: (db) => {
+    db.exec(`
+      -- A deposited check the bank returned. The receipt never changes; the returned-check and fee
+      -- entries (source_type 'returned-check' and 'bounce-fee', source_id this id) take the money
+      -- back out. What the payer owes is check + fee + penalty; repayments are receipts that
+      -- reference this record.
+      CREATE TABLE accounting_bounces (
+        id           TEXT PRIMARY KEY,
+        receipt_id   TEXT NOT NULL UNIQUE,
+        deposit_id   TEXT NOT NULL,
+        date         TEXT NOT NULL,
+        account_id   TEXT NOT NULL,
+        check_amount INTEGER NOT NULL CHECK (check_amount > 0),
+        fee          INTEGER NOT NULL DEFAULT 0 CHECK (fee >= 0),
+        penalty      INTEGER NOT NULL DEFAULT 0 CHECK (penalty >= 0),
+        memo         TEXT NOT NULL DEFAULT '',
+        created_by   TEXT NOT NULL,
+        created_at   TEXT NOT NULL
+      );
+
+      CREATE TRIGGER accounting_bounces_no_delete BEFORE DELETE ON accounting_bounces
+      BEGIN SELECT RAISE(ABORT, 'accounting: a bounced check is never deleted'); END;
+      CREATE TRIGGER accounting_bounces_fixed BEFORE UPDATE ON accounting_bounces
+      BEGIN SELECT RAISE(ABORT, 'accounting: a bounced check never changes'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES];

@@ -223,6 +223,40 @@ export const LEDGER_FORMS: LedgerForm[] = [
     messageFields: [[/^deposit /, 'depositId']]
   },
   {
+    definition: form('check-bounce', 'Record a bounced check',
+      "The bank returned a deposited check. Its amount comes back out of the bank account, the bank's fee is recorded as bank charges, and the payer owes the check, the fee and any penalty. The receipt stays as it was.",
+      [{ name: 'receiptId', type: 'dropdown', label: 'Check (receipt)', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=bounceable-receipts)' },
+        { name: 'date', type: 'date', label: 'Date the bank returned it', required: true },
+        { name: 'fee', type: 'amount', label: "Bank's fee (blank: none)", required: false },
+        { name: 'penalty', type: 'amount', label: "Penalty to charge the payer (blank: the site's default)", required: false },
+        { name: 'memo', type: 'textarea', label: 'Note (optional)', required: false }]),
+    run: async ({ ledger }, ctx, data) => ({
+      bounceId: (await ledger.recordBounce(ctx, data.receiptId as string, {
+        date: data.date as string, memo: str(data.memo),
+        fee: typeof data.fee === 'number' ? data.fee : undefined, penalty: typeof data.penalty === 'number' ? data.penalty : undefined
+      })).id
+    }),
+    messageFields: [[/^receiptId:/, 'receiptId'], [/^date:/, 'date'], [/^bounced checks are off/, 'receiptId']]
+  },
+  {
+    definition: form('bounce-repay', 'Repay a bounced check',
+      'Money from the payer toward a bounced check. It is recorded as one receipt whose lines fill in order: the check, then the fee, then the penalty. Anything short stays owed.',
+      [{ name: 'bounceId', type: 'dropdown', label: 'Bounced check', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=unsettled-bounces)' },
+        { name: 'amount', type: 'amount', label: 'Amount received', required: true },
+        { name: 'date', type: 'date', label: 'Date received', required: true },
+        methodChoice(true),
+        { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
+        { name: 'memo', type: 'textarea', label: 'Note (optional)', required: false }]),
+    run: async ({ ledger }, ctx, data) => {
+      const receipt = await ledger.repayBounce(ctx, data.bounceId as string, {
+        amount: data.amount as number, date: data.date as string, paymentMethod: data.paymentMethod as string,
+        paymentMethodId: str(data.paymentMethodId), memo: str(data.memo)
+      });
+      return { receiptId: receipt.id, receiptNumber: receipt.number };
+    },
+    messageFields: [[/^bounceId:/, 'bounceId'], [/^amount is more/, 'amount'], [/^bounced checks are off/, 'bounceId']]
+  },
+  {
     definition: form('fund-create', 'Create a fund', 'A new fund starts at its opening balance, on its opening date.',
       [{ name: 'name', type: 'text', label: 'Name', required: true },
         { name: 'description', type: 'textarea', label: 'Description', required: false },

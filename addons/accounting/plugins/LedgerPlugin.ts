@@ -6,6 +6,7 @@
  *   [{Ledger view='entries' max='20'}]               latest entries, newest first, with receipt and deposit numbers
  *   [{Ledger view='deposits'}]                       deposits, newest first, with their receipts and cleared dates (D-031, D-032)
  *   [{Ledger view='deposits' cleared='false'}]       deposits not yet cleared: deposits in transit
+ *   [{Ledger view='bounces' settled='false'}]        bounced checks with what is owed, repaid and still owed (D-032)
  *   [{Ledger view='entries' fund='<fund id>' voided='true'}]
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
  *   [{Ledger view='summary' from='2026-01-01' to='2026-06-30' export='true'}]   with CSV download links
@@ -23,7 +24,7 @@
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { CASH_ON_HAND, accountLabel } from '../managers/LedgerManager.js';
-import type { AccountBalance, Deposit, FundBalance, LedgerActor, PeriodSummary } from '../managers/LedgerManager.js';
+import type { AccountBalance, Bounce, Deposit, FundBalance, LedgerActor, PeriodSummary } from '../managers/LedgerManager.js';
 
 type PluginParams = Record<string, string | number | boolean>;
 
@@ -193,6 +194,21 @@ function depositsTable(f: PluginFormatters, deposits: Deposit[], names: Names & 
   );
 }
 
+function bouncesTable(f: PluginFormatters, bounces: Bounce[], currency: string, emptyMessage: string): string {
+  const { escapeHtml, formatAsTable, formatMoney } = f;
+  const money = (cents: number) => escapeHtml(formatMoney(cents, currency));
+  return formatAsTable(
+    ['Returned', 'Check', 'Paid by', 'Deposit', 'Check amount', 'Fee', 'Penalty', 'Owed', 'Repaid', 'Still owed'],
+    bounces.map(b => [escapeHtml(b.date), escapeHtml(b.receiptNumber ?? ''), escapeHtml(b.partyName ?? ''), escapeHtml(b.depositNumber),
+      money(b.checkAmount), money(b.fee), money(b.penalty), money(b.owed), money(b.repaid), `<strong>${money(b.stillOwed)}</strong>`]),
+    {
+      sortable: true,
+      cellDataSort: sortOn(bounces, { 4: b => b.checkAmount, 5: b => b.fee, 6: b => b.penalty, 7: b => b.owed, 8: b => b.repaid, 9: b => b.stillOwed }),
+      emptyMessage
+    }
+  );
+}
+
 /** The names the entries and deposits tables show; read as the viewer, who already needed ledger-read. */
 async function namesFor(ledger: LedgerManager, actor: LedgerActor): Promise<Names> {
   const deposits = await ledger.listDeposits(actor);
@@ -267,6 +283,11 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const rows = await entryRows(f, ledger, actor, await namesFor(ledger, actor), fund, includeVoided);
     return entriesTable(f, applyMax(rows, max), ledger.currencyCode());
   }
+  if (view === 'bounces') {
+    const settled = params.settled === undefined ? undefined : parseBoolParam(params.settled as string, true);
+    return bouncesTable(f, await ledger.listBounces(actor, { settled }), ledger.currencyCode(),
+      settled === false ? 'Nothing is owed on a bounced check.' : 'No bounced checks.');
+  }
   if (view === 'deposits') {
     const all = await ledger.listDeposits(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
     // cleared='false': deposits in transit, still waiting on the bank (D-032).
@@ -279,7 +300,7 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const period = ledger.period({ month: str(params.month), from: str(params.from), to: str(params.to) });
     return summaryTables(f, await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
   }
-  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries, deposits or summary.`);
+  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries, deposits, bounces or summary.`);
 }
 
 /**
