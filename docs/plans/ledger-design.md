@@ -99,6 +99,12 @@ back. Existing receipts become one-line receipts with their ids and numbers; exi
 one-line refunds numbered `RF-0001` onwards in the order they were made. Records are voided, never
 changed or deleted.
 
+### Fifth migration: cleared deposits
+
+[D-032](decisions.md#d-032-cleared-deposits-and-bounced-checks) adds `accounting_deposit_clearings`:
+a deposit marked cleared with the date the bank shows, one standing mark per deposit. A wrong mark is
+taken off once, with a reason (`removed`), and is never changed or deleted.
+
 ### Enforced by the database itself
 
 Triggers make the money rules hold even if code is wrong:

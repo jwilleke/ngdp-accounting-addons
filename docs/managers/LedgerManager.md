@@ -57,6 +57,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `postTransaction` (money out) | `ledger-record` | no | `ledger-record` (`ledger-post`) |
 | `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
 | `makeDeposit` | `ledger-record` | no | `ledger-record` (`deposit-make`) |
+| `clearDeposit`, `unclearDeposit` | `ledger-record` | no | `ledger-record` (`deposit-clear`, `deposit-unclear`) |
 | `undoDeposit` | `ledger-adjust` | off for now | `ledger-adjust` (`deposit-undo`) |
 | `refundReceipt` | `receipt-refund` | off for now | `receipt-refund` (`receipt-refund`) |
 | `voidTransaction` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-void`) |
@@ -65,7 +66,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
 | `accountNumbers` | `fund-manage` | no | `fund-manage` (`account-number-view`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
-| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
+| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits`, `uncleared-deposits`, `cleared-deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
 `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit
@@ -140,6 +141,11 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
 - `undoDeposit(actor, depositId, reason)` → `Deposit`. Voids its entries; its receipts are back in
   Cash on Hand. Its number is not reused. A deposit's entries are never voided one by one, and a
   receipt in a standing deposit is not voided until the deposit is undone.
+- `clearDeposit(actor, depositId, date)` → `Deposit` with `clearedDate`: the bank statement shows it,
+  on `date` (not before the deposit). No money moves; one standing mark per deposit
+  ([D-032](../plans/decisions.md#d-032-cleared-deposits-and-bounced-checks)).
+  `unclearDeposit(actor, depositId, reason)` takes a wrong mark off; the mark stays in the history. A
+  cleared deposit is not undone until its mark is taken off.
 - `listDeposits(actor, { includeVoided? })`, `getDeposit(actor, id)`, `receiptsToDeposit(actor)`
   (receipts a deposit can take, oldest first).
 - `categories()` → the site's chart, parsed from `ngdpbase.addons.accounting.categories`

@@ -149,6 +149,8 @@ export interface Deposit {
   status: 'posted' | 'voided';
   voidReason: string | null;
   receipts: { receiptId: string; amount: number }[];
+  /** The date the bank shows the deposit, once the treasurer marks it cleared (D-032); null until then. */
+  clearedDate: string | null;
   createdBy: string;
   createdAt: string;
 }
@@ -920,6 +922,7 @@ export default class LedgerManager {
    *   deposit-receipts receipts in Cash on Hand     ledger-read (receiptsToDeposit)
    *   refundable-lines receipt lines left to refund ledger-read
    *   deposits         standing deposits            ledger-read (listDeposits)
+   *   uncleared-deposits, cleared-deposits          ledger-read (listDeposits)
    *   entries          latest posted entries        ledger-read (listTransactions)
    *   categories       site's categories            ledger-record (kind=in: income; kind=out: the rest)
    *   payment-methods  manual UN/CEFACT codes       ledger-record
@@ -938,6 +941,14 @@ export default class LedgerManager {
         case 'deposit-receipts': {
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
           return (await this.receiptsToDeposit(actor)).map(r => ({ value: r.id, label: documentLabel(r, names, this.formatMoney, this.currency), amount: r.total }));
+        }
+        case 'uncleared-deposits':
+        case 'cleared-deposits': {
+          const accounts = new Map(this.accountsInUse().map(a => [a.id, a.name]));
+          const wantCleared = options.list === 'cleared-deposits';
+          return (await this.listDeposits(actor)).filter(d => Boolean(d.clearedDate) === wantCleared).slice(0, ENTRY_CHOICES).map(d => ({
+            value: d.id, label: [d.number, d.date, accounts.get(d.accountId) ?? d.accountId, this.formatMoney(d.total, this.currency), d.clearedDate ? `cleared ${d.clearedDate}` : ''].filter(Boolean).join(' · ')
+          }));
         }
         case 'deposits': {
           const accounts = new Map(this.accountsInUse().map(a => [a.id, a.name]));
@@ -1466,6 +1477,7 @@ export default class LedgerManager {
     const why = text(reason, 'reason', { required: true }) as string;
     const before = this.deposit(text(depositId, 'depositId', { required: true }) as string);
     if (before.status === 'voided') throw new LedgerError(409, `deposit ${before.number} is already undone`);
+    if (before.clearedDate) throw new LedgerError(409, `deposit ${before.number} is cleared: the bank has it; take the cleared mark off first`);
     const legs = this.depositLegs(before.id);
 
     await this.audit(actor, {
@@ -1483,6 +1495,58 @@ export default class LedgerManager {
       this.history(user, 'deposit-undo', 'deposit', before.id, before, { ...before, status: 'voided', voidReason: why }, why);
     });
     return this.deposit(before.id);
+  }
+
+  /**
+   * Mark a deposit cleared: the bank statement shows it, on `date` (D-032).
+   * No money moves; its receipts count as cleared. One standing mark per deposit.
+   */
+  async clearDeposit(actor: LedgerActor, depositId: string, date: string): Promise<Deposit> {
+    await this.authorize(actor, 'ledger-record');
+    const user = actor.actingUsername();
+    const deposit = this.deposit(text(depositId, 'depositId', { required: true }) as string);
+    const cleared = isoDate(date, 'date');
+    const check = (): void => {
+      const now = this.deposit(deposit.id);
+      if (now.status === 'voided') throw new LedgerError(409, `deposit ${now.number} is undone`);
+      if (now.clearedDate) throw new LedgerError(409, `deposit ${now.number} is already cleared, on ${now.clearedDate}`);
+    };
+    check();
+    if (cleared < deposit.date) throw new LedgerError(400, `date: the bank cannot clear deposit ${deposit.number} before it was made (${deposit.date})`);
+    const id = this.newId();
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('ledger-record'), action: 'deposit-clear',
+      severity: 'low', resource: deposit.id, resourceType: 'accounting-deposit', metadata: { number: deposit.number, clearedDate: cleared }
+    });
+    await this.commit(() => {
+      check(); // again inside the transaction
+      this.db.prepare('INSERT INTO accounting_deposit_clearings (id, deposit_id, cleared_date, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(id, deposit.id, cleared, user, this.stamp());
+      this.history(user, 'deposit-clear', 'deposit', deposit.id, null, { number: deposit.number, clearedDate: cleared });
+    });
+    return this.deposit(deposit.id);
+  }
+
+  /** Take a wrong cleared mark off a deposit, with a reason. The mark stays in the history. */
+  async unclearDeposit(actor: LedgerActor, depositId: string, reason: string): Promise<Deposit> {
+    await this.authorize(actor, 'ledger-record');
+    const user = actor.actingUsername();
+    const why = text(reason, 'reason', { required: true }) as string;
+    const deposit = this.deposit(text(depositId, 'depositId', { required: true }) as string);
+    const mark = this.clearing(deposit.id);
+    if (!mark) throw new LedgerError(409, `deposit ${deposit.number} is not cleared`);
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('ledger-record'), action: 'deposit-unclear',
+      severity: 'medium', resource: deposit.id, resourceType: 'accounting-deposit', reason: why, metadata: { number: deposit.number, clearedDate: mark.cleared_date }
+    });
+    await this.commit(() => {
+      if (!this.clearing(deposit.id)) throw new LedgerError(409, `deposit ${deposit.number} is not cleared`);
+      this.db.prepare('UPDATE accounting_deposit_clearings SET removed = 1, removed_reason = ? WHERE id = ?').run(why, mark.id);
+      this.history(user, 'deposit-unclear', 'deposit', deposit.id, { clearedDate: mark.cleared_date }, { clearedDate: null }, why);
+    });
+    return this.deposit(deposit.id);
   }
 
   /** Deposits, newest first; undone ones only when asked. */
@@ -1643,8 +1707,15 @@ export default class LedgerManager {
       .all(depositId) as { receipt_id: string; amount: number }[]).map(r => ({ receiptId: r.receipt_id, amount: r.amount }));
     return {
       id: row.id, number: row.number, date: row.date, accountId: row.account_id, slipReference: row.slip_reference, total: row.total,
-      memo: row.memo, status: row.status, voidReason: row.void_reason, receipts, createdBy: row.created_by, createdAt: row.created_at
+      memo: row.memo, status: row.status, voidReason: row.void_reason, receipts, clearedDate: this.clearing(depositId)?.cleared_date ?? null,
+      createdBy: row.created_by, createdAt: row.created_at
     };
+  }
+
+  /** A deposit's standing cleared mark, if any. */
+  private clearing(depositId: string): { id: string; cleared_date: string } | undefined {
+    return this.db.prepare('SELECT id, cleared_date FROM accounting_deposit_clearings WHERE deposit_id = ? AND removed = 0')
+      .get(depositId) as { id: string; cleared_date: string } | undefined;
   }
 
   /** The posted entries a deposit made. */

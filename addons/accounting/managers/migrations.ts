@@ -318,4 +318,34 @@ const DOCUMENTS: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS];
+const CLEARINGS: AccountingMigration = {
+  id: '20261019180000',
+  description: 'deposits marked cleared with the date the bank shows (D-032)',
+  up: (db) => {
+    db.exec(`
+      -- The bank credited a deposit on this date. Clearing moves no money; it is a mark for matching
+      -- the statement. A wrong mark is taken off once, with a reason, and stays as history.
+      CREATE TABLE accounting_deposit_clearings (
+        id             TEXT PRIMARY KEY,
+        deposit_id     TEXT NOT NULL,
+        cleared_date   TEXT NOT NULL,
+        removed        INTEGER NOT NULL DEFAULT 0 CHECK (removed IN (0, 1)),
+        removed_reason TEXT,
+        created_by     TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        CHECK (removed = 0 OR (removed_reason IS NOT NULL AND removed_reason <> ''))
+      );
+      CREATE UNIQUE INDEX accounting_deposit_clearings_once ON accounting_deposit_clearings (deposit_id) WHERE removed = 0;
+
+      CREATE TRIGGER accounting_deposit_clearings_no_delete BEFORE DELETE ON accounting_deposit_clearings
+      BEGIN SELECT RAISE(ABORT, 'accounting: a cleared mark is taken off, never deleted'); END;
+      CREATE TRIGGER accounting_deposit_clearings_fixed BEFORE UPDATE ON accounting_deposit_clearings
+      WHEN NEW.id IS NOT OLD.id OR NEW.deposit_id IS NOT OLD.deposit_id OR NEW.cleared_date IS NOT OLD.cleared_date
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NOT (OLD.removed = 0 AND NEW.removed = 1 AND NEW.removed_reason IS NOT NULL AND NEW.removed_reason <> '')
+      BEGIN SELECT RAISE(ABORT, 'accounting: a cleared mark never changes; take it off, once, with a reason'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS];

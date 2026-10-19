@@ -199,6 +199,22 @@ export const LEDGER_FORMS: LedgerForm[] = [
     messageFields: [[/^accountId:/, 'accountId'], [/^receiptIds:/, 'receiptIds'], [/^total:/, 'total']]
   },
   {
+    definition: form('deposit-clear', 'Mark a deposit cleared',
+      "The bank statement shows the deposit: mark it cleared with the date the bank shows. No money moves; its receipts count as cleared.",
+      [{ name: 'depositId', type: 'dropdown', label: 'Deposit', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=uncleared-deposits)' },
+        { name: 'date', type: 'date', label: 'Date on the bank statement', required: true }]),
+    run: async ({ ledger }, ctx, data) => ({ depositId: (await ledger.clearDeposit(ctx, data.depositId as string, data.date as string)).id }),
+    messageFields: [[/^deposit /, 'depositId'], [/^date:/, 'date']]
+  },
+  {
+    definition: form('deposit-unclear', 'Take off a cleared mark',
+      'A deposit marked cleared by mistake: take the mark off, with the reason. The mark stays in the history.',
+      [{ name: 'depositId', type: 'dropdown', label: 'Deposit', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=cleared-deposits)' },
+        { name: 'reason', type: 'textarea', label: 'Reason', required: true }]),
+    run: async ({ ledger }, ctx, data) => ({ depositId: (await ledger.unclearDeposit(ctx, data.depositId as string, data.reason as string)).id }),
+    messageFields: [[/^deposit /, 'depositId']]
+  },
+  {
     definition: form('deposit-undo', 'Undo a deposit',
       "Undoes a deposit, with the reason: its entries are voided and its receipts are back in Cash on Hand, ready for a new deposit. The deposit's number is not reused.",
       [{ name: 'depositId', type: 'dropdown', label: 'Deposit', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=deposits)' },
