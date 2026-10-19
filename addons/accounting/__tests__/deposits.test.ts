@@ -132,6 +132,57 @@ describe('deposits', () => {
     });
   });
 
+  describe('clearing (D-032)', () => {
+    test('marks a deposit cleared with the bank\'s date; no money moves', async () => {
+      const made = await deposit([await receipt(general, 100)]);
+      const balances = await accountBalances();
+      await expect(ledger.clearDeposit(actor(), made.id, '2026-10-11')).rejects.toThrow('date: the bank cannot clear deposit D-0001 before it was made (2026-10-12)');
+      expect(await ledger.clearDeposit(actor(), made.id, '2026-10-14')).toMatchObject({ number: 'D-0001', clearedDate: '2026-10-14' });
+      expect(await accountBalances()).toEqual(balances);
+      await expect(ledger.clearDeposit(actor(), made.id, '2026-10-15')).rejects.toThrow('deposit D-0001 is already cleared, on 2026-10-14');
+      expect(audit.at(-1)).toMatchObject({ action: 'deposit-clear', resource: made.id, metadata: { clearedDate: '2026-10-14' } });
+    });
+
+    test('a wrong mark is taken off with a reason; the deposit can then be cleared again', async () => {
+      const made = await deposit([await receipt(general, 100)]);
+      await expect(ledger.unclearDeposit(actor(), made.id, 'x')).rejects.toThrow('deposit D-0001 is not cleared');
+      await ledger.clearDeposit(actor(), made.id, '2026-10-14');
+      await expect(ledger.unclearDeposit(actor(), made.id, ' ')).rejects.toThrow(/reason is required/);
+      expect((await ledger.unclearDeposit(actor(), made.id, 'that was D-0002')).clearedDate).toBeNull();
+      expect((await ledger.clearDeposit(actor(), made.id, '2026-10-16')).clearedDate).toBe('2026-10-16');
+      expect(audit.map(r => r.action).filter(a => a.startsWith('deposit-'))).toEqual(['deposit-make', 'deposit-clear', 'deposit-unclear', 'deposit-clear']);
+    });
+
+    test('a cleared deposit is not undone until its mark is taken off; an undone one is not cleared', async () => {
+      const made = await deposit([await receipt(general, 100)]);
+      await ledger.clearDeposit(actor(), made.id, '2026-10-14');
+      await expect(ledger.undoDeposit(actor(), made.id, 'oops')).rejects.toThrow('deposit D-0001 is cleared: the bank has it; take the cleared mark off first');
+      await ledger.unclearDeposit(actor(), made.id, 'wrong deposit');
+      await ledger.undoDeposit(actor(), made.id, 'oops');
+      await expect(ledger.clearDeposit(actor(), made.id, '2026-10-14')).rejects.toThrow('deposit D-0001 is undone');
+    });
+
+    test('the forms offer uncleared and cleared deposits; the Deposits page lists those still in transit', async () => {
+      const first = await deposit([await receipt(general, 100)]);
+      const second = await deposit([await receipt(general, 200)]);
+      await ledger.clearDeposit(actor(), first.id, '2026-10-14');
+      const viewer = { username: 'tess', granted: ALL };
+      expect((await ledger.toFormOptions({ list: 'uncleared-deposits' }, viewer)).map(o => o.value)).toEqual([second.id]);
+      expect((await ledger.toFormOptions({ list: 'cleared-deposits' }, viewer))[0]).toMatchObject({ value: first.id, label: expect.stringContaining('cleared 2026-10-14') });
+      const html = await renderLedgerView(testFormatters, ledger, ledger.viewerActor(viewer), { view: 'deposits', cleared: 'false' });
+      expect(html).toContain('D-0002');
+      expect(html).not.toContain('D-0001');
+      expect(await renderLedgerView(testFormatters, ledger, ledger.viewerActor(viewer), { view: 'deposits' })).toContain('2026-10-14');
+    });
+
+    test('the database refuses to change or delete a cleared mark', async () => {
+      const made = await deposit([await receipt(general, 100)]);
+      await ledger.clearDeposit(actor(), made.id, '2026-10-14');
+      expect(() => db.prepare("UPDATE accounting_deposit_clearings SET cleared_date = '2026-10-20'").run()).toThrow(/never changes/);
+      expect(() => db.prepare('DELETE FROM accounting_deposit_clearings').run()).toThrow(/never deleted/);
+    });
+  });
+
   test('the database refuses to change or delete a deposit', async () => {
     const made = await deposit([await receipt(general, 100)]);
     expect(() => db.prepare('UPDATE accounting_deposits SET total = 1 WHERE id = ?').run(made.id)).toThrow(/never changes/);

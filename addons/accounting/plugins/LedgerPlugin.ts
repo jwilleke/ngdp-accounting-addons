@@ -4,7 +4,8 @@
  *   [{Ledger view='balances'}]                       fund balances, with a total
  *   [{Ledger view='accounts'}]                       account balances (where the money sits), with a total (D-031)
  *   [{Ledger view='entries' max='20'}]               latest entries, newest first, with receipt and deposit numbers
- *   [{Ledger view='deposits'}]                       deposits, newest first, with their receipts (D-031)
+ *   [{Ledger view='deposits'}]                       deposits, newest first, with their receipts and cleared dates (D-031, D-032)
+ *   [{Ledger view='deposits' cleared='false'}]       deposits not yet cleared: deposits in transit
  *   [{Ledger view='entries' fund='<fund id>' voided='true'}]
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
  *   [{Ledger view='summary' from='2026-01-01' to='2026-06-30' export='true'}]   with CSV download links
@@ -170,10 +171,10 @@ async function entryRows(f: PluginFormatters, ledger: LedgerManager, actor: Ledg
   return rows.sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at));
 }
 
-function depositsTable(f: PluginFormatters, deposits: Deposit[], names: Names & { receiptNumbers: Map<string, string> }, currency: string): string {
+function depositsTable(f: PluginFormatters, deposits: Deposit[], names: Names & { receiptNumbers: Map<string, string> }, currency: string, emptyMessage = 'No deposits yet.'): string {
   const { escapeHtml, formatAsTable, formatMoney } = f;
   return formatAsTable(
-    ['Number', 'Date', 'Account', 'Slip', 'Receipts', 'Total', 'Status'],
+    ['Number', 'Date', 'Account', 'Slip', 'Receipts', 'Total', 'Cleared', 'Status'],
     deposits.map(d => [
       escapeHtml(d.number),
       escapeHtml(d.date),
@@ -181,12 +182,13 @@ function depositsTable(f: PluginFormatters, deposits: Deposit[], names: Names & 
       escapeHtml(d.slipReference ?? ''),
       escapeHtml(d.receipts.map(r => names.receiptNumbers.get(r.receiptId) ?? r.receiptId).join(', ')),
       `<strong>${escapeHtml(formatMoney(d.total, currency))}</strong>`,
+      d.clearedDate ? escapeHtml(d.clearedDate) : '<span class="text-muted">not cleared</span>',
       d.status === 'voided' ? `undone: ${escapeHtml(d.voidReason ?? '')}` : 'posted'
     ]),
     {
       sortable: true,
       cellDataSort: sortOn(deposits, { 0: d => d.number.slice(2).padStart(12, '0'), 5: d => d.total }),
-      emptyMessage: 'No deposits yet.'
+      emptyMessage
     }
   );
 }
@@ -266,9 +268,11 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     return entriesTable(f, applyMax(rows, max), ledger.currencyCode());
   }
   if (view === 'deposits') {
-    const deposits = await ledger.listDeposits(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
+    const all = await ledger.listDeposits(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
+    // cleared='false': deposits in transit, still waiting on the bank (D-032).
+    const deposits = params.cleared === undefined ? all : all.filter(d => d.status === 'posted' && Boolean(d.clearedDate) === parseBoolParam(params.cleared as string, true));
     const receiptNumbers = new Map((await ledger.listDocuments(actor, 'receipt', { includeVoided: true })).map(d => [d.id, d.number ?? d.id]));
-    return depositsTable(f, deposits, { ...(await namesFor(ledger, actor)), receiptNumbers }, ledger.currencyCode());
+    return depositsTable(f, deposits, { ...(await namesFor(ledger, actor)), receiptNumbers }, ledger.currencyCode(), params.cleared === undefined ? undefined : 'Every deposit is cleared.');
   }
   if (view === 'summary') {
     const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
