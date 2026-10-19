@@ -3,9 +3,14 @@
   "ngdpbase.addons.accounting.enabled": false,
   "_comment_categories": "Income and expense categories offered on the entry form: { \"<UCOA account code>\": \"<label>\" } (D-023). Empty until the default set is decided; a site sets its own in app-custom-config.json. A map, so each layer adds codes rather than replacing the list.",
   "ngdpbase.addons.accounting.categories": {},
-  "_comment_accounts": "Where money sits (D-031): bank accounts, keyed by id so each layer adds or changes one; false removes a shipped one. Cash on Hand is built in. One active bank account is the default: ACH, Zelle and bank transfers land there, and money out comes from it. Opening balances are set by the treasurer on the Set an Account's Opening Balance page, not here.",
+  "_comment_accounts": "Where money sits (D-031): bank accounts, keyed by id so each layer adds or changes one; false removes a shipped one. Each bank account may carry \"routing-number\" (nine digits) and \"account-number\", which must be a $VAR reference to an environment variable (e.g. \"$CHECKING_ACCOUNT_NUMBER\"), never the number itself: ngdpbase resolves it and hides it as a secret (below). Screens show the last four digits; fund-manage holders can read the full number, and every read is audited. Cash on Hand is built in. One active bank account is the default: ACH, Zelle and bank transfers land there, and money out comes from it. Opening balances are set by the treasurer on the Set an Account's Opening Balance page, not here.",
   "ngdpbase.addons.accounting.accounts": {
     "checking": { "name": "Checking", "kind": "bank", "default": true, "active": true }
+  },
+
+  "_comment_sensitive_values": "Bank account numbers inside the accounts map are secrets (ngdpbase v5.21.0, #1889): never shown on the admin screen, in logs or in the audit log.",
+  "ngdpbase.config.sensitive-values": {
+    "ngdpbase.addons.accounting.accounts.*.account-number": "secret"
   },
 
   "ngdpbase.permissions.definitions": {

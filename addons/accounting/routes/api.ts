@@ -55,6 +55,8 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   // Accounts: where the money sits (D-031). Bank accounts are configuration; only their opening balance is set here.
   router.get('/accounts', handle(200, (ctx, ledger) => ledger.listAccounts(ctx)));
   router.get('/account-balances', handle(200, (ctx, ledger) => ledger.accountBalances(ctx)));
+  // The full account and routing numbers: fund-manage only, and audited (D-031).
+  router.get('/accounts/:id/numbers', handle(200, (ctx, ledger, req) => ledger.accountNumbers(ctx, String(req.params.id))));
   router.post('/accounts/:id/opening', handle(201, (ctx, ledger, req) => ledger.setAccountOpening(ctx, String(req.params.id), body(req) as never)));
 
   // Entries

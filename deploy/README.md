@@ -7,7 +7,7 @@ deployment-specific in this repository. How to install an add-on on each is ngdp
 guide (`docs/guides/addons-developer-guide.md`, "Where it is loaded" and "Shipping Your Addon as a
 Container Image") and `docs/platform/deployment/`.
 
-Requirements: ngdpbase v5.18.0 or later (declared as `minVersion`; its types package starts at 5.18.0; the ledger needs `ctx.enforceDeny` from v5.11.0, the ExportManager CSV writer and PluginManager formatters from v5.12.0, `engine.createRouter()` from v5.15.0, and declared add-on databases from v5.17.0), the site's database on
+Requirements: ngdpbase v5.21.0 or later (declared as `minVersion`; the forms checklist field and secrets inside config maps arrived in v5.21.0; the ledger needs `ctx.enforceDeny` from v5.11.0, the ExportManager CSV writer and PluginManager formatters from v5.12.0, `engine.createRouter()` from v5.15.0, and declared add-on databases from v5.17.0), the site's database on
 (`ngdpbase.database.provider: sqlite`), and the forms add-on for the treasurer's screens.
 
 At runtime the add-on imports nothing from ngdpbase's files: core values come from the `host` passed

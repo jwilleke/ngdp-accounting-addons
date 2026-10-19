@@ -29,8 +29,12 @@ interface FormsDataManagerLike {
   saveDefinition(form: unknown): Promise<void>;
 }
 
-/** A field of a forms add-on definition. */
-interface FieldDef { name: string; type: string; label: string; required?: boolean; options?: string[]; optionsSource?: string }
+/**
+ * A field of a forms add-on definition. A `checklist` (ngdpbase v5.21.0, #1904) submits the ticked
+ * values as an array; with `totalField` it shows whether the ticked amounts match that field. That
+ * line is only shown: the ledger checks the sum itself.
+ */
+interface FieldDef { name: string; type: string; label: string; required?: boolean; options?: string[]; optionsSource?: string; totalField?: string }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() !== '' ? v : undefined);
 
@@ -173,6 +177,26 @@ export const LEDGER_FORMS: LedgerForm[] = [
       })).id
     }),
     messageFields: [[/^(only a receipt|this receipt)/, 'receiptId'], [/^account '/, 'accountId']]
+  },
+  {
+    definition: form('deposit-make', 'Make a deposit',
+      'Receipts taken from Cash on Hand to the bank together: one line on the bank statement. Tick the receipts going in, then enter the total from the deposit slip; the deposit is refused unless they match. Fund balances do not change.',
+      [{ name: 'accountId', type: 'dropdown', label: 'Bank account', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=bank-accounts)' },
+        { name: 'date', type: 'date', label: 'Deposit date', required: true },
+        { name: 'receiptIds', type: 'checklist', label: 'Receipts in Cash on Hand', required: true,
+          optionsSource: 'fetch:LedgerManager.toFormOptions(list=deposit-receipts)', totalField: 'total' },
+        { name: 'total', type: 'amount', label: 'Deposit slip total', required: true },
+        { name: 'slipReference', type: 'text', label: 'Deposit slip number (optional)', required: false },
+        { name: 'memo', type: 'textarea', label: 'Note (optional)', required: false }]),
+    run: async ({ ledger }, ctx, data) => {
+      const deposit = await ledger.makeDeposit(ctx, {
+        accountId: data.accountId as string, date: data.date as string,
+        receiptIds: Array.isArray(data.receiptIds) ? data.receiptIds as string[] : [],
+        total: data.total as number, slipReference: str(data.slipReference), memo: str(data.memo)
+      });
+      return { depositId: deposit.id, depositNumber: deposit.number };
+    },
+    messageFields: [[/^accountId:/, 'accountId'], [/^receiptIds:/, 'receiptIds'], [/^total:/, 'total']]
   },
   {
     definition: form('deposit-undo', 'Undo a deposit',

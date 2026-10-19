@@ -122,6 +122,6 @@ describe('the entry form', () => {
 
   test('every form posts through the ledger, which refuses a viewer without the permission', async () => {
     const ids = LEDGER_FORMS.map(f => f.definition.id);
-    expect(ids).toEqual(['ledger-entry', 'ledger-transfer', 'ledger-void', 'receipt-record', 'receipt-refund', 'deposit-undo', 'fund-create', 'fund-rename', 'fund-close', 'account-opening']);
+    expect(ids).toEqual(['ledger-entry', 'ledger-transfer', 'ledger-void', 'receipt-record', 'receipt-refund', 'deposit-make', 'deposit-undo', 'fund-create', 'fund-rename', 'fund-close', 'account-opening']);
   });
 });
