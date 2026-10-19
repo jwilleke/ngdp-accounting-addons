@@ -90,6 +90,15 @@ from ngdpbase's audit log.
 - `accounting_account_openings` (`account_id` primary key, `opening_balance`, `opening_date`,
   `created_by`, `created_at`): set once by the treasurer; never updated or deleted.
 
+### Fourth migration: receipts and refunds as records
+
+[D-033](decisions.md#d-033-receipts-and-refunds-are-made-of-lines) adds `accounting_documents`: one
+row per receipt or refund (kind, number, payer, method, account, total, reason, status). Its lines
+are ledger entries with `document_id`; a refund line also has `line_of`, the receipt line it gives
+back. Existing receipts become one-line receipts with their ids and numbers; existing refunds become
+one-line refunds numbered `RF-0001` onwards in the order they were made. Records are voided, never
+changed or deleted.
+
 ### Enforced by the database itself
 
 Triggers make the money rules hold even if code is wrong:

@@ -53,7 +53,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | Method | Permission | Step-up | Audit event (action) |
 | --- | --- | --- | --- |
 | `listFunds`, `fundBalances`, `periodSummary`, `listAccounts`, `accountBalances` | `ledger-summary-read` | no | — |
-| `listTransactions`, `getTransaction`, `listDeposits`, `getDeposit`, `receiptsToDeposit` | `ledger-read` | no | — |
+| `listTransactions`, `getTransaction`, `listDocuments`, `getDocument`, `listDeposits`, `getDeposit`, `receiptsToDeposit` | `ledger-read` | no | — |
 | `postTransaction` (money out) | `ledger-record` | no | `ledger-record` (`ledger-post`) |
 | `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
 | `makeDeposit` | `ledger-record` | no | `ledger-record` (`deposit-make`) |
@@ -65,7 +65,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
 | `accountNumbers` | `fund-manage` | no | `fund-manage` (`account-number-view`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
-| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `deposit-receipts`, `deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
+| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
 `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit
@@ -104,21 +104,30 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   partyName?, paymentMethod?, paymentMethodId?, memo })` → `Transaction`. Money out only: `in` is
   refused ("money in is recorded as a receipt"). `category` is a UCOA account code; `paymentMethod` a
   UN/CEFACT payment means; `memo` is the reason, required.
-- `postReceipt(actor, { amount, date, fundId, category, partyName, partyPersonId?, paymentMethod,
-  paymentMethodId?, memo, reference? }, { provider, confirmationNumber? })` → `Transaction`. Money in.
+- `postReceipt(actor, { lines | amount + fundId + category, date, partyName, partyPersonId?, paymentMethod,
+  paymentMethodId?, accountId?, memo, reference? }, { provider, confirmationNumber? })` → `Receipt`. Money in
+  ([D-033](../plans/decisions.md#d-033-receipts-and-refunds-are-made-of-lines)): one record, one
+  number, with one or more `lines` (`{ amount, fundId, category, memo? }`, at most 50), each a ledger
+  entry counted in its own fund and category. Without `lines`, the amount, fund and category make the
+  one line. All lines land in one account. A refusal about a line names it: `lines[1].amount …`.
   For the manual provider the ledger numbers it, `R-0001` onwards, in the same database transaction:
   one sequence per site, never reused (a voided receipt keeps its number). Another provider passes
   its own `confirmationNumber`; `provider` plus number is unique, so the same receipt never posts
   twice. `reference: { type, id }` records what it pays for (e.g. a dues invoice). Called by
   `ReceiptManager`, not by other add-ons directly.
-- `refundReceipt(actor, receiptId, { amount?, date, memo, paymentMethod?, paymentMethodId? })` →
-  `Transaction`. Money returned to the payer: an `out` entry in the receipt's fund and category,
-  `sourceType: 'receipt-refund'`, linked by `sourceId`. The receipt stays posted. Partial refunds add
-  up to at most the receipt's amount; a missing `amount` refunds what is left.
+- `refundReceipt(actor, receiptId, { lines? | amount?, date, memo, paymentMethod?, paymentMethodId?, accountId? })` →
+  `Refund`, numbered `RF-0001` onwards. Its `lines` (`{ receiptLineId, amount }`) each give back part
+  of a receipt line, as money out in that line's fund and category (`sourceType: 'receipt-refund'`,
+  `lineOf` the receipt line); a line never gives back more than is left on it. A one-line receipt may
+  give just `amount`, which defaults to what is left. The receipt stays posted.
 - `voidTransaction(actor, transactionId, reason, replacement?)` → `{ voided, replacement }`. Voiding
-  one side of a transfer voids both, and takes no replacement: post a new transfer instead. A
-  receipt takes no replacement either: void it and record a new receipt. A receipt with posted
-  refunds is not voided until its refunds are. The original stays visible, marked voided.
+  one side of a transfer voids both, and takes no replacement: post a new transfer instead. Given a
+  receipt's or refund's id, it voids the whole record and every line; a single line is never voided
+  alone. A receipt takes no replacement: void it and record a new receipt. A receipt with posted
+  refunds is not voided until its refunds are, nor one in a standing deposit until it is undone. The
+  original stays visible, marked voided.
+- `listDocuments(actor, 'receipt' | 'refund', { includeVoided? })`, `getDocument(actor, id)` → receipts
+  and refunds with their lines, newest first (`ledger-read`).
 - `transferBetweenFunds(actor, { fromFundId, toFundId, amount, date, memo? })` → the linked out and
   in entries. The total across funds is unchanged.
 - `makeDeposit(actor, { accountId, date, receiptIds, total, slipReference?, memo? })` → `Deposit`.

@@ -186,6 +186,8 @@ older one.
 - No month lock: a closed month can still receive entries dated in it (#19).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
+- Receipts and refunds have lines, but the forms record one line each until ngdpbase's lines field
+  ships (ngdpbase #1913); the API (`POST /api/accounting/receipts` with `lines`) takes several.
 - No dues, donations or events modules yet.
 - A site that enabled accounting before receipts keeps the forms it first saved: its "Record an
   Entry" form still shows an In or out choice and an optional memo. The ledger records only money out

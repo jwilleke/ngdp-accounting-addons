@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openTestLedgerDatabase, testFormatters, testLedgerParts } from './host.js';
-import LedgerManager, { CASH_ON_HAND, type Fund, type LedgerActor, type LedgerAuditRecord, type LedgerDb, type Transaction } from '../managers/LedgerManager.js';
+import LedgerManager, { CASH_ON_HAND, type Fund, type LedgerActor, type LedgerAuditRecord, type LedgerDb, type Receipt, type Transaction } from '../managers/LedgerManager.js';
 import { renderLedgerView } from '../plugins/LedgerPlugin.js';
 import { LEDGER_FORMS, fieldOf } from '../forms.js';
 
@@ -50,8 +50,9 @@ describe('deposits', () => {
 
   const receipt = (fund: Fund, amount: number, paymentMethod = '20', date = '2026-10-10') =>
     ledger.postReceipt(actor(), { fundId: fund.id, amount, date, category: '4100', partyName: 'Pat', paymentMethod, memo: 'dues' }, { provider: 'manual' });
-  const deposit = (receipts: Transaction[], extra: Record<string, unknown> = {}) =>
-    ledger.makeDeposit(actor(), { accountId: 'checking', date: '2026-10-12', receiptIds: receipts.map(r => r.id), total: receipts.reduce((t, r) => t + r.amount, 0), ...extra });
+  const deposit = (receipts: (Receipt | Transaction)[], extra: Record<string, unknown> = {}) =>
+    ledger.makeDeposit(actor(), { accountId: 'checking', date: '2026-10-12', receiptIds: receipts.map(r => r.id),
+      total: receipts.reduce((t, r) => t + ('total' in r ? r.total : r.amount), 0), ...extra });
   const fundBalances = async () => (await ledger.fundBalances(actor())).map(b => [b.name, b.balance]);
   const accountBalances = async () => (await ledger.accountBalances(actor())).map(b => [b.accountId, b.balance]);
 
@@ -141,11 +142,10 @@ describe('deposits', () => {
   test('numbers count only digits, with no upper limit: after D-9999 comes D-10000, and after R-9999, R-10000', async () => {
     db.prepare(`INSERT INTO accounting_deposits (id, number, date, account_id, total, status, created_by, created_at)
       VALUES ('old', 'D-9999', '2026-01-01', 'checking', 1, 'posted', 'tess', 'now')`).run();
-    db.prepare(`INSERT INTO accounting_transactions (id, direction, amount, currency, date, fund_id, account_id, category, provider, confirmation_number,
-      source_type, status, memo, created_by, created_at) VALUES ('r', 'in', 1, 'USD', '2026-01-01', ?, 'checking', '4100', 'manual', 'R-9999',
-      'receipt', 'posted', 'old', 'tess', 'now')`).run(general.id);
+    db.prepare(`INSERT INTO accounting_documents (id, kind, number, provider, date, account_id, total, status, created_by, created_at)
+      VALUES ('r', 'receipt', 'R-9999', 'manual', '2026-01-01', 'checking', 1, 'posted', 'tess', 'now')`).run();
     const a = await receipt(general, 100);
-    expect(a.confirmationNumber).toBe('R-10000');
+    expect(a.number).toBe('R-10000');
     expect((await deposit([a])).number).toBe('D-10000');
   });
 
@@ -184,7 +184,8 @@ describe('deposits', () => {
     const a = await receipt(general, 100);
     await deposit([a], { slipReference: '0042' });
     const viewer = ledger.viewerActor({ username: 'tess', granted: ALL });
-    expect(await renderLedgerView(testFormatters, ledger, viewer, { view: 'entries' })).toContain('R-0001 <span class="text-muted">(D-0001)</span>');
+    const entriesHtml = await renderLedgerView(testFormatters, ledger, viewer, { view: 'entries' });
+    expect(entriesHtml).toContain('R-0001 <span class="text-muted">(D-0001)</span>');
     const html = await renderLedgerView(testFormatters, ledger, viewer, { view: 'deposits' });
     expect(html).toContain('D-0001');
     expect(html).toContain('0042');

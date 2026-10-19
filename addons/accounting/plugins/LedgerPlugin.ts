@@ -21,8 +21,8 @@
  */
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
-import { accountLabel } from '../managers/LedgerManager.js';
-import type { AccountBalance, Deposit, FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
+import { CASH_ON_HAND, accountLabel } from '../managers/LedgerManager.js';
+import type { AccountBalance, Deposit, FundBalance, LedgerActor, PeriodSummary } from '../managers/LedgerManager.js';
 
 type PluginParams = Record<string, string | number | boolean>;
 
@@ -94,33 +94,80 @@ function accountsTable(f: PluginFormatters, rows: AccountBalance[], labels: Map<
 /** Names to show for ids: funds, accounts, and each receipt's standing deposit number. */
 interface Names { funds: Map<string, string>; accounts: Map<string, string>; depositOf: Map<string, string> }
 
-function entriesTable(f: PluginFormatters, entries: Transaction[], names: Names): string {
+/** One row of the entries table: a receipt, a refund, a deposit or a plain entry, each shown once (D-033). */
+interface EntryRow {
+  date: string; at: string; no: string; fund: string; account: string; category: string;
+  moneyIn: number | null; moneyOut: number | null; party: string; memo: string; status: string;
+}
+
+function entriesTable(f: PluginFormatters, rows: EntryRow[], currency: string): string {
   const { escapeHtml, formatAsTable, formatMoney } = f;
-  const money = (t: Transaction) => escapeHtml(formatMoney(t.amount, t.currency));
-  const number = (t: Transaction) => {
-    const deposit = names.depositOf.get(t.id);
-    return escapeHtml(t.confirmationNumber ?? '') + (deposit ? ` <span class="text-muted">(${escapeHtml(deposit)})</span>` : '');
-  };
+  const money = (cents: number | null) => (cents === null ? '' : escapeHtml(formatMoney(cents, currency)));
   return formatAsTable(
     ['Date', 'No.', 'Fund', 'Account', 'Category', 'In', 'Out', 'Paid by / to', 'Memo', 'Status'],
-    entries.map(t => [
-      escapeHtml(t.date),
-      number(t),
-      escapeHtml(names.funds.get(t.fundId) ?? t.fundId),
-      escapeHtml(names.accounts.get(t.accountId) ?? t.accountId),
-      escapeHtml(t.category),
-      t.direction === 'in' ? money(t) : '',
-      t.direction === 'out' ? money(t) : '',
-      escapeHtml(t.partyName ?? ''),
-      escapeHtml(t.memo),
-      t.status === 'voided' ? `voided: ${escapeHtml(t.voidReason ?? '')}` : 'posted'
-    ]),
+    rows.map(r => [escapeHtml(r.date), r.no, r.fund, escapeHtml(r.account), r.category, money(r.moneyIn), money(r.moneyOut),
+      escapeHtml(r.party), escapeHtml(r.memo), escapeHtml(r.status)]),
     {
       sortable: true,
-      cellDataSort: sortOn(entries, { 1: t => t.confirmationNumber ?? '', 5: t => (t.direction === 'in' ? t.amount : ''), 6: t => (t.direction === 'out' ? t.amount : '') }),
+      cellDataSort: sortOn(rows, { 1: r => r.no.replace(/<[^>]*>/g, ''), 5: r => r.moneyIn ?? '', 6: r => r.moneyOut ?? '' }),
       emptyMessage: 'No entries yet.'
     }
   );
+}
+
+/**
+ * The entries table's rows, newest first: each receipt and refund once at its
+ * total, with its lines listed in the Category cell; each deposit once (it moves
+ * money between accounts, so no In or Out); every other entry as itself.
+ */
+async function entryRows(f: PluginFormatters, ledger: LedgerManager, actor: LedgerActor, names: Names, fund: string | undefined, includeVoided: boolean): Promise<EntryRow[]> {
+  const { escapeHtml, formatMoney } = f;
+  const currency = ledger.currencyCode();
+  const labels = new Map(ledger.categories().map(c => [c.code, c.name]));
+  const category = (code: string) => escapeHtml(labels.has(code) ? `${code} ${labels.get(code)}` : code);
+  const fundName = (id: string) => escapeHtml(names.funds.get(id) ?? id);
+  const status = (s: 'posted' | 'voided', reason: string | null, word = 'voided') => (s === 'voided' ? `${word}: ${reason ?? ''}` : 'posted');
+  const documents = [...await ledger.listDocuments(actor, 'receipt', { includeVoided }), ...await ledger.listDocuments(actor, 'refund', { includeVoided })];
+  const numbers = new Map(documents.map(d => [d.id, d.number ?? '']));
+  const rows: EntryRow[] = [];
+  for (const d of documents) {
+    if (fund && !d.lines.some(l => l.fundId === fund)) continue;
+    const funds = [...new Set(d.lines.map(l => l.fundId))];
+    const split = d.lines.length > 1;
+    const deposit = names.depositOf.get(d.id);
+    const no = escapeHtml(d.number ?? '') + (deposit ? ` <span class="text-muted">(${escapeHtml(deposit)})</span>` : '')
+      + (d.kind === 'refund' ? ` <span class="text-muted">(of ${escapeHtml(numbers.get(d.receiptId) ?? '')})</span>` : '');
+    rows.push({
+      date: d.date, at: d.createdAt, no,
+      fund: funds.map(fundName).join(', '),
+      account: names.accounts.get(d.accountId) ?? d.accountId,
+      category: split
+        ? `<ul class="list-unstyled small mb-0">${d.lines.map(l => `<li>${category(l.category)} · ${escapeHtml(formatMoney(l.amount, currency))}${funds.length > 1 ? ` · ${fundName(l.fundId)}` : ''}</li>`).join('')}</ul>`
+        : category(d.lines[0]?.category ?? ''),
+      moneyIn: d.kind === 'receipt' ? d.total : null, moneyOut: d.kind === 'refund' ? d.total : null,
+      party: d.partyName ?? '', memo: d.memo, status: status(d.status, d.voidReason)
+    });
+  }
+  for (const t of await ledger.listTransactions(actor, { fundId: fund, includeVoided })) {
+    if (t.documentId || t.sourceType === 'deposit') continue;
+    rows.push({
+      date: t.date, at: t.createdAt, no: escapeHtml(t.confirmationNumber ?? ''), fund: fundName(t.fundId),
+      account: names.accounts.get(t.accountId) ?? t.accountId, category: category(t.category),
+      moneyIn: t.direction === 'in' ? t.amount : null, moneyOut: t.direction === 'out' ? t.amount : null,
+      party: t.partyName ?? '', memo: t.memo, status: status(t.status, t.voidReason)
+    });
+  }
+  if (!fund) {
+    for (const d of await ledger.listDeposits(actor, { includeVoided })) {
+      rows.push({
+        date: d.date, at: d.createdAt, no: escapeHtml(d.number), fund: '',
+        account: `${names.accounts.get(CASH_ON_HAND) ?? 'Cash on Hand'} → ${names.accounts.get(d.accountId) ?? d.accountId}`,
+        category: 'deposit', moneyIn: null, moneyOut: null, party: '',
+        memo: d.memo || `Deposit of ${formatMoney(d.total, currency)}`, status: status(d.status, d.voidReason, 'undone')
+      });
+    }
+  }
+  return rows.sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at));
 }
 
 function depositsTable(f: PluginFormatters, deposits: Deposit[], names: Names & { receiptNumbers: Map<string, string> }, currency: string): string {
@@ -215,14 +262,12 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const fund = typeof params.fund === 'string' && params.fund !== '' ? params.fund : undefined;
     const includeVoided = parseBoolParam(params.voided as string | undefined, false);
     const max = parseMaxParam(params.max as string | number | undefined, DEFAULT_MAX_ENTRIES);
-    const entries = await ledger.listTransactions(actor, { fundId: fund, includeVoided });
-    const newestFirst = [...entries].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-    return entriesTable(f, applyMax(newestFirst, max), await namesFor(ledger, actor));
+    const rows = await entryRows(f, ledger, actor, await namesFor(ledger, actor), fund, includeVoided);
+    return entriesTable(f, applyMax(rows, max), ledger.currencyCode());
   }
   if (view === 'deposits') {
     const deposits = await ledger.listDeposits(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
-    const receiptNumbers = new Map((await ledger.listTransactions(actor, { includeVoided: true }))
-      .filter(t => t.confirmationNumber).map(t => [t.id, t.confirmationNumber as string]));
+    const receiptNumbers = new Map((await ledger.listDocuments(actor, 'receipt', { includeVoided: true })).map(d => [d.id, d.number ?? d.id]));
     return depositsTable(f, deposits, { ...(await namesFor(ledger, actor)), receiptNumbers }, ledger.currencyCode());
   }
   if (view === 'summary') {

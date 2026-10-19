@@ -45,7 +45,9 @@ entry naming a provider this version does not ship is skipped, with a warning at
   means), `paymentMethodId` (a check's number), `memo` (the reason), and optionally `accountId`
   (where it lands; left out, the method picks it: cash and checks to Cash on Hand, bank methods to
   the default bank account, D-031) and `reference: { type, id }` (what it pays for). The result carries the receipt number in `confirmationNumber`.
-- `refundReceipt(actor, receiptId, { amount?, date, memo, paymentMethod?, paymentMethodId?, accountId? })` →
+- Both return the record: a `Receipt` (`number`, `total`, `lines`) or a `Refund` (`RF-` number, its
+  `lines` tied to receipt lines); see [LedgerManager](LedgerManager.md) for lines (D-033).
+- `refundReceipt(actor, receiptId, { lines? | amount?, date, memo, paymentMethod?, paymentMethodId?, accountId? })` →
   `Transaction`, the linked out entry. Needs `receipt-refund` (step-up off for now, D-030).
 - `providers()` → the enabled providers and their capabilities.
 

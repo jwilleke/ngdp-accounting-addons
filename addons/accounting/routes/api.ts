@@ -70,6 +70,9 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
     return ledger.voidTransaction(ctx, String(req.params.id), b.reason as string, b.replacement as never);
   }));
   // Receipts: money coming in (D-028, D-029). The ledger numbers each one.
+  router.get('/receipts', handle(200, (ctx, ledger, req) => ledger.listDocuments(ctx, 'receipt', { includeVoided: query(req, 'voided') === 'true' })));
+  router.get('/refunds', handle(200, (ctx, ledger, req) => ledger.listDocuments(ctx, 'refund', { includeVoided: query(req, 'voided') === 'true' })));
+  router.get('/documents/:id', handle(200, (ctx, ledger, req) => ledger.getDocument(ctx, String(req.params.id))));
   router.post('/receipts', handle(201, (ctx, _ledger, req, receipts) => receipts.recordReceipt(ctx, body(req) as never)));
   router.post('/receipts/:id/refund', handle(201, (ctx, _ledger, req, receipts) => receipts.refundReceipt(ctx, String(req.params.id), body(req) as never)));
   // Deposits: receipts from Cash on Hand to a bank account (D-031).

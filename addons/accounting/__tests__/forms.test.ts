@@ -64,7 +64,7 @@ describe('LedgerManager.toFormOptions', () => {
   test('entries: the latest posted, labelled so the right one can be picked, for a viewer who may read entries', async () => {
     const f = await ledger.createFund(treasurer, { name: 'General' });
     const t = await ledger.postReceipt(treasurer, { amount: 125050, date: '2026-10-10', fundId: f.id, category: '4100', partyName: 'Pat', paymentMethod: '20', memo: 'dues' }, { provider: 'manual' });
-    expect(await ledger.toFormOptions({ list: 'entries' }, { username: 'tess' })).toEqual([{ value: t.id, label: 'R-0001 · 2026-10-10 · General · in $1,250.50 · Pat' }]);
+    expect(await ledger.toFormOptions({ list: 'entries' }, { username: 'tess' })).toEqual([{ value: t.id, label: 'R-0001 · 2026-10-10 · General · $1,250.50 · Pat' }]);
   });
 
   test('receipts: only those with money left to refund', async () => {

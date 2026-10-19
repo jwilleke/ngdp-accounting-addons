@@ -15,7 +15,7 @@
  * `{ "id": "<provider>", "enabled": true, ... }` entries, merged by `id`.
  */
 import type LedgerManager from './LedgerManager.js';
-import { LedgerError, MANUAL_PROVIDER, type LedgerActor, type NewReceipt, type ReceiptRefund, type Transaction } from './LedgerManager.js';
+import { LedgerError, MANUAL_PROVIDER, type LedgerActor, type NewReceipt, type Receipt, type ReceiptRefund, type Refund } from './LedgerManager.js';
 
 /** What a provider can do (D-004). */
 export type ReceiptCapability = 'manualEntry' | 'checkout' | 'sync' | 'refund' | 'import';
@@ -62,9 +62,9 @@ export default class ReceiptManager {
 
   /**
    * Record money received by hand, through a provider that allows it (the
-   * manual provider unless another is named). The ledger numbers it: R-0001, …
+   * manual provider unless another is named). The ledger numbers it: R-0001, … A receipt has one or more lines (D-033).
    */
-  async recordReceipt(actor: LedgerActor, input: NewReceipt, provider: string = MANUAL_PROVIDER): Promise<Transaction> {
+  async recordReceipt(actor: LedgerActor, input: NewReceipt, provider: string = MANUAL_PROVIDER): Promise<Receipt> {
     this.provider(provider, 'manualEntry');
     return this.ledger.postReceipt(actor, input, { provider });
   }
@@ -74,7 +74,7 @@ export default class ReceiptManager {
    * money goes back by hand and this records it; an online provider will make
    * the refund through its service first.
    */
-  async refundReceipt(actor: LedgerActor, receiptId: string, input: ReceiptRefund): Promise<Transaction> {
+  async refundReceipt(actor: LedgerActor, receiptId: string, input: ReceiptRefund): Promise<Refund> {
     this.provider(MANUAL_PROVIDER, 'refund');
     return this.ledger.refundReceipt(actor, receiptId, input);
   }
