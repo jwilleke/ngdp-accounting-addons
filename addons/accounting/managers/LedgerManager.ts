@@ -108,7 +108,14 @@ export interface Account {
   active: boolean;
   /** False for an account entries still name but the configuration no longer has. */
   configured: boolean;
+  /** The bank's routing number (ABA, nine digits), if configured. Public: it names the bank. */
+  routingNumber: string | null;
+  /** The last four digits of the account number, if configured. The full number is a secret (accountNumbers). */
+  accountNumberLast4: string | null;
 }
+
+/** A bank account's numbers, in full: only for fund-manage holders, through accountNumbers (D-031). */
+export interface AccountNumbers { accountId: string; name: string; routingNumber: string | null; accountNumber: string }
 
 export interface AccountBalance {
   accountId: string;
@@ -350,6 +357,10 @@ function entryLabel(t: Transaction, fundName: string, formatMoney: LedgerOptions
   return [t.confirmationNumber, t.date, fundName, `${kind}${t.direction} ${formatMoney(t.amount, t.currency)}`, who].filter(Boolean).join(' · ');
 }
 
+/** "Checking …1234": an account's name, with the last four digits of its number when one is configured. */
+export const accountLabel = (a: Pick<Account, 'name' | 'accountNumberLast4'>): string =>
+  a.accountNumberLast4 ? `${a.name} …${a.accountNumberLast4}` : a.name;
+
 export const MANUAL_PAYMENT_MEANS: readonly FormChoice[] = [
   { value: '10', label: 'Cash' },
   { value: '20', label: 'Check' },
@@ -364,7 +375,7 @@ export const MANUAL_PROVIDER = 'manual';
 
 /** The built-in account for money in hand: cash, and checks not yet deposited (D-031). */
 export const CASH_ON_HAND = 'cash-on-hand';
-const CASH_ON_HAND_ACCOUNT: Account = Object.freeze({ id: CASH_ON_HAND, name: 'Cash on Hand', kind: 'cash', isDefault: false, active: true, configured: true });
+const CASH_ON_HAND_ACCOUNT: Account = Object.freeze({ id: CASH_ON_HAND, name: 'Cash on Hand', kind: 'cash', isDefault: false, active: true, configured: true, routingNumber: null, accountNumberLast4: null });
 
 /**
  * Methods whose money is handed over, so it lands in Cash on Hand until it is
@@ -375,6 +386,40 @@ const CASH_ON_HAND_ACCOUNT: Account = Object.freeze({ id: CASH_ON_HAND, name: 'C
 export const CASH_ON_HAND_METHODS: readonly string[] = ['10', '20', '48'];
 
 const ACCOUNT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const ROUTING_NUMBER = /^\d{9}$/;
+const ACCOUNT_NUMBER = /^\d{4,17}$/;
+
+/**
+ * A bank account's full numbers from its configuration entry. `account-number`
+ * is a `$VAR` reference that ngdpbase resolves (v5.21.0, #1889) and hides as a
+ * secret; a value that is not a number is ignored, with a warning that never
+ * repeats it.
+ */
+function bankNumbers(id: string, entry: Record<string, unknown>, warn: (message: string) => void): { routingNumber: string | null; accountNumber: string | null } {
+  const routing = entry['routing-number'];
+  const number = entry['account-number'];
+  let routingNumber: string | null = null;
+  let accountNumber: string | null = null;
+  if (routing !== undefined && routing !== '') {
+    if (typeof routing === 'string' && ROUTING_NUMBER.test(routing)) routingNumber = routing;
+    else warn(`[accounting] account '${id}': routing-number must be nine digits; ignored`);
+  }
+  if (number !== undefined && number !== '') {
+    if (typeof number === 'string' && ACCOUNT_NUMBER.test(number)) accountNumber = number;
+    else warn(`[accounting] account '${id}': account-number must be 4 to 17 digits; ignored`);
+  }
+  return { routingNumber, accountNumber };
+}
+
+/** Each configured bank account's full numbers, by id. Never logged, audited or exported. */
+function accountNumbersFrom(entries: unknown): Map<string, { routingNumber: string | null; accountNumber: string | null }> {
+  const map = entries && typeof entries === 'object' && !Array.isArray(entries) ? entries as Record<string, unknown> : {};
+  const numbers = new Map<string, { routingNumber: string | null; accountNumber: string | null }>();
+  for (const [id, value] of Object.entries(map)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) numbers.set(id, bankNumbers(id, value as Record<string, unknown>, () => undefined));
+  }
+  return numbers;
+}
 
 /**
  * The accounts from `ngdpbase.addons.accounting.accounts`, a map keyed by
@@ -397,7 +442,9 @@ export function accountsFrom(entries: unknown, warn: (message: string) => void =
     const entry = value as { name?: unknown; kind?: unknown; default?: unknown; active?: unknown };
     if (entry.kind !== undefined && entry.kind !== 'bank') { warn(`[accounting] account '${id}': kind must be 'bank'; skipped`); continue; }
     const name = typeof entry.name === 'string' && entry.name.trim() !== '' ? entry.name.trim() : id;
-    accounts.push({ id, name, kind: 'bank', isDefault: entry.default === true, active: entry.active !== false, configured: true });
+    const { routingNumber, accountNumber } = bankNumbers(id, entry as Record<string, unknown>, warn);
+    accounts.push({ id, name, kind: 'bank', isDefault: entry.default === true, active: entry.active !== false, configured: true,
+      routingNumber, accountNumberLast4: accountNumber ? accountNumber.slice(-4) : null });
   }
   const banks = accounts.filter(a => a.kind === 'bank' && a.active);
   const marked = banks.filter(a => a.isDefault);
@@ -757,9 +804,9 @@ export default class LedgerManager {
         case 'funds':
           return (await this.listFunds(actor)).filter(f => f.active).map(f => ({ value: f.id, label: f.name }));
         case 'accounts':
-          return (await this.listAccounts(actor)).filter(a => a.configured && a.active).map(a => ({ value: a.id, label: a.name }));
+          return (await this.listAccounts(actor)).filter(a => a.configured && a.active).map(a => ({ value: a.id, label: accountLabel(a) }));
         case 'bank-accounts':
-          return (await this.listAccounts(actor)).filter(a => a.kind === 'bank' && a.configured && a.active).map(a => ({ value: a.id, label: a.name }));
+          return (await this.listAccounts(actor)).filter(a => a.kind === 'bank' && a.configured && a.active).map(a => ({ value: a.id, label: accountLabel(a) }));
         case 'deposit-receipts': {
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
           return (await this.receiptsToDeposit(actor)).map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney), amount: t.amount }));
@@ -929,6 +976,23 @@ export default class LedgerManager {
       this.history(user, 'account-opening', 'account', account.id, null, opening);
     });
     return (await this.accountBalances(actor)).find(b => b.accountId === account.id) as AccountBalance;
+  }
+
+  /**
+   * A bank account's full numbers, for holders of fund-manage (treasurer;
+   * admin). Every read is audited, never with the number in the record; if
+   * the record cannot be written, the number is not shown.
+   */
+  async accountNumbers(actor: LedgerActor, accountId: string): Promise<AccountNumbers> {
+    await this.authorize(actor, 'fund-manage');
+    const account = this.account(text(accountId, 'accountId', { required: true, max: 32 }) as string);
+    const numbers = account.kind === 'bank' && account.configured ? accountNumbersFrom(this.accountsConfig()).get(account.id) : undefined;
+    if (!numbers?.accountNumber) throw new LedgerError(404, `account '${account.name}' has no account number configured`);
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'account-number-view',
+      severity: 'medium', resource: account.id, resourceType: 'accounting-account', metadata: { name: account.name }
+    });
+    return { accountId: account.id, name: account.name, routingNumber: numbers.routingNumber, accountNumber: numbers.accountNumber };
   }
 
   /** Each account's opening balance plus posted money in, minus posted money out. Added up, they equal the funds. */
@@ -1323,7 +1387,7 @@ export default class LedgerManager {
     const named = (this.db.prepare(`SELECT account_id FROM accounting_transactions
       UNION SELECT account_id FROM accounting_account_openings ORDER BY account_id`).all() as { account_id: string }[]).map(r => r.account_id);
     const dropped = named.filter(id => !known.has(id))
-      .map((id): Account => ({ id, name: id, kind: 'bank', isDefault: false, active: false, configured: false }));
+      .map((id): Account => ({ id, name: id, kind: 'bank', isDefault: false, active: false, configured: false, routingNumber: null, accountNumberLast4: null }));
     return [...configured, ...dropped];
   }
 

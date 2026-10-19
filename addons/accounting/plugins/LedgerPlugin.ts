@@ -21,6 +21,7 @@
  */
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
+import { accountLabel } from '../managers/LedgerManager.js';
 import type { AccountBalance, Deposit, FundBalance, LedgerActor, PeriodSummary, Transaction } from '../managers/LedgerManager.js';
 
 type PluginParams = Record<string, string | number | boolean>;
@@ -67,14 +68,14 @@ const accountName = (f: PluginFormatters, name: string, configured: boolean): st
 const disagreement = (f: PluginFormatters, funds: number, accounts: number, currency: string): string =>
   funds === accounts ? '' : note(f, `The accounts add up to ${f.formatMoney(accounts, currency)} and the funds to ${f.formatMoney(funds, currency)}. They count the same money: check the accounts' opening balances.`);
 
-function accountsTable(f: PluginFormatters, rows: AccountBalance[], fundsTotal: number, currency: string): string {
+function accountsTable(f: PluginFormatters, rows: AccountBalance[], labels: Map<string, string>, fundsTotal: number, currency: string): string {
   const { escapeHtml, formatAsTable, formatMoney } = f;
   const money = (cents: number) => escapeHtml(formatMoney(cents, currency));
   const sum = (pick: (r: AccountBalance) => number) => rows.reduce((total, r) => total + pick(r), 0);
   const table = formatAsTable(
     ['Account', 'Opening', 'In', 'Out', 'Balance'],
     rows.map(r => [
-      accountName(f, r.name, r.configured) + (r.configured && !r.active ? ' <span class="text-muted">(closed)</span>' : ''),
+      accountName(f, labels.get(r.accountId) ?? r.name, r.configured) + (r.configured && !r.active ? ' <span class="text-muted">(closed)</span>' : ''),
       r.openingDate ? money(r.openingBalance) : '<span class="text-muted">not set</span>',
       money(r.totalIn),
       money(r.totalOut),
@@ -207,7 +208,8 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
   }
   if (view === 'accounts') {
     const fundsTotal = (await ledger.fundBalances(actor)).reduce((total, b) => total + b.balance, 0);
-    return accountsTable(f, await ledger.accountBalances(actor), fundsTotal, ledger.currencyCode());
+    const labels = new Map((await ledger.listAccounts(actor)).map(a => [a.id, accountLabel(a)]));
+    return accountsTable(f, await ledger.accountBalances(actor), labels, fundsTotal, ledger.currencyCode());
   }
   if (view === 'entries') {
     const fund = typeof params.fund === 'string' && params.fund !== '' ? params.fund : undefined;

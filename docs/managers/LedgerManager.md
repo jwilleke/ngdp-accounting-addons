@@ -63,6 +63,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `transferBetweenFunds` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
+| `accountNumbers` | `fund-manage` | no | `fund-manage` (`account-number-view`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
 | `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `deposit-receipts`, `deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
@@ -87,6 +88,10 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   (`cash-on-hand`, built in) first, then the bank accounts in `ngdpbase.addons.accounting.accounts`,
   then any account entries still name that the configuration has dropped (`configured: false`). One
   active bank account is the default.
+- Each `Account` carries its `routingNumber` and `accountNumberLast4`, never the full number.
+  `accountNumbers(actor, accountId)` → `{ accountId, name, routingNumber, accountNumber }`: the full
+  numbers, for `fund-manage` holders only. Each read is audited, without the number. In configuration
+  `account-number` is a `$VAR` reference that ngdpbase resolves and hides as a secret (v5.21.0).
 - `setAccountOpening(actor, accountId, { openingBalance, openingDate? })` → `AccountBalance`. What
   the account held on the day the books started. Set once; it never changes.
 - `accountBalances(actor)` → per account: opening balance, money in, money out, balance. Added up,

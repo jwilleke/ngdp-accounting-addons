@@ -16,7 +16,7 @@ books of record stay in QuickBooks or Wave, and accounting hands them a CSV.
 
 ## Before you start
 
-- ngdpbase __5.18.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
+- ngdpbase __5.21.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
   to load it.
 - The site's database on: `ngdpbase.database.provider` set to `sqlite`.
 - The __forms__ add-on enabled. The treasurer's screens are forms; without it the ledger still works
@@ -60,7 +60,10 @@ In the site's `app-custom-config.json`:
     "5200": "Supplies"
   },
   "ngdpbase.addons.accounting.accounts": {
-    "checking": { "name": "Checking at First Bank", "kind": "bank", "default": true },
+    "checking": {
+      "name": "Checking at First Bank", "kind": "bank", "default": true,
+      "routing-number": "021000021", "account-number": "$CHECKING_ACCOUNT_NUMBER"
+    },
     "savings": { "name": "Savings", "kind": "bank" }
   }
 }
@@ -77,7 +80,15 @@ and add the others, keyed by an id of lowercase letters, digits and dashes. `fal
 shipped one. The account marked `default` is where ACH, Zelle and bank transfers land and where
 money out comes from. __Cash on Hand__ is built in: cash, checks and card-reader receipts wait there
 until they are deposited. The treasurer then sets each account's opening balance on __Set an Account's Opening Balance__,
-so the accounts add up to the funds. Bank account and routing numbers are not stored yet.
+so the accounts add up to the funds.
+
+A bank account's `account-number` is always a `$VAR` reference: put the number itself in the site's
+`.env` (or a Kubernetes Secret) as `CHECKING_ACCOUNT_NUMBER=…`, never in the JSON file. If the
+variable is not set, the site will not start, and says which entry names it. ngdpbase hides every
+`accounts.*.account-number` as a secret (the add-on declares it), so it never shows on the admin
+screen or in a log. Screens show "Checking …1234"; the treasurer (`fund-manage`) can read the full
+numbers at `/api/accounting/accounts/<id>/numbers`, and every read is recorded in the audit log.
+The routing number is public (it names the bank) and is written as it is.
 
 Entries recorded before accounts existed are in Checking. An account removed from the configuration
 while entries still name it is kept in the reports, marked "no longer configured", and the add-on
@@ -164,9 +175,6 @@ older one.
 - No month lock: a closed month can still receive entries dated in it (#19).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
-- No "Make a Deposit" form yet (#3): deposits are made through the API (`POST /api/accounting/deposits`);
-  Deposits and Undo a Deposit work.
-- Bank account and routing numbers are not stored yet (#3).
 - No dues, donations or events modules yet.
 - A site that enabled accounting before receipts keeps the forms it first saved: its "Record an
   Entry" form still shows an In or out choice and an optional memo. The ledger records only money out

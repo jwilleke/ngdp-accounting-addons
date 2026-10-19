@@ -6,6 +6,7 @@
  * Each test opens the accounting database in memory, as ngdpbase's
  * openAddonDatabase opens it; nothing touches a data directory.
  */
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
 import { openTestLedgerDatabase, testLedgerParts } from './host.js';
@@ -53,6 +54,50 @@ describe('accountsFrom', () => {
     const warnings: string[] = [];
     expect(accountsFrom({}, (m) => warnings.push(m)).some(a => a.isDefault)).toBe(false);
     expect(warnings).toEqual(['[accounting] no bank account is configured: everything lands in Cash on Hand']);
+  });
+});
+
+describe('bank account numbers (D-031)', () => {
+  const NUMBERED = { checking: { name: 'Checking', kind: 'bank', default: true, 'routing-number': '021000021', 'account-number': '000123456789' } };
+
+  test('screens get the routing number and the last four digits, never the full number', () => {
+    const [, checking] = accountsFrom(NUMBERED);
+    expect(checking).toMatchObject({ routingNumber: '021000021', accountNumberLast4: '6789' });
+    expect(JSON.stringify(accountsFrom(NUMBERED))).not.toContain('000123456789');
+  });
+
+  test('a number that is not one is ignored, and the warning never repeats it', () => {
+    const warnings: string[] = [];
+    const [, checking] = accountsFrom({ checking: { name: 'Checking', 'routing-number': '12', 'account-number': 'secret-123' } }, (m) => warnings.push(m));
+    expect(checking).toMatchObject({ routingNumber: null, accountNumberLast4: null });
+    expect(warnings.join('\n')).toMatch(/routing-number must be nine digits[\s\S]*account-number must be 4 to 17 digits/);
+    expect(warnings.join('\n')).not.toContain('secret-123');
+  });
+
+  test('the default configuration declares every account number a secret', () => {
+    const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, Record<string, string>>;
+    expect(defaults['ngdpbase.config.sensitive-values']['ngdpbase.addons.accounting.accounts.*.account-number']).toBe('secret');
+  });
+
+  test('the full number is for fund-manage holders only, and each read is audited without it', async () => {
+    const provider = openTestLedgerDatabase();
+    const audit: LedgerAuditRecord[] = [];
+    try {
+      const ledger = new LedgerManager({ ...testLedgerParts, db: provider.handle as LedgerDb, decide, currency: 'USD',
+        accounts: () => ({ ...NUMBERED, savings: { name: 'Savings' } }),
+        recordAudit: (record) => { audit.push(record); return Promise.resolve(); } });
+      await expect(ledger.accountNumbers(actor(['ledger-summary-read', 'ledger-read']), 'checking')).rejects.toThrow('refused: fund-manage');
+      expect(await ledger.accountNumbers(actor(), 'checking')).toEqual({ accountId: 'checking', name: 'Checking', routingNumber: '021000021', accountNumber: '000123456789' });
+      expect(audit.at(-1)).toMatchObject({ action: 'account-number-view', resource: 'checking' });
+      expect(JSON.stringify(audit)).not.toContain('000123456789');
+      await expect(ledger.accountNumbers(actor(), 'savings')).rejects.toThrow("account 'Savings' has no account number configured");
+      await expect(ledger.accountNumbers(actor(), CASH_ON_HAND)).rejects.toThrow('has no account number configured');
+      expect(await ledger.toFormOptions({ list: 'bank-accounts' }, { username: 'tess', granted: ALL })).toEqual([
+        { value: 'checking', label: 'Checking …6789' }, { value: 'savings', label: 'Savings' }
+      ]);
+    } finally {
+      provider.close();
+    }
   });
 });
 

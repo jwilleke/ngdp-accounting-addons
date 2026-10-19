@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openTestLedgerDatabase, testFormatters, testLedgerParts } from './host.js';
 import LedgerManager, { CASH_ON_HAND, type Fund, type LedgerActor, type LedgerAuditRecord, type LedgerDb, type Transaction } from '../managers/LedgerManager.js';
 import { renderLedgerView } from '../plugins/LedgerPlugin.js';
+import { LEDGER_FORMS, fieldOf } from '../forms.js';
 
 const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'receipt-refund', 'ledger-export', 'fund-manage'];
 
@@ -165,6 +166,18 @@ describe('deposits', () => {
     expect((await ledger.toFormOptions({ list: 'deposit-receipts' }, viewer)).map(o => o.value)).toEqual([b.id]);
     expect(await ledger.toFormOptions({ list: 'deposits' }, viewer)).toEqual([{ value: made.id, label: 'D-0001 · 2026-10-12 · Checking · $1.00' }]);
     expect((await ledger.toFormOptions({ list: 'entries' }, viewer)).some(o => o.label.includes('Deposit'))).toBe(false);
+  });
+
+  test('the Make a Deposit form posts the ticked receipts through the ledger, and a mismatch lands on its field', async () => {
+    const depositForm = LEDGER_FORMS.find(f => f.definition.id === 'deposit-make')!;
+    expect(depositForm.definition.fields.find(f => f.name === 'receiptIds')).toMatchObject({ type: 'checklist', totalField: 'total' });
+    const a = await receipt(general, 100);
+    const b = await receipt(roof, 250);
+    const made = await depositForm.run({ ledger, receipts: undefined as never }, actor() as never,
+      { accountId: 'checking', date: '2026-10-12', receiptIds: [a.id, b.id], total: 350, slipReference: '77' });
+    expect(made).toMatchObject({ depositNumber: 'D-0001' });
+    expect(fieldOf(depositForm, 'total: the slip says $1.00 but the receipts add up to $3.50')).toBe('total');
+    expect(fieldOf(depositForm, 'receiptIds: R-0001 is already in deposit D-0001')).toBe('receiptIds');
   });
 
   test('the ledger shows each receipt\'s deposit number, and the deposits with their receipts', async () => {
