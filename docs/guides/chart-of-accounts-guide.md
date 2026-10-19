@@ -12,6 +12,13 @@ For the site administrator, the treasurer, and the accountant who keeps the book
 explains the income and expense categories the accounting add-on ships, why they look the way they
 do, and how to change them. Turning the add-on on is in the [Accounting site guide](accounting-guide.md).
 
+__This page is the source of truth for the chart of accounts.__ Any change to the shipped chart, its
+types, its numbering or the categories with a job is made here first, and the code follows it: a
+test (`addons/accounting/__tests__/chart.test.ts`) reads the table under
+[The starter chart](#the-starter-chart) and fails if `ngdpbase.addons.accounting.categories` in
+`addons/accounting/config/default-config.json` differs from it, and checks the defaults in
+[Categories with a job](#categories-with-a-job) the same way.
+
 ## What the chart is for
 
 Every receipt and every payment out names a __category__: what kind of income or expense it is. The

@@ -1205,6 +1205,9 @@ Source for QuickBooks' types and detail types: the QuickBooks Online chart of ac
 
 - A site changes or replaces it in configuration. Bank charges defaults to 6100; other income
   (bounced-check penalties) to 8900.
+- __[docs/guides/chart-of-accounts-guide.md](../guides/chart-of-accounts-guide.md) is the source of
+  truth__ for the chart (operator, 2026-10-19): every change is made there first, and a test holds
+  the shipped configuration to its table. The table above is the decision as made.
 - __Reporting maps__ for a kind of organization (a nonprofit's Form 990 lines, a business's
   tax-form lines, GAAP taxonomy elements) are optional and added later as code sets, never built
   into the categories.

@@ -11,6 +11,31 @@ import LedgerManager, { categoriesFrom, type LedgerDb } from '../managers/Ledger
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 const shipped = defaults['ngdpbase.addons.accounting.categories'];
 
+/**
+ * docs/guides/chart-of-accounts-guide.md is the source of truth for the chart (operator, 2026-10-19):
+ * its "The starter chart" table and "Categories with a job" defaults must match the shipped configuration.
+ */
+const guide = readFileSync(new URL('../../../docs/guides/chart-of-accounts-guide.md', import.meta.url), 'utf8');
+const section = (heading: string): string[] => (guide.split(`## ${heading}`)[1]?.split('\n## ')[0] ?? '')
+  .split('\n').filter(line => line.startsWith('| ') && !line.startsWith('| ---'))
+  .slice(1).map(line => line);
+const cells = (line: string): string[] => line.split('|').slice(1, -1).map(c => c.trim().replace(/`/g, ''));
+
+describe('the guide is the source of truth', () => {
+  test('the shipped categories are exactly the guide\'s starter chart, in order', () => {
+    const documented = section('The starter chart').map(cells).map(([code, name, type, detailType]) => ({ code, name, type, detailType }));
+    expect(documented.length).toBeGreaterThan(0);
+    expect(categoriesFrom(shipped)).toEqual(documented);
+  });
+
+  test('the shipped settings are the guide\'s defaults for the categories with a job', () => {
+    const documented = Object.fromEntries(section('Categories with a job').map(cells).map(([setting, value]) => [setting, value]));
+    for (const key of ['bank-charges-category', 'other-income-category', 'bounced-check-penalty']) {
+      expect(String(defaults[`ngdpbase.addons.accounting.${key}`])).toBe(documented[`ngdpbase.addons.accounting.${key}`]);
+    }
+  });
+});
+
 describe('the shipped chart', () => {
   test('is the D-034 list, every category with a type and a QuickBooks detail type', () => {
     const warnings: string[] = [];
