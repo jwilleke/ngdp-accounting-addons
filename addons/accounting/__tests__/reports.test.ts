@@ -81,8 +81,9 @@ describe('reports', () => {
       { fundId: roof, name: 'Roof', active: true, start: 0, opened: 500, moneyIn: 4000, moneyOut: 0, end: 4500 }
     ]);
     expect(s.categories).toEqual([
-      { category: '4100', label: 'Dues', income: 21200, expense: 0 },
-      { category: '5200', label: 'Supplies', income: 0, expense: 3000 }
+      // The older "<code>": "<name>" categories: the type comes from the number (D-034).
+      { category: '4100', label: 'Dues', type: 'income', income: 21200, expense: 0 },
+      { category: '5200', label: 'Supplies', type: 'cost-of-goods', income: 0, expense: 3000 }
     ]);
     expect(s.totals).toEqual({ start: 15000, opened: 500, moneyIn: 25200, moneyOut: 7000, end: 33700, income: 21200, expense: 3000 });
   });

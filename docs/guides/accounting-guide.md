@@ -55,9 +55,9 @@ In the site's `app-custom-config.json`:
   "ngdpbase.addons.forms.enabled": true,
   "ngdpbase.addons.accounting.enabled": true,
   "ngdpbase.addons.accounting.categories": {
-    "4100": "Dues",
-    "4200": "Donations",
-    "5200": "Supplies"
+    "4150": { "name": "Fundraising dinner", "type": "income", "detailType": "Service/Fee Income" },
+    "6100": { "name": "Bank fees" },
+    "4300": false
   },
   "ngdpbase.addons.accounting.accounts": {
     "checking": {
@@ -70,8 +70,18 @@ In the site's `app-custom-config.json`:
 ```
 
 Restart the site. On first start the add-on creates its database (`accounting.db` in the data
-folder), seeds its pages, and logs `Ledger ready`. The categories are UCOA account codes and labels;
-the receipt and entry forms offer exactly these.
+folder), seeds its pages, and logs `Ledger ready`.
+
+The __categories__ are a starter chart that follows QuickBooks
+([D-034](../plans/decisions.md#d-034-a-generic-starter-chart-with-account-types)): 4000s income,
+5000s cost of goods, 6000s–7000s expenses, 8000s other income, each with QuickBooks' type and detail
+type, so an accountant recognises them. The example above adds one code, renames 6100 and removes
+4300 (`false`); the rest of the shipped chart stays. Each category is `{ "name", "type", "detailType" }`,
+where type is `income`, `other-income`, `cost-of-goods`, `expense` or `other-expense`; the older
+`"4100": "Dues"` still works, its type read from the number. Receipts offer income categories; money
+out offers the rest. `ngdpbase.addons.accounting.bank-charges-category` (6100) and
+`.other-income-category` (8900) name the categories a bounced check uses; the add-on warns at startup
+if either is missing from the chart.
 
 The __accounts__ say where the money sits; funds say what it is for
 ([D-031](../plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)). One bank account
