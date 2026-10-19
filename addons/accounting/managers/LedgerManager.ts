@@ -329,8 +329,11 @@ export interface LedgerOptions {
   dataChanged?: () => Promise<void> | void;
 }
 
-/** A choice in a form dropdown (ngdpbase BaseManager.toFormOptions). */
-export interface FormChoice { value: string; label: string }
+/**
+ * A choice in a form dropdown or checklist (ngdpbase BaseManager.toFormOptions).
+ * `amount`, in minor units, lets a checklist show a running total of what is ticked (ngdpbase #1904).
+ */
+export interface FormChoice { value: string; label: string; amount?: number }
 
 /**
  * The methods a treasurer records by hand, as UN/CEFACT UNCL 4461 codes (D-018).
@@ -759,7 +762,7 @@ export default class LedgerManager {
           return (await this.listAccounts(actor)).filter(a => a.kind === 'bank' && a.configured && a.active).map(a => ({ value: a.id, label: a.name }));
         case 'deposit-receipts': {
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
-          return (await this.receiptsToDeposit(actor)).map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney) }));
+          return (await this.receiptsToDeposit(actor)).map(t => ({ value: t.id, label: entryLabel(t, names.get(t.fundId) ?? t.fundId, this.formatMoney), amount: t.amount }));
         }
         case 'deposits': {
           const accounts = new Map(this.accountsInUse().map(a => [a.id, a.name]));
