@@ -94,6 +94,11 @@ const AccountingAddon = {
     const categories = (): unknown => config?.getProperty('ngdpbase.addons.accounting.categories', {});
 
     const accounts = (): unknown => config?.getProperty('ngdpbase.addons.accounting.accounts', {});
+    const bouncedChecks = () => ({
+      bankChargesCategory: config?.getProperty('ngdpbase.addons.accounting.bank-charges-category', ''),
+      otherIncomeCategory: config?.getProperty('ngdpbase.addons.accounting.other-income-category', ''),
+      penalty: config?.getProperty('ngdpbase.addons.accounting.bounced-check-penalty', 0)
+    });
 
     // The owner bumps (ngdpbase caching guide): pages that read the ledger re-render after each write.
     const cache = engine.getManager<CacheManagerLike>('CacheManager');
@@ -110,7 +115,7 @@ const AccountingAddon = {
       managerOf<PluginManagerFormatters>('PluginManager').formatters.formatMoney(minor, code);
     const toCsv: ExportManagerLike['toCsv'] = (headers, rows) => managerOf<ExportManagerLike>('ExportManager').toCsv(headers, rows);
 
-    const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, dataChanged, formatMoney, toCsv });
+    const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv });
     engine.registerManager('LedgerManager', ledger);
     // Say once, at startup, what the account configuration gets wrong; history is never lost (D-031).
     accountsFrom(accounts(), (m) => logger.warn(m));

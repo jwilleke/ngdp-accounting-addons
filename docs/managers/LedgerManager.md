@@ -58,6 +58,9 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `postReceipt` (money in) | `ledger-record` | no | `ledger-record` (`receipt-record`) |
 | `makeDeposit` | `ledger-record` | no | `ledger-record` (`deposit-make`) |
 | `clearDeposit`, `unclearDeposit` | `ledger-record` | no | `ledger-record` (`deposit-clear`, `deposit-unclear`) |
+| `recordBounce` | `ledger-adjust` | off for now | `ledger-adjust` (`check-bounce`) |
+| `repayBounce` | `ledger-record` | no | `ledger-record` (`receipt-record`) |
+| `listBounces` | `ledger-read` | no | — |
 | `undoDeposit` | `ledger-adjust` | off for now | `ledger-adjust` (`deposit-undo`) |
 | `refundReceipt` | `receipt-refund` | off for now | `receipt-refund` (`receipt-refund`) |
 | `voidTransaction` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-void`) |
@@ -66,7 +69,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
 | `accountNumbers` | `fund-manage` | no | `fund-manage` (`account-number-view`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
-| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits`, `uncleared-deposits`, `cleared-deposits` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
+| `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits`, `uncleared-deposits`, `cleared-deposits`, `bounceable-receipts`, `unsettled-bounces` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in
 `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit
@@ -146,6 +149,20 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   ([D-032](../plans/decisions.md#d-032-cleared-deposits-and-bounced-checks)).
   `unclearDeposit(actor, depositId, reason)` takes a wrong mark off; the mark stays in the history. A
   cleared deposit is not undone until its mark is taken off.
+- `recordBounce(actor, receiptId, { date, fee?, penalty?, memo? })` → `Bounce`: the bank returned a
+  deposited check ([D-032](../plans/decisions.md#d-032-cleared-deposits-and-bounced-checks)). The
+  receipt never changes. A returned-check entry for each of its lines takes the full amount back out
+  of the bank account it was deposited into, in the line's fund and category, and the fee posts as an
+  expense in the bank-charges category. The payer owes check + fee + penalty (`penalty` defaults to
+  `bounced-check-penalty`). Only a check (`20`) in a standing deposit, once, not dated before its
+  deposit. Afterwards the receipt is not refunded or voided, and its deposit is not undone. Refused,
+  saying why, until `bank-charges-category` names an expense and `other-income-category` an
+  other-income category in the chart.
+- `repayBounce(actor, bounceId, { amount, date, paymentMethod, paymentMethodId?, accountId?, memo? })`
+  → `Receipt`: one receipt (reference `bounced-check`) whose lines fill in order: the check in the
+  receipt's own categories, the fee against bank charges, the penalty as other income. Never more
+  than is still owed.
+- `listBounces(actor, { settled? })` → `Bounce[]` with `owed`, `repaid` and `stillOwed`.
 - `listDeposits(actor, { includeVoided? })`, `getDeposit(actor, id)`, `receiptsToDeposit(actor)`
   (receipts a deposit can take, oldest first).
 - `categories()` → the site's chart, parsed from `ngdpbase.addons.accounting.categories`

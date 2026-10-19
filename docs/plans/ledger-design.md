@@ -105,6 +105,13 @@ changed or deleted.
 a deposit marked cleared with the date the bank shows, one standing mark per deposit. A wrong mark is
 taken off once, with a reason (`removed`), and is never changed or deleted.
 
+### Sixth migration: bounced checks
+
+[D-032](decisions.md#d-032-cleared-deposits-and-bounced-checks) adds `accounting_bounces`: one row per
+returned check (receipt, deposit, date, account, check amount, fee, penalty), never changed or
+deleted. Its entries carry `source_type` `returned-check` or `bounce-fee`; repayments are receipts
+whose reference is `bounced-check` and the bounce's id.
+
 ### Enforced by the database itself
 
 Triggers make the money rules hold even if code is wrong:

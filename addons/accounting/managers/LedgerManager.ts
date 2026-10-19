@@ -165,6 +165,34 @@ export interface NewDeposit {
   memo?: string;
 }
 
+/**
+ * A deposited check the bank returned (D-032). The receipt never changes; a
+ * returned-check entry and the bank's fee take the money back out. The payer
+ * owes the check, the fee and any penalty; repayments are receipts that
+ * reference the bounce.
+ */
+export interface Bounce {
+  id: string;
+  receiptId: string;
+  receiptNumber: string | null;
+  depositId: string;
+  depositNumber: string;
+  date: string;
+  partyName: string | null;
+  accountId: string;
+  checkAmount: number;
+  fee: number;
+  penalty: number;
+  /** check + fee + penalty */
+  owed: number;
+  /** What posted repayment receipts add up to. */
+  repaid: number;
+  stillOwed: number;
+  memo: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 /** One account over a period, like FundPeriod. */
 export interface AccountPeriod {
   accountId: string; name: string; configured: boolean;
@@ -427,6 +455,12 @@ export interface LedgerOptions {
   decide?: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Income and expense categories: `ngdpbase.addons.accounting.categories` from site configuration, read by categoriesFrom (D-023, D-034). */
   categories?: () => unknown;
+  /**
+   * The bounced-check settings (D-032): the bank-charges and other-income category codes and the
+   * default penalty, from `ngdpbase.addons.accounting.bank-charges-category`, `.other-income-category`
+   * and `.bounced-check-penalty`.
+   */
+  bouncedChecks?: () => { bankChargesCategory?: unknown; otherIncomeCategory?: unknown; penalty?: unknown };
   /** Bank accounts: `ngdpbase.addons.accounting.accounts` from site configuration (D-031), read by accountsFrom. */
   accounts?: () => unknown;
   /** ngdpbase's money formatter (PluginManager.formatters.formatMoney, #1820), for form choice labels. */
@@ -567,6 +601,10 @@ export function accountsFrom(entries: unknown, warn: (message: string) => void =
 }
 const RECEIPT_REFUND = 'receipt-refund';
 const DEPOSIT = 'deposit';
+const RETURNED_CHECK = 'returned-check';
+const BOUNCE_FEE = 'bounce-fee';
+const BOUNCED_CHECK = 'bounced-check';
+const CHECK = '20';
 const MONEY_IN_IS_A_RECEIPT = 'money in is recorded as a receipt (Record a Receipt), not as an entry';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -667,6 +705,7 @@ export default class LedgerManager {
   private readonly decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   private readonly categoriesConfig: () => unknown;
   private readonly accountsConfig: () => unknown;
+  private readonly bouncedChecksConfig: NonNullable<LedgerOptions['bouncedChecks']>;
   private readonly formatMoney: LedgerOptions['formatMoney'];
   private readonly toCsv: LedgerOptions['toCsv'];
   private readonly dataChanged: () => Promise<void> | void;
@@ -682,6 +721,7 @@ export default class LedgerManager {
     this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point' }));
     this.categoriesConfig = options.categories ?? (() => ({}));
     this.accountsConfig = options.accounts ?? (() => ({}));
+    this.bouncedChecksConfig = options.bouncedChecks ?? (() => ({}));
     this.formatMoney = options.formatMoney;
     this.toCsv = options.toCsv;
     this.dataChanged = options.dataChanged ?? (() => undefined);
@@ -923,6 +963,8 @@ export default class LedgerManager {
    *   refundable-lines receipt lines left to refund ledger-read
    *   deposits         standing deposits            ledger-read (listDeposits)
    *   uncleared-deposits, cleared-deposits          ledger-read (listDeposits)
+   *   bounceable-receipts deposited checks          ledger-read
+   *   unsettled-bounces  bounces still owed         ledger-read (listBounces)
    *   entries          latest posted entries        ledger-read (listTransactions)
    *   categories       site's categories            ledger-record (kind=in: income; kind=out: the rest)
    *   payment-methods  manual UN/CEFACT codes       ledger-record
@@ -942,6 +984,19 @@ export default class LedgerManager {
           const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
           return (await this.receiptsToDeposit(actor)).map(r => ({ value: r.id, label: documentLabel(r, names, this.formatMoney, this.currency), amount: r.total }));
         }
+        case 'bounceable-receipts': {
+          // Checks in a standing deposit that have not bounced: what the bank can return.
+          await this.authorize(actor, 'ledger-read');
+          const names = new Map((await this.listFunds(actor)).map(f => [f.id, f.name]));
+          return (this.documents('receipt') as Receipt[])
+            .filter(r => r.paymentMethod === CHECK && this.depositRowOf(r.id) && !this.bounceOf(r.id))
+            .slice(0, ENTRY_CHOICES).map(r => ({ value: r.id, label: documentLabel(r, names, this.formatMoney, this.currency), amount: r.total }));
+        }
+        case 'unsettled-bounces':
+          return (await this.listBounces(actor, { settled: false })).slice(0, ENTRY_CHOICES).map(b => ({
+            value: b.id, amount: b.stillOwed,
+            label: [b.receiptNumber, b.partyName, `${this.formatMoney(b.stillOwed, this.currency)} still owed`].filter(Boolean).join(' · ')
+          }));
         case 'uncleared-deposits':
         case 'cleared-deposits': {
           const accounts = new Map(this.accountsInUse().map(a => [a.id, a.name]));
@@ -1263,6 +1318,7 @@ export default class LedgerManager {
         : 'a refund is voided without a replacement; record a new refund instead');
     }
     if (doc.kind === 'receipt') {
+      if (this.bounceOf(doc.id)) throw new LedgerError(409, 'this receipt bounced: it stays as received, and the returned check is its own entry');
       const inDeposit = this.depositOf(doc.id);
       if (inDeposit) throw new LedgerError(409, `this receipt is in deposit ${inDeposit}; undo the deposit first`);
       if (this.refunded(doc) > 0) throw new LedgerError(409, 'this receipt has refunds; void the refunds first');
@@ -1378,6 +1434,7 @@ export default class LedgerManager {
     const receipt = this.findDocument(text(receiptId, 'receiptId', { required: true }) as string);
     if (!receipt || receipt.kind !== 'receipt') throw new LedgerError(400, 'only a receipt can be refunded');
     if (receipt.status !== 'posted') throw new LedgerError(409, 'this receipt is voided');
+    if (this.bounceOf(receipt.id)) throw new LedgerError(409, 'this receipt bounced: the bank took the money back, so there is nothing to refund');
     if (this.refundable(receipt) <= 0) throw new LedgerError(409, 'this receipt is already fully refunded');
     const memo = text(input.memo, 'memo', { required: true, max: 2000 }) as string;
     const asked = this.refundSpecs(receipt, input);
@@ -1478,6 +1535,8 @@ export default class LedgerManager {
     const before = this.deposit(text(depositId, 'depositId', { required: true }) as string);
     if (before.status === 'voided') throw new LedgerError(409, `deposit ${before.number} is already undone`);
     if (before.clearedDate) throw new LedgerError(409, `deposit ${before.number} is cleared: the bank has it; take the cleared mark off first`);
+    const bounced = before.receipts.map(r => this.bounceOf(r.receiptId)).find(Boolean);
+    if (bounced) throw new LedgerError(409, `deposit ${before.number} has a bounced check (${bounced.receiptNumber ?? 'a receipt'}); it cannot be undone`);
     const legs = this.depositLegs(before.id);
 
     await this.audit(actor, {
@@ -1547,6 +1606,109 @@ export default class LedgerManager {
       this.history(user, 'deposit-unclear', 'deposit', deposit.id, { clearedDate: mark.cleared_date }, { clearedDate: null }, why);
     });
     return this.deposit(deposit.id);
+  }
+
+  // ── Bounced checks (D-032) ─────────────────────────────────────────────
+
+  /**
+   * The bank returned a deposited check. Posts a returned-check entry for each
+   * of the receipt's lines (the full amount, out of the bank account it was
+   * deposited into, in the line's fund and category) and the bank's fee as a
+   * bank-charges expense, and records what the payer owes: check + fee +
+   * penalty. The receipt never changes.
+   */
+  async recordBounce(actor: LedgerActor, receiptId: string, input: { date: string; fee?: number; penalty?: number; memo?: string }): Promise<Bounce> {
+    await this.authorize(actor, 'ledger-adjust');
+    const user = actor.actingUsername();
+    const settings = this.bounceSettings();
+    const receipt = this.findDocument(text(receiptId, 'receiptId', { required: true }) as string);
+    if (!receipt || receipt.kind !== 'receipt') throw new LedgerError(400, 'receiptId: only a receipt can bounce');
+    const name = receipt.number ?? 'this receipt';
+    if (receipt.status !== 'posted') throw new LedgerError(409, `receiptId: ${name} is voided`);
+    if (receipt.paymentMethod !== CHECK) throw new LedgerError(400, `receiptId: ${name} was not paid by check`);
+    const deposit = this.depositRowOf(receipt.id);
+    if (!deposit) throw new LedgerError(409, `receiptId: ${name} is not in a deposit: a check never taken to the bank is voided as a mistake, not bounced`);
+    if (this.bounceOf(receipt.id)) throw new LedgerError(409, `receiptId: ${name} has already bounced`);
+    const date = isoDate(input.date, 'date');
+    if (date < deposit.date) throw new LedgerError(400, `date: ${name} cannot come back before its deposit ${deposit.number} (${deposit.date})`);
+    const fee = input.fee === undefined || input.fee === null ? 0 : minorUnits(input.fee, 'fee', { positive: false });
+    const penalty = input.penalty === undefined || input.penalty === null ? settings.penalty : minorUnits(input.penalty, 'penalty', { positive: false });
+    if (fee < 0 || penalty < 0) throw new LedgerError(400, 'fee and penalty cannot be less than 0');
+    const memo = text(input.memo, 'memo', { max: 2000 }) ?? '';
+    const id = this.newId();
+    const why = `Returned check ${name}${memo ? `: ${memo}` : ''}`;
+    const lines = receipt.lines.filter(l => l.status === 'posted');
+    const entries = [
+      ...lines.map(l => this.newEntry(user, {
+        direction: 'out', amount: l.amount, date, fundId: l.fundId, category: l.category, accountId: deposit.accountId,
+        partyName: receipt.partyName ?? undefined, paymentMethod: CHECK, paymentMethodId: receipt.paymentMethodId ?? undefined, memo: why
+      }, { sourceType: RETURNED_CHECK, sourceId: id })),
+      ...(fee > 0 ? [this.newEntry(user, {
+        direction: 'out', amount: fee, date, fundId: lines[0].fundId, category: settings.bankCharges.code, accountId: deposit.accountId,
+        memo: `Bank fee for returned check ${name}`
+      }, { sourceType: BOUNCE_FEE, sourceId: id })] : [])
+    ];
+    const checkAmount = lines.reduce((t, l) => t + l.amount, 0);
+
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('ledger-adjust'), action: 'check-bounce',
+      severity: 'high', resource: receipt.id, resourceType: 'accounting-receipt', reason: memo || undefined,
+      metadata: { bounceId: id, receipt: receipt.number, deposit: deposit.number, checkAmount, fee, penalty, currency: this.currency }
+    });
+    await this.commit(() => {
+      if (this.bounceOf(receipt.id)) throw new LedgerError(409, `receiptId: ${name} has already bounced`);
+      this.db.prepare(`INSERT INTO accounting_bounces (id, receipt_id, deposit_id, date, account_id, check_amount, fee, penalty, memo, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, receipt.id, deposit.id, date, deposit.accountId, checkAmount, fee, penalty, memo, user, this.stamp());
+      for (const e of entries) this.insert(e);
+      this.history(user, 'check-bounce', 'bounce', id, null, { receipt: receipt.number, deposit: deposit.number, checkAmount, fee, penalty, entries: entries.map(e => e.id) }, memo || undefined);
+    });
+    return this.bounce(id);
+  }
+
+  /**
+   * A payment toward a bounced check: one receipt whose lines fill in order
+   * (D-032): the check amount in the receipt's own lines and categories, then
+   * the fee against bank charges, then the penalty as other income. Never more
+   * than is still owed.
+   */
+  async repayBounce(actor: LedgerActor, bounceId: string, input: { amount: number; date: string; paymentMethod: string; paymentMethodId?: string; accountId?: string; memo?: string }): Promise<Receipt> {
+    await this.authorize(actor, 'ledger-record');
+    const settings = this.bounceSettings();
+    const bounce = this.bounce(text(bounceId, 'bounceId', { required: true }) as string);
+    const amount = minorUnits(input.amount, 'amount', { positive: true });
+    if (bounce.stillOwed <= 0) throw new LedgerError(409, `bounceId: ${bounce.receiptNumber ?? 'this check'} is already repaid`);
+    if (amount > bounce.stillOwed) throw new LedgerError(400, `amount is more than is still owed (${this.formatMoney(bounce.stillOwed, this.currency)})`);
+    const receipt = this.document(bounce.receiptId) as Receipt;
+    const firstFund = receipt.lines[0].fundId;
+    const parts = [
+      ...receipt.lines.filter(l => l.status === 'posted').map(l => ({ fundId: l.fundId, category: l.category, amount: l.amount })),
+      { fundId: firstFund, category: settings.bankCharges.code, amount: bounce.fee },
+      { fundId: firstFund, category: settings.otherIncome.code, amount: bounce.penalty }
+    ];
+    // Skip what earlier repayments covered, in the same order, then fill with this one.
+    let covered = bounce.repaid;
+    let left = amount;
+    const lines: NewLine[] = [];
+    for (const part of parts) {
+      const already = Math.min(part.amount, covered);
+      covered -= already;
+      const take = Math.min(part.amount - already, left);
+      if (take > 0) lines.push({ fundId: part.fundId, category: part.category, amount: take });
+      left -= take;
+    }
+    return this.postReceipt(actor, {
+      lines, date: input.date, partyName: bounce.partyName ?? 'unknown', paymentMethod: input.paymentMethod, paymentMethodId: input.paymentMethodId,
+      accountId: input.accountId, memo: text(input.memo, 'memo', { max: 2000 }) ?? `Repayment of bounced check ${bounce.receiptNumber ?? ''}`.trim(),
+      reference: { type: BOUNCED_CHECK, id: bounce.id }
+    }, { provider: MANUAL_PROVIDER });
+  }
+
+  /** Bounced checks, newest first, with what is owed, repaid and still owed. `settled` filters. */
+  async listBounces(actor: LedgerActor, filter: { settled?: boolean } = {}): Promise<Bounce[]> {
+    await this.authorize(actor, 'ledger-read');
+    return (this.db.prepare('SELECT id FROM accounting_bounces ORDER BY date DESC, created_at DESC').all() as { id: string }[])
+      .map(r => this.bounce(r.id))
+      .filter(b => filter.settled === undefined || (b.stillOwed <= 0) === filter.settled);
   }
 
   /** Deposits, newest first; undone ones only when asked. */
@@ -1725,6 +1887,54 @@ export default class LedgerManager {
   }
 
   /** The number of the standing deposit a receipt is in, if any. */
+  /** The standing deposit a receipt is in. */
+  private depositRowOf(receiptId: string): { id: string; number: string; date: string; accountId: string } | undefined {
+    const row = this.db.prepare(`SELECT d.id, d.number, d.date, d.account_id FROM accounting_deposit_receipts r JOIN accounting_deposits d ON d.id = r.deposit_id
+      WHERE r.receipt_id = ? AND r.undone = 0 AND d.status = 'posted'`).get(receiptId) as { id: string; number: string; date: string; account_id: string } | undefined;
+    return row ? { id: row.id, number: row.number, date: row.date, accountId: row.account_id } : undefined;
+  }
+
+  private bounce(id: string): Bounce {
+    const row = this.db.prepare(`SELECT b.*, d.number AS deposit_number, r.number AS receipt_number, r.party_name
+      FROM accounting_bounces b JOIN accounting_deposits d ON d.id = b.deposit_id JOIN accounting_documents r ON r.id = b.receipt_id
+      WHERE b.id = ?`).get(id) as {
+        id: string; receipt_id: string; deposit_id: string; date: string; account_id: string; check_amount: number; fee: number; penalty: number;
+        memo: string; created_by: string; created_at: string; deposit_number: string; receipt_number: string | null; party_name: string | null;
+      } | undefined;
+    if (!row) throw new LedgerError(404, 'unknown bounced check');
+    const repaid = (this.db.prepare(`SELECT COALESCE(SUM(total), 0) AS total FROM accounting_documents
+      WHERE kind = 'receipt' AND status = 'posted' AND source_type = ? AND source_id = ?`).get(BOUNCED_CHECK, id) as { total: number }).total;
+    const owed = row.check_amount + row.fee + row.penalty;
+    return {
+      id: row.id, receiptId: row.receipt_id, receiptNumber: row.receipt_number, depositId: row.deposit_id, depositNumber: row.deposit_number,
+      date: row.date, partyName: row.party_name, accountId: row.account_id, checkAmount: row.check_amount, fee: row.fee, penalty: row.penalty,
+      owed, repaid, stillOwed: owed - repaid, memo: row.memo, createdBy: row.created_by, createdAt: row.created_at
+    };
+  }
+
+  /** The bounce of a receipt, if it bounced. */
+  private bounceOf(receiptId: string): Bounce | undefined {
+    const row = this.db.prepare('SELECT id FROM accounting_bounces WHERE receipt_id = ?').get(receiptId) as { id: string } | undefined;
+    return row ? this.bounce(row.id) : undefined;
+  }
+
+  /**
+   * The categories a bounce uses, from configuration (D-032): bank charges must
+   * be an expense in the chart, other income an other-income. Until both are,
+   * bounces are refused, saying which is wrong.
+   */
+  private bounceSettings(): { bankCharges: Category; otherIncome: Category; penalty: number } {
+    const raw = this.bouncedChecksConfig();
+    const chart = new Map(this.categories().map(c => [c.code, c]));
+    const pick = (code: unknown, key: string, type: CategoryType): Category => {
+      const found = typeof code === 'string' ? chart.get(code) : undefined;
+      if (!found || found.type !== type) throw new LedgerError(409, `bounced checks are off: ngdpbase.addons.accounting.${key} must name a category of type ${type} in the chart`);
+      return found;
+    };
+    const penalty = typeof raw.penalty === 'number' && Number.isSafeInteger(raw.penalty) && raw.penalty >= 0 ? raw.penalty : 0;
+    return { bankCharges: pick(raw.bankChargesCategory, 'bank-charges-category', 'expense'), otherIncome: pick(raw.otherIncomeCategory, 'other-income-category', 'other-income'), penalty };
+  }
+
   private depositOf(receiptId: string): string | null {
     const row = this.db.prepare(`SELECT d.number FROM accounting_deposit_receipts r JOIN accounting_deposits d ON d.id = r.deposit_id
       WHERE r.receipt_id = ? AND r.undone = 0`).get(receiptId) as { number: string } | undefined;
