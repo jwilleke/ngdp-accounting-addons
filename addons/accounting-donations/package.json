@@ -33,6 +33,8 @@
     "index.js",
     "gift.js",
     "forms.js",
+    "managers/*.js",
+    "plugins/*.js",
     "config/",
     "pages/",
     "README.md"
