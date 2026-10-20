@@ -12,6 +12,8 @@ export interface GiftDetails {
   goodsDescription: string | null;
   anonymous: boolean;
   deductible: number;
+  /** The pledge this gift pays toward, if any. */
+  pledgeId: string | null;
 }
 
 /** The slice of the accounting add-on's receipt this add-on reads (LedgerManager's Receipt). */
@@ -26,6 +28,8 @@ export interface GiftSettings {
   /** The disclosure sentence, with {amount}, {deductible}, {goods} and {value}. */
   quidProQuo: () => string;
   formatMoney: (minor: number) => string;
+  /** Whether a pledge exists and is open (DonationManager.pledgeIsOpen). */
+  pledgeIsOpen?: (id: string) => boolean;
 }
 
 /** Above this, in minor units, a gift with goods or services needs the disclosure at the time (IRS Publication 1771). */
@@ -37,7 +41,7 @@ export const DEFAULT_QUID_PRO_QUO = 'Of your gift of {amount}, {deductible} is d
 export function giftValidator(settings: GiftSettings) {
   return {
     validate(data: unknown, line: { amount: number; category: string }): Record<string, unknown> {
-      const d = (data ?? {}) as { goodsValue?: unknown; goodsDescription?: unknown; anonymous?: unknown };
+      const d = (data ?? {}) as { goodsValue?: unknown; goodsDescription?: unknown; anonymous?: unknown; pledgeId?: unknown };
       if (typeof data !== 'object' || Array.isArray(data)) throw new Error('details.gift must be an object');
       const allowed = settings.categories();
       if (!allowed.includes(line.category)) throw new Error(`category: ${line.category} is not a donation category (${allowed.join(', ') || 'none set'})`);
@@ -48,7 +52,10 @@ export function giftValidator(settings: GiftSettings) {
       if (goodsValue > 0 && !description) throw new Error('details.gift.goodsDescription is required when goods or services were received');
       if (description && description.length > 200) throw new Error('details.gift.goodsDescription is longer than 200 characters');
       if (d.anonymous !== undefined && typeof d.anonymous !== 'boolean') throw new Error('details.gift.anonymous must be true or false');
-      const gift: GiftDetails = { goodsValue, goodsDescription: description, anonymous: d.anonymous === true, deductible: line.amount - goodsValue };
+      const pledgeId = typeof d.pledgeId === 'string' && d.pledgeId !== '' ? d.pledgeId : null;
+      if (d.pledgeId !== undefined && d.pledgeId !== null && d.pledgeId !== '' && typeof d.pledgeId !== 'string') throw new Error('details.gift.pledgeId must be text');
+      if (pledgeId && !settings.pledgeIsOpen?.(pledgeId)) throw new Error('details.gift.pledgeId names no open pledge');
+      const gift: GiftDetails = { goodsValue, goodsDescription: description, anonymous: d.anonymous === true, deductible: line.amount - goodsValue, pledgeId };
       return gift as unknown as Record<string, unknown>;
     }
   };

@@ -13,9 +13,12 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
-import type { AddonHost } from '@jwilleke/ngdpbase-types';
+import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { DEFAULT_QUID_PRO_QUO, giftSlipNotes, giftValidator, type GiftSettings, type ReceiptLike } from './gift.js';
 import { registerGiftForms } from './forms.js';
+import DonationManager, { type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
+import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from './managers/migrations.js';
+import DonationsPlugin from './plugins/DonationsPlugin.js';
 
 interface Engine {
   getManager<T = unknown>(name: string): T | null | undefined;
@@ -23,22 +26,14 @@ interface Engine {
 }
 
 /** The slice of the accounting add-on's LedgerManager this add-on calls. */
-interface LedgerLike {
-  currencyCode(): string;
+interface LedgerLike extends DonationLedger {
   registerLineDetails(kind: string, definition: ReturnType<typeof giftValidator>): void;
   registerSlipNotes(notes: (receipt: ReceiptLike) => string[]): void;
-  toFormOptions(options: Record<string, string>, viewer?: unknown): Promise<{ value: string; label: string }[]>;
 }
 
-/** Form choices this add-on adds: the donation categories, from the chart, for a viewer who may record. */
-class DonationManager {
-  constructor(private readonly ledger: LedgerLike, private readonly settings: GiftSettings) {}
-
-  async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<{ value: string; label: string }[]> {
-    if (options.list !== 'gift-categories') return [];
-    const allowed = new Set(this.settings.categories());
-    return (await this.ledger.toFormOptions({ list: 'categories', kind: 'in' }, viewer)).filter(c => allowed.has(c.value));
-  }
+interface DatabaseManagerLike {
+  isEnabled(): boolean;
+  openAddonDatabase<Handle>(owner: string, options: { migrations: unknown[]; ledgerTable: string }): Handle;
 }
 
 let unavailable: string | null = 'not registered yet';
@@ -58,6 +53,17 @@ const AccountingDonationsAddon = {
       host.logger.warn(`[accounting-donations] Not started: ${unavailable}`);
       return;
     }
+    // Donations' own database (operator, 2026-10-20): in-kind gifts and pledges. A failure to open it
+    // leaves register(), so the add-on is reported as not loaded.
+    const databases = engine.getManager<DatabaseManagerLike>('DatabaseManager');
+    if (!databases?.isEnabled()) {
+      unavailable = "the site's database is off";
+      host.logger.warn(`[accounting-donations] Not started: ${unavailable}`);
+      return;
+    }
+    const db = databases.openAddonDatabase<DonationsDb>('accounting-donations', { migrations: DONATIONS_MIGRATIONS, ledgerTable: DONATIONS_LEDGER_TABLE });
+    const auditSink = engine.getManager<Parameters<typeof host.recordAuditEvent>[0]>('AuditManager');
+    const pdp = engine.getManager<{ decide(subject: unknown, request: { action: string }): Promise<Decision> }>('PolicyDecisionPoint');
     const config = engine.getManager<{ getProperty(key: string, fallback?: unknown): unknown }>('ConfigurationManager');
     const plugins = engine.getManager<{ formatters: { formatMoney(minor: number, currency: string): string } }>('PluginManager');
     const setting = (key: string, fallback: unknown) => config?.getProperty(`ngdpbase.addons.accounting-donations.${key}`, fallback);
@@ -72,9 +78,15 @@ const AccountingDonationsAddon = {
       },
       formatMoney: (minor) => plugins?.formatters.formatMoney(minor, ledger.currencyCode()) ?? String(minor)
     };
-    ledger.registerLineDetails('gift', giftValidator(settings));
+    const donations = new DonationManager({
+      host, db, ledger, categories: settings.categories, formatMoney: settings.formatMoney,
+      recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
+      decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
+    });
+    ledger.registerLineDetails('gift', giftValidator({ ...settings, pledgeIsOpen: (id) => donations.pledgeIsOpen(id) }));
     ledger.registerSlipNotes(giftSlipNotes(settings));
-    engine.registerManager('DonationManager', new DonationManager(ledger, settings));
+    engine.registerManager('DonationManager', donations);
+    await engine.getManager<{ registerPlugin(name: string, plugin: unknown): Promise<void> }>('PluginManager')?.registerPlugin('Donations', DonationsPlugin);
     await registerGiftForms(engine, host);
     unavailable = null;
     host.logger.info('[accounting-donations] Gifts ready');

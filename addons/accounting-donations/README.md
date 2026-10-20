@@ -2,15 +2,16 @@
 
 Donations for the [accounting](../accounting/README.md) add-on of
 [ngdpbase](https://github.com/jwilleke/ngdpbase): gifts recorded as receipt lines with gift details,
-and the receipt slip's quid pro quo disclosure. Giving statements, in-kind gifts and pledges are
-coming.
+the receipt slip's quid pro quo disclosure, in-kind gifts and pledges. Giving statements are coming.
 
 - __Slug:__ `accounting-donations`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the gift screen.
 - __Requires:__ ngdpbase 5.21.0 or later.
-- __Data:__ none of its own for gifts. It calls the accounting add-on's managers
-  (`LedgerManager.registerLineDetails`, `registerSlipNotes`, `ReceiptManager.recordReceipt`) and never
-  its database (operator, 2026-10-20).
+- __Data:__ gifts of money are receipts in the accounting add-on, reached only through its managers
+  (`LedgerManager.registerLineDetails`, `registerSlipNotes`, `ReceiptManager.recordReceipt`), never its
+  database (operator, 2026-10-20). In-kind gifts and pledges are in this add-on's own database,
+  declared as `ngdpbase.addons.accounting-donations.database`.
+- __Permission:__ `donation-record` (in-kind gifts, pledges), granted to the treasurer role.
 
 How donations work, and what the IRS asks for: [docs/guides/donations-guide.md](../../docs/guides/donations-guide.md),
 the source of truth. Why: [D-036](../../docs/plans/decisions.md#d-036-donations-follow-the-donations-guide).
