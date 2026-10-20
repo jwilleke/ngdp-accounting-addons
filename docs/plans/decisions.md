@@ -48,6 +48,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-032](#d-032-cleared-deposits-and-bounced-checks) | 2026-10-19 | Checks count when recorded; deposits are marked cleared; a bounced check is a returned-check entry | Accepted |
 | [D-033](#d-033-receipts-and-refunds-are-made-of-lines) | 2026-10-19 | Receipts and refunds are made of lines, shown once; refunds are numbered RF-0001 | Accepted |
 | [D-034](#d-034-a-generic-starter-chart-with-account-types) | 2026-10-19 | A generic starter chart that follows QuickBooks' types, detail types and names | Accepted |
+| [D-035](#d-035-dues-and-assessments-flexible-accounts-and-charges) | 2026-10-20 | Dues and assessments: site-named, accounts in ngdpbase, charges as configuration, kept flexible | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -1213,3 +1214,39 @@ Source for QuickBooks' types and detail types: the QuickBooks Online chart of ac
   into the categories.
 - Our accounts map to QuickBooks' Bank type; Cash on Hand is its Undeposited Funds. Receivables,
   payables and equity are not in this ledger; owing and owed come with invoices (#2).
+
+## D-035: Dues and assessments: flexible accounts and charges
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-20
+- __Links:__ [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2),
+  [D-033](#d-033-receipts-and-refunds-are-made-of-lines),
+  [D-034](#d-034-a-generic-starter-chart-with-account-types)
+
+__Context:__ The dues module (#2) has to fit a club, a church and a condominium. Condominiums bill
+units, not people, call the charge an assessment, and are told not to say "dues". The Fairways bills
+assessments annually but lets owners pay monthly; some pay months ahead.
+
+__Decision (operator, 2026-10-20):__ keep the design flexible; do not go deeper yet.
+
+- __The site names the module.__ Money lines (invoices, receipts, statements, reports) show the
+  chart's category name: a condo renames 4100 to "Assessments" in its chart
+  ([chart guide](../guides/chart-of-accounts-guide.md)). The module's screens and emails use a site
+  label, `{ "singular": "Assessment", "plural": "Assessments" }`, defaulting to "Dues".
+- __Accounts are in ngdpbase.__ The site chooses what holds accounts (people, households, units).
+  Every account has one or more people responsible for it (every unit has at least one owner), and
+  they are ngdpbase users. Add-ons add the attributes they need to users and their own profile panels
+  (accounting: balance and statements), through a core facility requested from ngdpbase. A site's
+  own grouping, such as The Fairways' units (`FairwaysUnitManager`; each unit also an ngdpbase user
+  group), says which users are responsible together; accounting keeps no copy of it, only the money
+  side.
+- __Charges are configuration:__ charge schedules with a category, a billing period and an amount
+  rule. The billing period and the payment plan are separate (billed annually, paid monthly). Amounts
+  can be fixed, each account's own, or a share of a total; one account's charge can be split by
+  percentage between its people.
+- __Each month is evaluated on its own.__ An installment is its own invoice, one per month; nothing
+  is created up front. A payment gets a receipt; an invoice goes out only if something is owed. Money
+  paid ahead sits on the account as a credit for later months.
+- __Statements show one line per transaction__ (D-033). Bounced checks and their corrections go on
+  the payer's account once accounts exist.
+- __Out of scope for now:__ unit sales and closings.

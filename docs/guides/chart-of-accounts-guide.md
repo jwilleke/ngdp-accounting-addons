@@ -133,6 +133,23 @@ The chart lives in `ngdpbase.addons.accounting.categories`, a map keyed by code.
 
 That adds 4150, renames 6100 and removes 4300; the other 20 shipped categories stay.
 
+__A condominium__ says "assessments", never "dues" (condominiums are told not to
+use the word). Rename 4100 and drop what does not apply:
+
+```json
+{
+  "ngdpbase.addons.accounting.categories": {
+    "4100": { "name": "Assessments", "type": "income", "detailType": "Service/Fee Income" },
+    "4400": false,
+    "5100": false
+  }
+}
+```
+
+Every invoice, receipt, statement and report then says "Assessments". The dues module's own screens
+and emails use its label setting for the same word
+([D-035](../plans/decisions.md#d-035-dues-and-assessments-flexible-accounts-and-charges)).
+
 - `name` is required. `type` is one of `income`, `other-income`, `cost-of-goods`, `expense` or
   `other-expense`. `detailType` is the QuickBooks detail type, and is optional.
 - `false` (or `null`) removes a shipped category.
