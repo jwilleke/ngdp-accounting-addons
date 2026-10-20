@@ -49,6 +49,7 @@ Status values: `Proposed` (awaiting the owner), `Accepted`, `Superseded`, `Rejec
 | [D-033](#d-033-receipts-and-refunds-are-made-of-lines) | 2026-10-19 | Receipts and refunds are made of lines, shown once; refunds are numbered RF-0001 | Accepted |
 | [D-034](#d-034-a-generic-starter-chart-with-account-types) | 2026-10-19 | A generic starter chart that follows QuickBooks' types, detail types and names | Accepted |
 | [D-035](#d-035-dues-and-assessments-flexible-accounts-and-charges) | 2026-10-20 | Dues and assessments: site-named, accounts in ngdpbase, charges as configuration, kept flexible | Accepted |
+| [D-036](#d-036-donations-follow-the-donations-guide) | 2026-10-20 | Donations are receipt lines against an ngdpbase person; year-end web-page statements; the donations guide is the source of truth | Accepted |
 
 ## D-001: Adopt the mjs-project-template agent kit
 
@@ -1252,3 +1253,25 @@ __Decision (operator, 2026-10-20):__ keep the design flexible; do not go deeper 
 - __Statements show one line per transaction__ (D-033). Bounced checks and their corrections go on
   the payer's account once accounts exist.
 - __Out of scope for now:__ unit sales and closings.
+
+## D-036: Donations follow the donations guide
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-20
+- __Links:__ [#4](https://github.com/jwilleke/ngdp-accounting-addons/issues/4),
+  [donations guide](../guides/donations-guide.md), [D-033](#d-033-receipts-and-refunds-are-made-of-lines)
+
+__Decision (operator, 2026-10-20):__
+
+1. __A donation is a receipt line__ in a donation category, in the donor's chosen fund, carrying the
+   deductible amount, the value of goods or services received, and whether it is anonymous.
+2. __A gift that should appear on a statement is recorded against an ngdpbase person__, picked from
+   the list or created as a new donor; anonymous cash needs no person.
+3. __A year-end giving statement__ per donor serves as the acknowledgment for gifts of $250 or more;
+   the __receipt slip carries the quid pro quo disclosure__ at the time of the gift. Wording is a
+   site setting; United States only for now.
+4. __Statements are web pages for now__, stored exactly as sent; PDF files wait for a PDF export in
+   ngdpbase core.
+
+__[docs/guides/donations-guide.md](../guides/donations-guide.md) is the source of truth for
+donations__ (operator): every change is made there first, and the code follows it.

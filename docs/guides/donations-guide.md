@@ -1,0 +1,104 @@
+---
+name: Donations guide
+description: How the accounting add-on records gifts and produces giving statements, and what the IRS asks for
+dateModified: 2026-10-20
+category: guides
+relatedModules: [LedgerManager, ReceiptManager, PersonManager, ExportManager]
+---
+
+# Donations guide
+
+For the site administrator, the treasurer, and the accountant who checks the organization's giving
+records. It explains how gifts are recorded, who counts as a donor, and what donors receive.
+
+__This page is the source of truth for donations__
+([#4](https://github.com/jwilleke/ngdp-accounting-addons/issues/4),
+[D-036](../plans/decisions.md#d-036-donations-follow-the-donations-guide)). Any change to how
+donations work is made here first, and the code follows it.
+
+__Status:__ decided, not built yet. What exists today: receipts with lines, funds, the chart's
+donation category (4200 Donations and gifts) and refunds. The sections below say what is still to be
+built.
+
+## A donation is a receipt line
+
+A gift is money received, so it is recorded as a __receipt__, with its R-number, payer, method and
+account, like any other money in
+([D-033](../plans/decisions.md#d-033-receipts-and-refunds-are-made-of-lines)). The gift is a __line__
+of that receipt:
+
+- in a __donation category__ from the chart (4200 Donations and gifts, or another the site adds),
+- in the __fund__ the donor chose (General, the Roof Fund),
+- with the __gift details__ on the line:
+  - the __deductible amount__;
+  - the __value of goods or services__ the donor received, if any (a dinner ticket inside a gift);
+  - whether the gift is __anonymous__.
+
+One check can mix dues and a gift: that is two lines on one receipt. Refunds and voids work as for
+any receipt. Giving statements and the board's totals by fund come from the same ledger.
+
+## Who the donor is
+
+A gift that should appear on a statement is recorded against an __ngdpbase person__: picked from the
+site's list of people, or created on the spot as a __new donor__ from the receipt form. The person
+record holds the donor's name, postal address and email, once; an address change is made in one
+place. A person may never log in; everyone who logs in already has a person record.
+
+__Anonymous cash__, such as the collection plate, needs no person. It counts in the fund totals and
+is on no statement.
+
+__Anonymous__ on a gift means hidden from the board and from public totals. The treasurer still knows
+the donor, and the donor still gets a statement.
+
+## What the donor receives
+
+| What | When | Covers |
+| --- | --- | --- |
+| __Year-end giving statement__ | January, for the year before | Every gift that year, each with date and amount, the total, and the goods-or-services wording. It is the written acknowledgment for every gift of $250 or more. |
+| __Quid pro quo disclosure__ on the receipt slip | When the gift is made | A gift over $75 where the donor received something: "Of your $100.00, $60.00 is deductible; the dinner is valued at $40.00." |
+
+- A statement goes to every donor with a person record and gifts in the year.
+- Statements are emailed in bulk or downloaded. Each issued statement is __kept exactly as sent and
+  cannot be changed__; a correction is __reissued__, and the original is marked superseded. A gift
+  voided after its statement was issued flags that statement for reissue.
+- Statements are __web pages__ for now: HTML styled for printing, built through ngdpbase's export
+  path, printable or saved as PDF from the browser, emailed as the message itself, and stored with a
+  fingerprint. Real PDF files wait for a PDF export in ngdpbase core, if wanted later.
+- The __wording__ of the statement and of the disclosure is a site setting, starting from the IRS's
+  own language. The organization checks it with its accountant.
+- Issuing, reissuing and bulk-sending statements need the `statement-issue` permission, and are
+  audited.
+
+## What the IRS asks for
+
+United States only, for now. The reference is IRS Publication 1771, *Charitable Contributions:
+Substantiation and Disclosure Requirements*. Your accountant has the final word.
+
+| Rule | What it means here |
+| --- | --- |
+| A written acknowledgment for any single gift of __$250 or more__, which the donor has before filing | The year-end statement |
+| A written disclosure for a __quid pro quo gift over $75__, made with the gift | The receipt slip's disclosure |
+| __Form 990, Schedule B__: contributors of __$5,000 or more__ in the year, with name and address | The person record's name and address |
+| No tax ID from a cash donor | None is collected |
+
+Large non-cash gifts (property over $5,000) involve extra IRS forms; they are not covered yet.
+
+## Who sees what
+
+- The __treasurer__ records gifts (`ledger-record`) and sees donors (`ledger-read`).
+- The __board__ sees donation totals by fund without individual donors (`ledger-summary-read`),
+  unless granted `ledger-read`.
+- A __donor who logs in__ sees their own gifts and statements (`giving-self`).
+
+## Still to decide
+
+- __In-kind gifts__ (goods rather than money): description only, or a value too?
+- __Pledges__: a promised gift that is not money yet. This needs a "pending" status in the ledger,
+  which today allows only posted and voided.
+- __Recurring online gifts__: these wait for an online receipt provider (Stripe, on hold).
+
+## See also
+
+- [Accounting site guide](accounting-guide.md)
+- [Chart of accounts guide](chart-of-accounts-guide.md): the donation categories
+- Requirements, [section 5.3](../requirements.md)
