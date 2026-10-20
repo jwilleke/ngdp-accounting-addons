@@ -48,6 +48,18 @@ It is not a receipt, since no money came in, and it does not touch fund balances
 donor's year-end statement as a described item without an amount. An optional value, for the
 organization's own books, can be added later if its accountant wants it.
 
+## Pledges
+
+A pledge is a promise to give that is not money yet: "$1,200 to the building campaign this year,
+$100 a month". It is __its own record, outside the ledger__: the donor (a person), the amount, the
+fund, the period and an optional schedule. Gifts that pay toward it are ordinary receipt lines
+__linked to the pledge__. A Pledges page shows pledged, given and remaining, by donor and by
+campaign.
+
+Nothing reaches the fund balances until money arrives: the ledger holds real money only, as it does
+for checks, which count when recorded. Statements list gifts actually given, since only those are
+deductible; a statement may add a line such as "Pledged $1,200; given $800".
+
 ## Who the donor is
 
 A gift that should appear on a statement is recorded against an __ngdpbase person__: picked from the
@@ -104,8 +116,6 @@ Large non-cash gifts (property over $5,000) involve extra IRS forms; they are no
 
 ## Still to decide
 
-- __Pledges__: a promised gift that is not money yet. This needs a "pending" status in the ledger,
-  which today allows only posted and voided.
 - __Recurring online gifts__: these wait for an online receipt provider (Stripe, on hold).
 
 ## See also

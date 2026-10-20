@@ -1275,6 +1275,9 @@ __Decision (operator, 2026-10-20):__
 5. __In-kind gifts are described, not valued__: a separate record against the donor (a person) with
    a date and a description, not a ledger entry; it appears on the year-end statement without an
    amount.
+6. __Pledges are their own record, outside the ledger__ (donor, amount, fund, period, optional
+   schedule), with the gifts that pay toward them linked; the ledger holds real money only, so no
+   "pending" entry status is added.
 
 __[docs/guides/donations-guide.md](../guides/donations-guide.md) is the source of truth for
 donations__ (operator): every change is made there first, and the code follows it.
