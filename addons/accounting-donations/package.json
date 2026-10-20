@@ -1,0 +1,40 @@
+{
+  "name": "@jwilleke/accounting-donations-addon",
+  "version": "0.1.0",
+  "description": "Donations for the ngdpbase accounting add-on: gifts on receipts and giving statements",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwilleke/ngdp-accounting-addons.git",
+    "directory": "addons/accounting-donations"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "devDependencies": {
+    "@jwilleke/ngdpbase-types": "5.21.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.19.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "ngdpbase": {
+    "slug": "accounting-donations",
+    "type": "additive",
+    "minVersion": "5.21.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build",
+    "test": "vitest run"
+  },
+  "files": [
+    "index.js",
+    "gift.js",
+    "forms.js",
+    "config/",
+    "pages/",
+    "README.md"
+  ]
+}

@@ -638,6 +638,9 @@ __Consequences:__
 
 - A site enables only what it needs: a restaurant enables `accounting` (and perhaps
   `accounting-loyalty`); a club adds dues, donations and events.
+- __Revised (operator, 2026-10-20):__ a module add-on does __not__ use the accounting database. It
+  calls the `accounting` add-on's managers instead (for example `LedgerManager.registerLineDetails`
+  for a gift's details). The next point is superseded.
 - `accounting` owns the one accounting database file. A module add-on runs its own migration list
   in that same file, with its own record table, which `runMigrations` already supports. #13 must let
   an add-on that depends on `accounting` use its database.

@@ -16,9 +16,11 @@ __This page is the source of truth for donations__
 [D-036](../plans/decisions.md#d-036-donations-follow-the-donations-guide)). Any change to how
 donations work is made here first, and the code follows it.
 
-__Status:__ decided, not built yet. What exists today: receipts with lines, funds, the chart's
-donation category (4200 Donations and gifts) and refunds. The sections below say what is still to be
-built.
+__Status:__ the `accounting-donations` add-on records gifts: a receipt line in a donation category
+with its gift details, and the receipt slip's quid pro quo disclosure (Record a Gift). Still to
+build: donors as people (waiting on an ngdpbase person door for people who never log in), in-kind
+gifts, pledges and year-end statements. The add-on calls the `accounting` add-on's managers and never
+its database.
 
 ## A donation is a receipt line
 

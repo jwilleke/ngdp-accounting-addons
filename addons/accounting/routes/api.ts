@@ -9,10 +9,12 @@
  * types are imported from core.
  */
 import type { Request, Response, Router } from 'express';
-import type { AddonHost, ApiContext } from '@jwilleke/ngdpbase-types';
+import type { AddonHost, ApiContext, PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { LedgerError } from '../managers/LedgerManager.js';
 import type ReceiptManager from '../managers/ReceiptManager.js';
+import { MANUAL_PAYMENT_MEANS } from '../managers/LedgerManager.js';
+import { renderReceiptSlip } from '../plugins/receiptSlip.js';
 
 interface Engine {
   getManager<T = unknown>(name: string): T | null | undefined;
@@ -92,6 +94,31 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   // Reports: ?month=current|previous|YYYY-MM, or ?from=YYYY-MM-DD&to=YYYY-MM-DD
   const period = (ledger: LedgerManager, req: Request) => ledger.period({ month: query(req, 'month'), from: query(req, 'from'), to: query(req, 'to') });
   router.get('/summary', handle(200, (ctx, ledger, req) => ledger.periodSummary(ctx, period(ledger, req))));
+
+  // The printable receipt slip (D-036): a page the treasurer prints for the payer, with the notes
+  // modules add (a gift's quid pro quo disclosure). A link, so a refusal goes to sign in.
+  router.get('/receipts/:id/slip', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const ledger = engine.getManager<LedgerManager>('LedgerManager');
+      const plugins = engine.getManager<{ formatters: PluginFormatters }>('PluginManager');
+      const config = engine.getManager<{ getProperty(key: string, fallback?: unknown): unknown }>('ConfigurationManager');
+      if (!ledger || !plugins) { res.status(503).json({ ok: false, error: 'the ledger is not available on this site' }); return; }
+      const ctx = ApiContext.from(req, engine as never);
+      const slip = await ledger.receiptSlip(ctx, String(req.params.id));
+      const funds = new Map((await ledger.listFunds(ctx)).map(f => [f.id, f.name]));
+      const organization = String(config?.getProperty('ngdpbase.application.name', '') ?? '');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(renderReceiptSlip(plugins.formatters, slip, {
+        organization, funds,
+        categories: new Map(ledger.categories().map(c => [c.code, c.name])),
+        methods: new Map(MANUAL_PAYMENT_MEANS.map(m => [m.value, m.label]))
+      }));
+    } catch (err) {
+      if (err instanceof ApiError) { sendApiError(res, err, req.accepts(['html', 'json']) === 'html' ? 'page' : 'json'); return; }
+      if (err instanceof LedgerError) { res.status(err.status).json({ ok: false, error: err.message }); return; }
+      res.status(500).json({ ok: false, error: 'internal error' });
+    }
+  });
 
   // The CSV download. A link the treasurer follows, so a step-up refusal goes
   // to the re-authenticate page (it returns here) rather than answering JSON.

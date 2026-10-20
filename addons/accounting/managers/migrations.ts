@@ -379,4 +379,25 @@ const BOUNCES: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES];
+const LINE_DETAILS: AccountingMigration = {
+  id: '20261020120000',
+  description: 'details a module adds to a receipt line, e.g. a gift (D-036)',
+  up: (db) => {
+    db.exec(`
+      -- What a module adds to a receipt line, by kind (\`gift\` from accounting-donations), as JSON the
+      -- module validates. Written in the same transaction as the line; never changed or deleted.
+      CREATE TABLE accounting_line_details (
+        line_id TEXT NOT NULL,
+        kind    TEXT NOT NULL,
+        data    TEXT NOT NULL,
+        PRIMARY KEY (line_id, kind)
+      );
+      CREATE TRIGGER accounting_line_details_fixed BEFORE UPDATE ON accounting_line_details
+      BEGIN SELECT RAISE(ABORT, 'accounting: a line''s details never change; void the receipt and record it again'); END;
+      CREATE TRIGGER accounting_line_details_no_delete BEFORE DELETE ON accounting_line_details
+      BEGIN SELECT RAISE(ABORT, 'accounting: a line''s details are never deleted'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES, LINE_DETAILS];
