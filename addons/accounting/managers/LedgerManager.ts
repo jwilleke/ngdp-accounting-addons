@@ -380,6 +380,36 @@ export interface FundBalance {
 /** A reporting period, both ends included, as YYYY-MM-DD. */
 export interface Period { from: string; to: string }
 
+/** How this site's periods are locked, chosen by the treasurer (#19). */
+export type LockPeriod = 'month' | 'quarter' | 'half-year' | 'year';
+const LOCK_PERIODS: readonly LockPeriod[] = ['month', 'quarter', 'half-year', 'year'];
+const MONTHS_IN: Record<LockPeriod, number> = { month: 1, quarter: 3, 'half-year': 6, year: 12 };
+export interface LockSettings { period: LockPeriod; fiscalStartMonth: number }
+/** Until the treasurer chooses: monthly, with the fiscal year starting in January. */
+const DEFAULT_LOCK_SETTINGS: LockSettings = { period: 'month', fiscalStartMonth: 1 };
+
+/**
+ * The period ends after `after` and up to `until` (YYYY-MM-DD), for periods of
+ * `period` in a fiscal year starting in `fiscalStartMonth` (1–12): e.g.
+ * quarters from July end on Sep 30, Dec 31, Mar 31 and Jun 30.
+ */
+export function periodEnds(settings: LockSettings, after: string, until: string): string[] {
+  const size = MONTHS_IN[settings.period];
+  const ends: string[] = [];
+  let year = Number(after.slice(0, 4));
+  let month = Number(after.slice(5, 7));
+  for (let i = 0; i < 1200; i++) {
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const end = `${year}-${String(month).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+    if (end > until) break;
+    const intoYear = (month - settings.fiscalStartMonth + 12) % 12 + 1;
+    if (intoYear % size === 0 && end > after) ends.push(end);
+    month += 1;
+    if (month === 13) { month = 1; year += 1; }
+  }
+  return ends;
+}
+
 /** QuickBooks' fixed account types, which every category carries (D-034). */
 export type CategoryType = 'income' | 'other-income' | 'cost-of-goods' | 'expense' | 'other-expense';
 const CATEGORY_TYPES: readonly CategoryType[] = ['income', 'other-income', 'cost-of-goods', 'expense', 'other-expense'];
@@ -1019,6 +1049,10 @@ export default class LedgerManager {
             value: b.id, amount: b.stillOwed,
             label: [b.receiptNumber, b.partyName, `${this.formatMoney(b.stillOwed, this.currency)} still owed`].filter(Boolean).join(' · ')
           }));
+        case 'lockable-periods':
+          // Period ends the treasurer can lock now (#19).
+          await this.authorize(actor, 'fund-manage');
+          return this.lockablePeriods().reverse().map(end => ({ value: end, label: `through ${end} (${this.lockSettings().period})` }));
         case 'uncleared-deposits':
         case 'cleared-deposits': {
           const accounts = new Map(this.accountsInUse().map(a => [a.id, a.name]));
@@ -1111,6 +1145,85 @@ export default class LedgerManager {
     return { receipt, notes: this.slipNoteSources.flatMap(source => source(receipt)), currency: this.currency };
   }
 
+  // ── Period locks (#19) ─────────────────────────────────────────────────
+
+  /** How periods are locked, and the date everything is locked through (null: nothing is). */
+  async lockStatus(actor: LedgerActor): Promise<LockSettings & { lockedThrough: string | null }> {
+    await this.authorize(actor, 'ledger-summary-read');
+    return { ...this.lockSettings(), lockedThrough: this.lockedThrough() };
+  }
+
+  /** The treasurer chooses how this site's periods are locked: month, quarter, half-year or year, and the fiscal year's first month. */
+  async setLockSettings(actor: LedgerActor, input: { period: string; fiscalStartMonth: number }): Promise<LockSettings> {
+    await this.authorize(actor, 'fund-manage');
+    const user = actor.actingUsername();
+    if (!(LOCK_PERIODS as readonly string[]).includes(input.period)) throw new LedgerError(400, `period must be one of ${LOCK_PERIODS.join(', ')}`);
+    const month = Number(input.fiscalStartMonth);
+    if (!Number.isInteger(month) || month < 1 || month > 12) throw new LedgerError(400, 'fiscalStartMonth must be a month, 1 to 12');
+    const settings: LockSettings = { period: input.period as LockPeriod, fiscalStartMonth: month };
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'lock-settings',
+      severity: 'medium', resource: 'period-lock', resourceType: 'accounting-settings', metadata: { ...settings }
+    });
+    await this.commit(() => {
+      this.db.prepare('INSERT INTO accounting_lock_settings (period, fiscal_start_month, created_by, created_at) VALUES (?, ?, ?, ?)')
+        .run(settings.period, settings.fiscalStartMonth, user, this.stamp());
+      this.history(user, 'lock-settings', 'settings', 'period-lock', this.lockSettings(), settings);
+    });
+    return settings;
+  }
+
+  /**
+   * Lock everything dated on or before a period end: nothing in it can be
+   * posted, voided or corrected until it is unlocked (#19). Only a period end
+   * of the site's chosen period, after the current lock and not in the future.
+   */
+  async lockPeriod(actor: LedgerActor, throughDate: string): Promise<{ lockedThrough: string }> {
+    await this.authorize(actor, 'fund-manage');
+    const user = actor.actingUsername();
+    const through = isoDate(throughDate, 'throughDate');
+    const check = (): void => {
+      const now = this.lockedThrough();
+      if (!this.lockablePeriods().includes(through)) {
+        throw new LedgerError(400, now && through <= now
+          ? `throughDate: everything through ${now} is already locked`
+          : `throughDate: ${through} is not the end of a ${this.lockSettings().period} that has ended`);
+      }
+    };
+    check();
+    const id = this.newId();
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'period-lock',
+      severity: 'medium', resource: id, resourceType: 'accounting-period-lock', metadata: { throughDate: through, period: this.lockSettings().period }
+    });
+    await this.commit(() => {
+      check(); // again inside the transaction
+      this.db.prepare('INSERT INTO accounting_period_locks (id, through_date, period, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(id, through, this.lockSettings().period, user, this.stamp());
+      this.history(user, 'period-lock', 'period-lock', id, null, { throughDate: through });
+    });
+    return { lockedThrough: through };
+  }
+
+  /** Take the latest lock off, with a reason: the period before it is locked again, the rest opens. */
+  async unlockPeriod(actor: LedgerActor, reason: string): Promise<{ lockedThrough: string | null }> {
+    await this.authorize(actor, 'fund-manage');
+    const user = actor.actingUsername();
+    const why = text(reason, 'reason', { required: true }) as string;
+    const latest = this.latestLock();
+    if (!latest) throw new LedgerError(409, 'nothing is locked');
+    await this.audit(actor, {
+      eventType: this.host.addonAuditEventName('fund-manage'), action: 'period-unlock',
+      severity: 'high', resource: latest.id, resourceType: 'accounting-period-lock', reason: why, metadata: { throughDate: latest.through_date }
+    });
+    await this.commit(() => {
+      if (this.latestLock()?.id !== latest.id) throw new LedgerError(409, 'the locks changed meanwhile; try again');
+      this.db.prepare('UPDATE accounting_period_locks SET removed = 1, removed_reason = ? WHERE id = ?').run(why, latest.id);
+      this.history(user, 'period-unlock', 'period-lock', latest.id, { throughDate: latest.through_date }, { removed: true }, why);
+    });
+    return { lockedThrough: this.lockedThrough() };
+  }
+
   // ── Funds ──────────────────────────────────────────────────────────────
 
   async createFund(actor: LedgerActor, input: NewFund): Promise<Fund> {
@@ -1120,6 +1233,7 @@ export default class LedgerManager {
     const description = text(input.description, 'description') ?? '';
     const openingBalance = input.openingBalance === undefined ? 0 : minorUnits(input.openingBalance, 'openingBalance', { positive: false });
     const openingDate = input.openingDate === undefined ? this.today() : isoDate(input.openingDate, 'openingDate');
+    this.assertOpen(openingDate, 'openingDate');
     const nameTaken = (): void => {
       if (this.db.prepare('SELECT id FROM accounting_funds WHERE name = ?').get(name)) {
         throw new LedgerError(409, `a fund named '${name}' already exists`);
@@ -1214,6 +1328,7 @@ export default class LedgerManager {
     if (!account.configured) throw new LedgerError(409, `account '${account.id}' is no longer configured`);
     const openingBalance = minorUnits(input.openingBalance, 'openingBalance', { positive: false });
     const openingDate = input.openingDate === undefined || input.openingDate === '' ? this.today() : isoDate(input.openingDate, 'openingDate');
+    this.assertOpen(openingDate, 'openingDate');
     const alreadySet = (): void => {
       if (this.db.prepare('SELECT account_id FROM accounting_account_openings WHERE account_id = ?').get(account.id)) {
         throw new LedgerError(409, `account '${account.name}' already has its opening balance`);
@@ -1316,6 +1431,7 @@ export default class LedgerManager {
     if (doc) return this.voidDocument(actor, user, doc, why, replacement);
     const original = this.transaction(transactionId);
     if (original.status === 'voided') throw new LedgerError(409, 'this entry is already voided');
+    this.assertOpen(original.date, 'transactionId');
     if (original.documentId) {
       const of = this.document(original.documentId);
       throw new LedgerError(409, `this entry is a line of ${of.number ?? `this ${of.kind}`}; void the ${of.kind} instead`);
@@ -1359,6 +1475,7 @@ export default class LedgerManager {
    */
   private async voidDocument(actor: LedgerActor, user: string, doc: Receipt | Refund, why: string, replacement?: NewTransaction): Promise<{ voided: Transaction[]; replacement: Transaction | null }> {
     if (doc.status === 'voided') throw new LedgerError(409, 'this entry is already voided');
+    this.assertOpen(doc.date, 'transactionId');
     if (replacement) {
       throw new LedgerError(400, doc.kind === 'receipt'
         ? 'a receipt is corrected by voiding it and recording a new receipt, not by a replacement'
@@ -1588,6 +1705,7 @@ export default class LedgerManager {
     const why = text(reason, 'reason', { required: true }) as string;
     const before = this.deposit(text(depositId, 'depositId', { required: true }) as string);
     if (before.status === 'voided') throw new LedgerError(409, `deposit ${before.number} is already undone`);
+    this.assertOpen(before.date, 'depositId');
     if (before.clearedDate) throw new LedgerError(409, `deposit ${before.number} is cleared: the bank has it; take the cleared mark off first`);
     const bounced = before.receipts.map(r => this.bounceOf(r.receiptId)).find(Boolean);
     if (bounced) throw new LedgerError(409, `deposit ${before.number} has a bounced check (${bounced.receiptNumber ?? 'a receipt'}); it cannot be undone`);
@@ -1851,7 +1969,7 @@ export default class LedgerManager {
       direction: input.direction,
       amount: minorUnits(input.amount, 'amount', { positive: true }),
       currency: this.currency,
-      date: isoDate(input.date, 'date'),
+      date: this.openDate(isoDate(input.date, 'date')),
       fundId: fund.id,
       accountId: account.id,
       category: text(input.category, 'category', { required: true, max: 32 }) as string,
@@ -2016,6 +2134,42 @@ export default class LedgerManager {
   /** The site's categories, parsed on each read: configuration is the source (D-034). */
   categories(): Category[] {
     return categoriesFrom(this.categoriesConfig());
+  }
+
+  private lockSettings(): LockSettings {
+    const row = this.db.prepare('SELECT period, fiscal_start_month FROM accounting_lock_settings ORDER BY seq DESC LIMIT 1')
+      .get() as { period: LockPeriod; fiscal_start_month: number } | undefined;
+    return row ? { period: row.period, fiscalStartMonth: row.fiscal_start_month } : DEFAULT_LOCK_SETTINGS;
+  }
+
+  private latestLock(): { id: string; through_date: string } | undefined {
+    return this.db.prepare('SELECT id, through_date FROM accounting_period_locks WHERE removed = 0 ORDER BY through_date DESC, created_at DESC LIMIT 1')
+      .get() as { id: string; through_date: string } | undefined;
+  }
+
+  /** The date everything is locked through, or null. */
+  private lockedThrough(): string | null {
+    return this.latestLock()?.through_date ?? null;
+  }
+
+  /** The period ends that can be locked now: after the current lock (or the last two years), up to today. */
+  private lockablePeriods(): string[] {
+    const today = this.today();
+    const twoYearsAgo = `${Number(today.slice(0, 4)) - 2}${today.slice(4)}`;
+    return periodEnds(this.lockSettings(), this.lockedThrough() ?? twoYearsAgo, today);
+  }
+
+  private openDate(date: string): string {
+    this.assertOpen(date);
+    return date;
+  }
+
+  /** Refuse anything dated in a locked period (#19). */
+  private assertOpen(date: string, field = 'date'): void {
+    const through = this.lockedThrough();
+    if (through && date <= through) {
+      throw new LedgerError(409, `${field}: ${date} is in a locked period (locked through ${through}); the treasurer unlocks it first`);
+    }
   }
 
   private openings(): Map<string, { opening_balance: number; opening_date: string }> {

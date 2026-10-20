@@ -400,4 +400,46 @@ const LINE_DETAILS: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES, LINE_DETAILS];
+const PERIOD_LOCKS: AccountingMigration = {
+  id: '20261020160000',
+  description: 'period locks: how periods are locked, chosen by the treasurer, and the locks (#19)',
+  up: (db) => {
+    db.exec(`
+      -- How this site's periods are locked, as the treasurer last set it (month, quarter, half-year or
+      -- year, and the month the fiscal year starts). Append-only: the newest row stands.
+      CREATE TABLE accounting_lock_settings (
+        seq                INTEGER PRIMARY KEY AUTOINCREMENT,
+        period             TEXT NOT NULL CHECK (period IN ('month', 'quarter', 'half-year', 'year')),
+        fiscal_start_month INTEGER NOT NULL CHECK (fiscal_start_month BETWEEN 1 AND 12),
+        created_by         TEXT NOT NULL,
+        created_at         TEXT NOT NULL
+      );
+      CREATE TRIGGER accounting_lock_settings_fixed BEFORE UPDATE ON accounting_lock_settings
+      BEGIN SELECT RAISE(ABORT, 'accounting: lock settings are append-only'); END;
+      CREATE TRIGGER accounting_lock_settings_no_delete BEFORE DELETE ON accounting_lock_settings
+      BEGIN SELECT RAISE(ABORT, 'accounting: lock settings are append-only'); END;
+
+      -- Everything dated on or before through_date is locked while the lock stands. A lock is taken
+      -- off once, with a reason, and stays as history.
+      CREATE TABLE accounting_period_locks (
+        id            TEXT PRIMARY KEY,
+        through_date  TEXT NOT NULL,
+        period        TEXT NOT NULL,
+        removed       INTEGER NOT NULL DEFAULT 0 CHECK (removed IN (0, 1)),
+        removed_reason TEXT,
+        created_by    TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        CHECK (removed = 0 OR (removed_reason IS NOT NULL AND removed_reason <> ''))
+      );
+      CREATE TRIGGER accounting_period_locks_fixed BEFORE UPDATE ON accounting_period_locks
+      WHEN NEW.id IS NOT OLD.id OR NEW.through_date IS NOT OLD.through_date OR NEW.period IS NOT OLD.period
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NOT (OLD.removed = 0 AND NEW.removed = 1 AND NEW.removed_reason IS NOT NULL AND NEW.removed_reason <> '')
+      BEGIN SELECT RAISE(ABORT, 'accounting: a period lock never changes; take it off, once, with a reason'); END;
+      CREATE TRIGGER accounting_period_locks_no_delete BEFORE DELETE ON accounting_period_locks
+      BEGIN SELECT RAISE(ABORT, 'accounting: a period lock is taken off, never deleted'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES, LINE_DETAILS, PERIOD_LOCKS];

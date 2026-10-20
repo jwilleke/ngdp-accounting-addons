@@ -6,6 +6,7 @@
  *   [{Ledger view='entries' max='20'}]               latest entries, newest first, with receipt and deposit numbers
  *   [{Ledger view='deposits'}]                       deposits, newest first, with their receipts and cleared dates (D-031, D-032)
  *   [{Ledger view='deposits' cleared='false'}]       deposits not yet cleared: deposits in transit
+ *   [{Ledger view='lock'}]                           how periods are locked, and through when (#19)
  *   [{Ledger view='bounces' settled='false'}]        bounced checks with what is owed, repaid and still owed (D-032)
  *   [{Ledger view='entries' fund='<fund id>' voided='true'}]
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
@@ -283,6 +284,12 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const rows = await entryRows(f, ledger, actor, await namesFor(ledger, actor), fund, includeVoided);
     return entriesTable(f, applyMax(rows, max), ledger.currencyCode());
   }
+  if (view === 'lock') {
+    const status = await ledger.lockStatus(actor);
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `<p>Periods are locked by <strong>${f.escapeHtml(status.period)}</strong>; the fiscal year starts in ${months[status.fiscalStartMonth - 1]}. `
+      + (status.lockedThrough ? `Everything through <strong>${f.escapeHtml(status.lockedThrough)}</strong> is locked.</p>` : 'Nothing is locked yet.</p>');
+  }
   if (view === 'bounces') {
     const settled = params.settled === undefined ? undefined : parseBoolParam(params.settled as string, true);
     return bouncesTable(f, await ledger.listBounces(actor, { settled }), ledger.currencyCode(),
@@ -300,7 +307,7 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
     const period = ledger.period({ month: str(params.month), from: str(params.from), to: str(params.to) });
     return summaryTables(f, await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
   }
-  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries, deposits, bounces or summary.`);
+  return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries, deposits, bounces, lock or summary.`);
 }
 
 /**

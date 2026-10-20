@@ -36,6 +36,8 @@ interface FormsDataManagerLike {
  */
 interface FieldDef { name: string; type: string; label: string; required?: boolean; options?: string[]; optionsSource?: string; totalField?: string }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() !== '' ? v : undefined);
 
 // ── Field sets shared by more than one form ─────────────────────────────────
@@ -257,6 +259,29 @@ export const LEDGER_FORMS: LedgerForm[] = [
     messageFields: [[/^bounceId:/, 'bounceId'], [/^amount is more/, 'amount'], [/^bounced checks are off/, 'bounceId']]
   },
   {
+    definition: form('lock-settings', 'Choose how periods are locked',
+      'Lock periods by month, quarter, half-year or year, as you report to the board, and say which month the fiscal year starts. Locking then offers the ends of those periods.',
+      [{ name: 'period', type: 'dropdown', label: 'Lock by', required: true, options: ['month', 'quarter', 'half-year', 'year'] },
+        { name: 'fiscalStartMonth', type: 'dropdown', label: 'The fiscal year starts in', required: true, options: MONTHS }]),
+    run: async ({ ledger }, ctx, data) => ({
+      settings: await ledger.setLockSettings(ctx, { period: data.period as string, fiscalStartMonth: MONTHS.indexOf(data.fiscalStartMonth as string) + 1 })
+    }),
+    messageFields: [[/^period /, 'period'], [/^fiscalStartMonth/, 'fiscalStartMonth']]
+  },
+  {
+    definition: form('period-lock', 'Lock a period',
+      'After reporting a period to the board, lock it: nothing dated in it can then be added, voided or corrected. A mistake found later is fixed with an entry dated today, with its reason.',
+      [{ name: 'throughDate', type: 'dropdown', label: 'Lock everything through', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=lockable-periods)' }]),
+    run: async ({ ledger }, ctx, data) => ledger.lockPeriod(ctx, data.throughDate as string)
+  },
+  {
+    definition: form('period-unlock', 'Unlock a period',
+      'Takes the latest lock off, with the reason. The period before it stays locked. Rarely needed: a mistake in a locked period is usually fixed with an entry dated today.',
+      [{ name: 'reason', type: 'textarea', label: 'Reason', required: true }]),
+    run: async ({ ledger }, ctx, data) => ledger.unlockPeriod(ctx, data.reason as string),
+    messageFields: [[/^nothing is locked/, 'reason']]
+  },
+  {
     definition: form('fund-create', 'Create a fund', 'A new fund starts at its opening balance, on its opening date.',
       [{ name: 'name', type: 'text', label: 'Name', required: true },
         { name: 'description', type: 'textarea', label: 'Description', required: false },
@@ -305,7 +330,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
 /** The field a LedgerError is about: the form's own mapping, else the message's first word when it is a field. */
 export function fieldOf(ledgerForm: LedgerForm, message: string): string | undefined {
   for (const [pattern, field] of ledgerForm.messageFields ?? []) if (pattern.test(message)) return field;
-  const first = message.split(/[\s']/, 1)[0];
+  const first = message.split(/[\s':]/, 1)[0];
   return ledgerForm.definition.fields.some(f => f.name === first) ? first : undefined;
 }
 
