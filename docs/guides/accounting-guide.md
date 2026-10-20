@@ -183,7 +183,6 @@ older one.
 ## Known gaps
 
 - __Backups__ do not cover the ledger's database yet (ngdpbase #1723).
-- No month lock: a closed month can still receive entries dated in it (#19).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
 - Receipts and refunds have lines, but the forms record one line each until ngdpbase's lines field

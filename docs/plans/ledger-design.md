@@ -118,6 +118,12 @@ whose reference is `bounced-check` and the bounce's id.
 module adds to a receipt line, by kind (`gift`), as JSON the module validated. Written with the line,
 never changed or deleted.
 
+### Eighth migration: period locks
+
+[#19](https://github.com/jwilleke/ngdp-accounting-addons/issues/19) adds `accounting_lock_settings`
+(append-only: how periods are locked, as the treasurer last chose) and `accounting_period_locks`
+(each lock's through date, taken off once with a reason, never changed or deleted).
+
 ### Enforced by the database itself
 
 Triggers make the money rules hold even if code is wrong:

@@ -67,6 +67,7 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `transferBetweenFunds` | `ledger-adjust` | off for now | `ledger-adjust` (`ledger-transfer`) |
 | `createFund`, `updateFund`, `closeFund` | `fund-manage` | no | `fund-manage` (`fund-create`, `fund-update`, `fund-close`) |
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
+| `setLockSettings`, `lockPeriod`, `unlockPeriod` | `fund-manage` | no | `fund-manage` (`lock-settings`, `period-lock`, `period-unlock`) |
 | `accountNumbers` | `fund-manage` | no | `fund-manage` (`account-number-view`) |
 | `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
 | `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits`, `uncleared-deposits`, `cleared-deposits`, `bounceable-receipts`, `unsettled-bounces` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
@@ -137,6 +138,13 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   adds notes to the printable slip; `receiptSlip(actor, id)` (`ledger-read`) returns the receipt and
   its notes, and `GET /api/accounting/receipts/:id/slip` renders it as a page to print. Modules call
   these managers, never the accounting database.
+- __Period locks__ ([#19](https://github.com/jwilleke/ngdp-accounting-addons/issues/19)):
+  `setLockSettings(actor, { period, fiscalStartMonth })` (the treasurer's choice: `month`, `quarter`,
+  `half-year` or `year`), `lockPeriod(actor, throughDate)` (a period end that has passed, after the
+  current lock), `unlockPeriod(actor, reason)` (takes the latest lock off), `lockStatus(actor)`.
+  Anything dated on or before the lock is refused: posting, receipts, refunds, transfers, deposits,
+  bounces, voids, undoing a deposit, and fund and account openings. `periodEnds(settings, after,
+  until)` lists period ends.
 - `listDocuments(actor, 'receipt' | 'refund', { includeVoided? })`, `getDocument(actor, id)` → receipts
   and refunds with their lines, newest first (`ledger-read`).
 - `transferBetweenFunds(actor, { fromFundId, toFundId, amount, date, memo? })` → the linked out and
