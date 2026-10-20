@@ -1272,6 +1272,9 @@ __Decision (operator, 2026-10-20):__
    site setting; United States only for now.
 4. __Statements are web pages for now__, stored exactly as sent; PDF files wait for a PDF export in
    ngdpbase core.
+5. __In-kind gifts are described, not valued__: a separate record against the donor (a person) with
+   a date and a description, not a ledger entry; it appears on the year-end statement without an
+   amount.
 
 __[docs/guides/donations-guide.md](../guides/donations-guide.md) is the source of truth for
 donations__ (operator): every change is made there first, and the code follows it.

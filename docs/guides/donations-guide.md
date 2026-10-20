@@ -37,6 +37,17 @@ of that receipt:
 One check can mix dues and a gift: that is two lines on one receipt. Refunds and voids work as for
 any receipt. Giving statements and the board's totals by fund come from the same ledger.
 
+## In-kind gifts
+
+A gift of goods or services rather than money (a donated laptop, food for an event, a printer's free
+work) is recorded as an __in-kind gift__: the donor (a person), the date and a __description__
+("Dell laptop, used"). It has __no value__: under IRS Publication 1771 the organization describes a
+non-cash gift and does not value it; valuing it is the donor's job.
+
+It is not a receipt, since no money came in, and it does not touch fund balances. It appears on the
+donor's year-end statement as a described item without an amount. An optional value, for the
+organization's own books, can be added later if its accountant wants it.
+
 ## Who the donor is
 
 A gift that should appear on a statement is recorded against an __ngdpbase person__: picked from the
@@ -80,6 +91,7 @@ Substantiation and Disclosure Requirements*. Your accountant has the final word.
 | A written disclosure for a __quid pro quo gift over $75__, made with the gift | The receipt slip's disclosure |
 | __Form 990, Schedule B__: contributors of __$5,000 or more__ in the year, with name and address | The person record's name and address |
 | No tax ID from a cash donor | None is collected |
+| A non-cash gift is __described, not valued__, by the organization | In-kind gifts carry a description, no amount |
 
 Large non-cash gifts (property over $5,000) involve extra IRS forms; they are not covered yet.
 
@@ -92,7 +104,6 @@ Large non-cash gifts (property over $5,000) involve extra IRS forms; they are no
 
 ## Still to decide
 
-- __In-kind gifts__ (goods rather than money): description only, or a value too?
 - __Pledges__: a promised gift that is not money yet. This needs a "pending" status in the ledger,
   which today allows only posted and voided.
 - __Recurring online gifts__: these wait for an online receipt provider (Stripe, on hold).
