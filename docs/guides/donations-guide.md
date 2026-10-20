@@ -65,8 +65,14 @@ deductible; a statement may add a line such as "Pledged $1,200; given $800".
 
 ## Who the donor is
 
-A gift that should appear on a statement is recorded against an __ngdpbase person__: picked from the
-site's list of people, or created on the spot as a __new donor__ from the receipt form. The person
+A gift that should appear on a statement is recorded against an __ngdpbase person or organization__
+(ngdpbase [#1930](https://github.com/jwilleke/ngdpbase/issues/1930), operator 2026-10-20): picked
+from the site's contacts, or created on the spot as a __new donor__ from the receipt form. A gift can
+name an organization (Acme Corp), or a person on behalf of one (Jane, for Acme), through the
+person's affiliation. A donor may never log in; if they sign up later, ngdpbase links their account
+to the existing person by matching email, confirmed by them, or an administrator links it by hand.
+Finding and creating donors use ngdpbase's contact doors, under the `contact-manage` permission,
+audited. The person
 record holds the donor's name, postal address and email, once; an address change is made in one
 place. A person may never log in; everyone who logs in already has a person record.
 
