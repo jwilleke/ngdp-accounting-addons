@@ -112,6 +112,12 @@ returned check (receipt, deposit, date, account, check amount, fee, penalty), ne
 deleted. Its entries carry `source_type` `returned-check` or `bounce-fee`; repayments are receipts
 whose reference is `bounced-check` and the bounce's id.
 
+### Seventh migration: line details
+
+[D-036](decisions.md#d-036-donations-follow-the-donations-guide) adds `accounting_line_details`: what a
+module adds to a receipt line, by kind (`gift`), as JSON the module validated. Written with the line,
+never changed or deleted.
+
 ### Enforced by the database itself
 
 Triggers make the money rules hold even if code is wrong:

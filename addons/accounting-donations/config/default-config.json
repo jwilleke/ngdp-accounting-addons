@@ -1,0 +1,10 @@
+{
+  "_comment_accounting_donations": "Donations for the accounting add-on (D-036; docs/guides/donations-guide.md is the source of truth). Merged into the site's configuration only while ngdpbase.addons.accounting-donations.enabled is true. It needs the accounting add-on, whose managers it calls; it keeps no database of its own for gifts.",
+  "ngdpbase.addons.accounting-donations.enabled": false,
+  "_comment_categories": "Chart codes a gift may be recorded under: donation categories in the accounting chart (docs/guides/chart-of-accounts-guide.md). A list, so a site's value replaces this one.",
+  "ngdpbase.addons.accounting-donations.categories": ["4200"],
+  "_comment_wording": "The receipt slip's quid pro quo disclosure, for a gift over $75 where the donor received goods or services (IRS Publication 1771). {amount}, {deductible}, {goods} and {value} are filled in. The organization checks the wording with its accountant.",
+  "ngdpbase.addons.accounting-donations.wording": {
+    "quid-pro-quo": "Of your gift of {amount}, {deductible} is deductible for federal income tax purposes. You received {goods}, valued at {value}."
+  }
+}

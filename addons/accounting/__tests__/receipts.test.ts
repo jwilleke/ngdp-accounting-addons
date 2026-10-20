@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
 import { openTestLedgerDatabase, testLedgerParts } from './host.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
-import LedgerManager, { type LedgerActor, type LedgerAuditRecord, type LedgerDb, type NewReceipt } from '../managers/LedgerManager.js';
+import LedgerManager, { LedgerError, type LedgerActor, type LedgerAuditRecord, type LedgerDb, type NewReceipt } from '../managers/LedgerManager.js';
 import ReceiptManager, { MANUAL_RECEIPT_PROVIDER, receiptProvidersFrom } from '../managers/ReceiptManager.js';
 
 const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'receipt-refund', 'fund-manage'];
@@ -227,6 +227,35 @@ describe('receipts', () => {
       expect((await receipts.refundReceipt(actor(), r.id, { date: '2026-10-21', memo: 'fee back', lines: [{ receiptLineId: fee.id, amount: 1_500 }] })).number).toBe('RF-0002');
       const options = await ledger.toFormOptions({ list: 'refundable-lines' }, { username: 'tess', granted: ALL });
       expect(options.map(o => o.value)).toEqual([r.lines[0].id]);
+    });
+  });
+
+  describe('what modules add to a line (D-036)', () => {
+    const tip = { validate: (data: unknown, line: { amount: number }) => {
+      const d = data as { note?: unknown };
+      if (typeof d?.note !== 'string') throw new LedgerError(400, 'details.tip.note is required');
+      return { note: d.note, ofAmount: line.amount };
+    } };
+
+    test('a registered kind is checked by its module, stored with the line, and read back', async () => {
+      ledger.registerLineDetails('tip', tip);
+      const r = await receipts.recordReceipt(actor(), { ...dues(500), lines: [{ amount: 500, fundId, category: '4100', details: { tip: { note: 'thanks' } } }] });
+      expect(r.lines[0].details).toEqual({ tip: { note: 'thanks', ofAmount: 500 } });
+      expect((await ledger.getDocument(actor(), r.id)).lines[0].details).toEqual({ tip: { note: 'thanks', ofAmount: 500 } });
+      await expect(receipts.recordReceipt(actor(), { ...dues(500), lines: [{ amount: 500, fundId, category: '4100', details: { tip: {} } }] }))
+        .rejects.toThrow('lines[0]: details.tip.note is required');
+      await expect(receipts.recordReceipt(actor(), { ...dues(500), lines: [{ amount: 500, fundId, category: '4100', details: { gift: {} } }] }))
+        .rejects.toThrow("details: no module on this site records 'gift' details");
+      expect(() => ledger.registerLineDetails('tip', tip)).toThrow('already registered');
+    });
+
+    test('the receipt slip carries the notes modules add', async () => {
+      ledger.registerSlipNotes((receipt) => receipt.total > 1_000 ? [`Thank you for ${receipt.total}`] : []);
+      const big = await receipts.recordReceipt(actor(), dues(5_000));
+      const small = await receipts.recordReceipt(actor(), dues(500));
+      expect((await ledger.receiptSlip(actor(), big.id)).notes).toEqual(['Thank you for 5000']);
+      expect((await ledger.receiptSlip(actor(), small.id)).notes).toEqual([]);
+      await expect(ledger.receiptSlip(actor([]), big.id)).rejects.toMatchObject({ permission: 'ledger-read' });
     });
   });
 

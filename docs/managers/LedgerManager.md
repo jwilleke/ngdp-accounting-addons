@@ -130,6 +130,13 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   alone. A receipt takes no replacement: void it and record a new receipt. A receipt with posted
   refunds is not voided until its refunds are, nor one in a standing deposit until it is undone. The
   original stays visible, marked voided.
+- __What modules add__ (D-036): `registerLineDetails(kind, { validate(data, line) })` lets a module
+  (accounting-donations: `gift`) put its own details on receipt lines, sent as `lines[].details` and
+  stored by the ledger in the same transaction; a line's `details` reads them back. A validator throws
+  an Error naming the field; the ledger refuses it as a 400. `registerSlipNotes(receipt => string[])`
+  adds notes to the printable slip; `receiptSlip(actor, id)` (`ledger-read`) returns the receipt and
+  its notes, and `GET /api/accounting/receipts/:id/slip` renders it as a page to print. Modules call
+  these managers, never the accounting database.
 - `listDocuments(actor, 'receipt' | 'refund', { includeVoided? })`, `getDocument(actor, id)` → receipts
   and refunds with their lines, newest first (`ledger-read`).
 - `transferBetweenFunds(actor, { fromFundId, toFundId, amount, date, memo? })` → the linked out and

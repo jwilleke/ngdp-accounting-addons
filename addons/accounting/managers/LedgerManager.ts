@@ -240,7 +240,25 @@ export interface DocumentLine {
   status: 'posted' | 'voided';
   /** A refund line: the receipt line it gives back. */
   receiptLineId: string | null;
+  /** What modules added to the line, by kind: e.g. `{ gift: { goodsValue, anonymous, … } }` (D-036). */
+  details: Record<string, Record<string, unknown>>;
 }
+
+/**
+ * A kind of detail a module adds to receipt lines (accounting-donations adds
+ * `gift`). `validate` gets what the caller sent and the line, and returns what
+ * is stored; it throws an Error naming the field when the data is wrong, which
+ * the ledger refuses as the caller's mistake (400).
+ */
+export interface LineDetailsKind {
+  validate(data: unknown, line: { amount: number; category: string; fundId: string }): Record<string, unknown>;
+}
+
+/** Notes a module adds to a receipt slip, e.g. a gift's quid pro quo disclosure: plain text, one per paragraph. */
+export type SlipNotes = (receipt: Receipt) => string[];
+
+/** A receipt as its printable slip shows it: the receipt and the notes modules add. */
+export interface ReceiptSlip { receipt: Receipt; notes: string[]; currency: string }
 
 interface DocumentBase {
   id: string;
@@ -276,8 +294,8 @@ export interface Refund extends DocumentBase {
   receiptId: string;
 }
 
-/** A line of a new receipt. Its note defaults to the receipt's reason. */
-export interface NewLine { amount: number; fundId: string; category: string; memo?: string }
+/** A line of a new receipt. Its note defaults to the receipt's reason; `details` are what modules add, by kind. */
+export interface NewLine { amount: number; fundId: string; category: string; memo?: string; details?: Record<string, unknown> }
 
 export interface NewFund {
   name: string;
@@ -651,9 +669,11 @@ const toTransaction = (r: TransactionRow): Transaction => ({
   lineOf: r.line_of ?? null, memo: r.memo, createdBy: r.created_by, createdAt: r.created_at
 });
 
-const toLine = (t: Transaction): DocumentLine => ({
-  id: t.id, amount: t.amount, fundId: t.fundId, category: t.category, memo: t.memo, status: t.status, receiptLineId: t.lineOf
+const toLine = (t: Transaction, details: Record<string, Record<string, unknown>> = {}): DocumentLine => ({
+  id: t.id, amount: t.amount, fundId: t.fundId, category: t.category, memo: t.memo, status: t.status, receiptLineId: t.lineOf, details
 });
+
+const DETAIL_KIND = /^[a-z][a-z0-9-]{0,31}$/;
 
 /** A receipt or refund holds at most this many lines. */
 const MAX_LINES = 50;
@@ -706,6 +726,8 @@ export default class LedgerManager {
   private readonly categoriesConfig: () => unknown;
   private readonly accountsConfig: () => unknown;
   private readonly bouncedChecksConfig: NonNullable<LedgerOptions['bouncedChecks']>;
+  private readonly lineKinds = new Map<string, LineDetailsKind>();
+  private readonly slipNoteSources: SlipNotes[] = [];
   private readonly formatMoney: LedgerOptions['formatMoney'];
   private readonly toCsv: LedgerOptions['toCsv'];
   private readonly dataChanged: () => Promise<void> | void;
@@ -1064,6 +1086,31 @@ export default class LedgerManager {
     }
   }
 
+  // ── What modules add (D-036) ───────────────────────────────────────────
+
+  /**
+   * Let a module add details of its own to receipt lines (accounting-donations:
+   * `gift`). Called from the module's register(); a kind is registered once.
+   */
+  registerLineDetails(kind: string, definition: LineDetailsKind): void {
+    if (!DETAIL_KIND.test(kind)) throw new Error(`accounting: line details kind '${kind}' must be lowercase letters, digits and dashes`);
+    if (this.lineKinds.has(kind)) throw new Error(`accounting: line details kind '${kind}' is already registered`);
+    this.lineKinds.set(kind, definition);
+  }
+
+  /** Let a module add notes to receipt slips (accounting-donations: the quid pro quo disclosure). */
+  registerSlipNotes(notes: SlipNotes): void {
+    this.slipNoteSources.push(notes);
+  }
+
+  /** A receipt as its printable slip shows it, with the notes modules add. Needs ledger-read. */
+  async receiptSlip(actor: LedgerActor, receiptId: string): Promise<ReceiptSlip> {
+    await this.authorize(actor, 'ledger-read');
+    const receipt = this.document(text(receiptId, 'receiptId', { required: true }) as string);
+    if (receipt.kind !== 'receipt') throw new LedgerError(400, 'only a receipt has a receipt slip');
+    return { receipt, notes: this.slipNoteSources.flatMap(source => source(receipt)), currency: this.currency };
+  }
+
   // ── Funds ──────────────────────────────────────────────────────────────
 
   async createFund(actor: LedgerActor, input: NewFund): Promise<Fund> {
@@ -1389,6 +1436,7 @@ export default class LedgerManager {
     const id = this.newId();
     // Every line is in the one account the payment landed in: the first line's, picked by method unless named.
     let accountId = input.accountId;
+    const details = new Map<string, Record<string, Record<string, unknown>>>();
     const lines = this.lineSpecs(input).map((line, i, all) => this.asLine(all.length > 1 || Array.isArray(input.lines), i, () => {
       const entry = this.newEntry(user, {
         direction: 'in', amount: line.amount, date: input.date, fundId: line.fundId, category: line.category, accountId,
@@ -1396,6 +1444,7 @@ export default class LedgerManager {
         memo: text(line.memo, 'memo', { max: 2000 }) ?? memo
       }, { sourceType: referenceType ?? 'receipt', sourceId: referenceId, documentId: id });
       accountId = entry.accountId;
+      details.set(entry.id, this.lineDetails(line.details, entry));
       return entry;
     }));
     const head = lines[0];
@@ -1404,7 +1453,7 @@ export default class LedgerManager {
       paymentMethod: head.paymentMethod, paymentMethodId: head.paymentMethodId, accountId: head.accountId,
       total: lines.reduce((t, l) => t + l.amount, 0), memo, status: 'posted', voidReason: null,
       reference: referenceType && referenceId ? { type: referenceType, id: referenceId } : null,
-      lines: lines.map(toLine), createdBy: user, createdAt: this.stamp()
+      lines: lines.map(l => toLine(l, details.get(l.id))), createdBy: user, createdAt: this.stamp()
     };
 
     await this.audit(actor, {
@@ -1416,7 +1465,12 @@ export default class LedgerManager {
     await this.commit(() => {
       const number = given ?? this.nextReceiptNumber();
       this.insertDocument({ ...receipt, number });
-      for (const line of lines) this.insert(line);
+      for (const line of lines) {
+        this.insert(line);
+        for (const [kind, data] of Object.entries(details.get(line.id) ?? {})) {
+          this.db.prepare('INSERT INTO accounting_line_details (line_id, kind, data) VALUES (?, ?, ?)').run(line.id, kind, JSON.stringify(data));
+        }
+      }
       this.history(user, 'receipt-record', 'receipt', id, null, { ...receipt, number });
     });
     return this.document(id) as Receipt;
@@ -1454,7 +1508,7 @@ export default class LedgerManager {
       kind: 'refund', id, number: null, receiptId: receipt.id, date: head.date, partyName: receipt.partyName, partyPersonId: receipt.partyPersonId,
       paymentMethod: head.paymentMethod, paymentMethodId: head.paymentMethodId, accountId: head.accountId,
       total: lines.reduce((t, l) => t + l.amount, 0), memo, status: 'posted', voidReason: null,
-      lines: lines.map(toLine), createdBy: user, createdAt: this.stamp()
+      lines: lines.map(l => toLine(l)), createdBy: user, createdAt: this.stamp()
     };
 
     await this.audit(actor, {
@@ -2016,6 +2070,25 @@ export default class LedgerManager {
     return line.amount - row.total;
   }
 
+  /** A line's module details, each checked by the module that registered its kind. */
+  private lineDetails(given: unknown, line: Transaction): Record<string, Record<string, unknown>> {
+    if (given === undefined || given === null) return {};
+    if (typeof given !== 'object' || Array.isArray(given)) throw new LedgerError(400, 'details must be an object of kinds');
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const [kind, data] of Object.entries(given as Record<string, unknown>)) {
+      const definition = this.lineKinds.get(kind);
+      if (!definition) throw new LedgerError(400, `details: no module on this site records '${kind}' details`);
+      try {
+        out[kind] = definition.validate(data, { amount: line.amount, category: line.category, fundId: line.fundId });
+      } catch (err) {
+        // A module throws a plain Error naming the field; it is the caller's mistake, refused as one.
+        if (err instanceof LedgerError) throw err;
+        throw new LedgerError(400, err instanceof Error ? err.message : `details.${kind} are not valid`);
+      }
+    }
+    return out;
+  }
+
   /** A new receipt's lines: `lines`, or the one line its amount, fund and category make. */
   private lineSpecs(input: NewReceipt): NewLine[] {
     if (input.lines === undefined) return [{ amount: input.amount as number, fundId: input.fundId as string, category: input.category as string }];
@@ -2080,8 +2153,12 @@ export default class LedgerManager {
   private findDocument(id: string): Receipt | Refund | undefined {
     const row = this.db.prepare('SELECT * FROM accounting_documents WHERE id = ?').get(id) as DocumentRow | undefined;
     if (!row) return undefined;
+    const detailRows = this.db.prepare(`SELECT d.line_id, d.kind, d.data FROM accounting_line_details d
+      JOIN accounting_transactions t ON t.id = d.line_id WHERE t.document_id = ?`).all(id) as { line_id: string; kind: string; data: string }[];
+    const byLine = new Map<string, Record<string, Record<string, unknown>>>();
+    for (const r of detailRows) byLine.set(r.line_id, { ...byLine.get(r.line_id), [r.kind]: JSON.parse(r.data) as Record<string, unknown> });
     const lines = (this.db.prepare('SELECT * FROM accounting_transactions WHERE document_id = ? ORDER BY rowid').all(id) as TransactionRow[])
-      .map(toTransaction).map(toLine);
+      .map(toTransaction).map(t => toLine(t, byLine.get(t.id)));
     const base = {
       id: row.id, number: row.number, date: row.date, partyName: row.party_name, partyPersonId: row.party_person_id,
       paymentMethod: row.payment_method, paymentMethodId: row.payment_method_id, accountId: row.account_id, total: row.total,
