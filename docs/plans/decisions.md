@@ -1242,13 +1242,33 @@ __Decision (operator, 2026-10-20):__ keep the design flexible; do not go deeper 
   they are ngdpbase users. No core change (operator, 2026-10-20): ngdpbase has no groups;
   `unit-01` is a role. Units belong to the generic `condo` add-on
   ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons/tree/main/addons/condo), The
-  Fairways its reference site): `CondoUnitManager`, keyed by the county parcel, with owners
-  `{ name, person, share }`. Each unit has a __unit type__ carrying its assessment (cents, monthly or
+  Fairways its reference site): `CondoUnitManager`, keyed by the county parcel. Every owner and
+  occupant is an ngdpbase user; the unit keeps only each owner's share, keyed by username, and
+  `await owners(ctx, id)` returns `{ username, name, email, share }` (ngdpbase-addons#11). Occupants are
+  never billed. Each unit has a __unit type__ carrying its assessment (cents, monthly or
   annual, due day), from `ngdpbase.addons.condo.unit-types` (operator, 2026-10-21). Accounting reads
-  `owners(id)` and `assessment(id)` through `getManager('CondoUnitManager')` and keeps no copy, only
+  `owners(ctx, id)` (the acting person's context, or a job's), `assessment(id)` and `lateCharges()` through `getManager('CondoUnitManager')` and keeps no copy, only
   the money side. Accounting's
   profile panel (balance, statements) uses ngdpbase's existing add-on profile hook
   (`profileSection` / `saveProfileSection`, ngdpbase #534).
+- __Its own add-on, `accounting-dues`__ (operator, 2026-10-21), like `accounting-donations`: its own
+  database, accounting's managers for the money. It reads accounts from a manager named in
+  configuration (`CondoUnitManager` for a condo), so a club can bring its own. __One invoice per
+  unit__, showing each owner's share, sent to every owner. Invoices are numbered `I-0001` onwards, one
+  sequence per site, at least four digits with no upper limit; an invoice is never edited, a mistake
+  is voided and issued again.
+- __The ledger holds only money that actually moved__ (operator's rule, 2026-10-21). Invoices live
+  in `accounting-dues`' own database, outside the ledger. A payment is an ordinary receipt whose
+  line names the invoice it pays (line details, as gifts do). A unit's balance is what was invoiced
+  less what was paid.
+- __The treasurer starts each month's billing__ (operator, 2026-10-21, for now): a Prepare This
+  Month's Invoices page shows each unit's amount owed, credit and proposed late charges; the
+  treasurer checks and issues. Later, an optional automation sends on a configured schedule (the
+  10th of the month, a day of the year), through ngdpbase's `BackgroundJobManager`.
+- __Invoices reach each owner by their communication preference__, a core user preference
+  (ngdpbase #1969). Each invoice is stored as issued with a fingerprint, and sent as a __PDF__
+  attachment once ngdpbase has a core PDF export (requested, P1, operator 2026-10-21); statements
+  follow. Until then, print-styled HTML.
 - __Charges are configuration:__ charge schedules with a category, a billing period and an amount
   rule. The billing period and the payment plan are separate (billed annually, paid monthly). Amounts
   can be fixed, each account's own, or a share of a total; one account's charge can be split by
