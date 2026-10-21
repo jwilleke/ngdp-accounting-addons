@@ -16,7 +16,7 @@
 import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { DEFAULT_QUID_PRO_QUO, giftSlipNotes, giftValidator, type GiftSettings, type ReceiptLike } from './gift.js';
 import { registerGiftForms } from './forms.js';
-import DonationManager, { type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
+import DonationManager, { type Contacts, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from './managers/migrations.js';
 import DonationsPlugin from './plugins/DonationsPlugin.js';
 
@@ -80,6 +80,11 @@ const AccountingDonationsAddon = {
     };
     const donations = new DonationManager({
       host, db, ledger, categories: settings.categories, formatMoney: settings.formatMoney,
+      // Donors are core's contacts (ngdpbase #1930): persons and organizations, through their doors.
+      contacts: () => ({
+        persons: engine.getManager<NonNullable<Contacts['persons']>>('PersonManager'),
+        organizations: engine.getManager<NonNullable<Contacts['organizations']>>('OrganizationManager')
+      }),
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
       decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
     });

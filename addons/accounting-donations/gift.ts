@@ -14,6 +14,8 @@ export interface GiftDetails {
   deductible: number;
   /** The pledge this gift pays toward, if any. */
   pledgeId: string | null;
+  /** The donor, a core contact (ngdpbase #1930), with its name kept: null for anonymous cash. */
+  donor: { type: 'person' | 'organization'; id: string; name: string } | null;
 }
 
 /** The slice of the accounting add-on's receipt this add-on reads (LedgerManager's Receipt). */
@@ -41,7 +43,7 @@ export const DEFAULT_QUID_PRO_QUO = 'Of your gift of {amount}, {deductible} is d
 export function giftValidator(settings: GiftSettings) {
   return {
     validate(data: unknown, line: { amount: number; category: string }): Record<string, unknown> {
-      const d = (data ?? {}) as { goodsValue?: unknown; goodsDescription?: unknown; anonymous?: unknown; pledgeId?: unknown };
+      const d = (data ?? {}) as { goodsValue?: unknown; goodsDescription?: unknown; anonymous?: unknown; pledgeId?: unknown; donor?: unknown };
       if (typeof data !== 'object' || Array.isArray(data)) throw new Error('details.gift must be an object');
       const allowed = settings.categories();
       if (!allowed.includes(line.category)) throw new Error(`category: ${line.category} is not a donation category (${allowed.join(', ') || 'none set'})`);
@@ -55,7 +57,12 @@ export function giftValidator(settings: GiftSettings) {
       const pledgeId = typeof d.pledgeId === 'string' && d.pledgeId !== '' ? d.pledgeId : null;
       if (d.pledgeId !== undefined && d.pledgeId !== null && d.pledgeId !== '' && typeof d.pledgeId !== 'string') throw new Error('details.gift.pledgeId must be text');
       if (pledgeId && !settings.pledgeIsOpen?.(pledgeId)) throw new Error('details.gift.pledgeId names no open pledge');
-      const gift: GiftDetails = { goodsValue, goodsDescription: description, anonymous: d.anonymous === true, deductible: line.amount - goodsValue, pledgeId };
+      const donor = d.donor === undefined || d.donor === null ? null : d.donor as { type?: unknown; id?: unknown; name?: unknown };
+      if (donor && ((donor.type !== 'person' && donor.type !== 'organization') || typeof donor.id !== 'string' || donor.id === '' || typeof donor.name !== 'string' || donor.name === '')) {
+        throw new Error('details.gift.donor must be { type: person or organization, id, name }');
+      }
+      const gift: GiftDetails = { goodsValue, goodsDescription: description, anonymous: d.anonymous === true, deductible: line.amount - goodsValue, pledgeId,
+        donor: donor ? { type: donor.type as 'person' | 'organization', id: donor.id as string, name: donor.name as string } : null };
       return gift as unknown as Record<string, unknown>;
     }
   };
