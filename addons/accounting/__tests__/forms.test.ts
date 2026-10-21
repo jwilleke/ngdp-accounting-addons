@@ -8,7 +8,7 @@ import { testLedgerParts } from './host.js';
 import { openTestLedgerDatabase } from './host.js';
 import LedgerManager, { MANUAL_PAYMENT_MEANS, type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from '../managers/migrations.js';
-import { LEDGER_FORMS, entryFromForm, fieldOf } from '../forms.js';
+import { LEDGER_FORMS, entryFromForm, fieldOf, receiptFromForm } from '../forms.js';
 
 const formById = (id: string) => LEDGER_FORMS.find(f => f.definition.id === id)!;
 
@@ -114,6 +114,20 @@ describe('the entry form', () => {
     expect(entryFromForm({ amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: '', paymentMethod: '10', memo: '' })).toEqual({
       direction: 'out', amount: 12550, date: '2026-10-10', fundId: 'f1', category: '4100', partyName: undefined, paymentMethod: '10', memo: undefined
     });
+  });
+
+  test('a receipt form submits one line per row, and a line\'s refusal lands on that row\'s field (D-033, ngdpbase #1913)', () => {
+    const receiptForm = formById('receipt-record');
+    expect(receiptForm.definition.fields.find(f => f.name === 'lines')).toMatchObject({ type: 'lines', minRows: 1, amountField: 'amount' });
+    expect(receiptFromForm({ date: '2026-10-21', partyName: 'Pat', paymentMethod: '20', memo: 'October', accountId: '',
+      lines: [{ amount: 5_000, fundId: 'f1', category: '4100', memo: '' }, { amount: 2_500, fundId: 'f2', category: '4200', memo: 'gift' }] }))
+      .toEqual({ date: '2026-10-21', accountId: undefined, partyName: 'Pat', paymentMethod: '20', paymentMethodId: undefined, memo: 'October',
+        lines: [{ amount: 5_000, fundId: 'f1', category: '4100', memo: undefined }, { amount: 2_500, fundId: 'f2', category: '4200', memo: 'gift' }] });
+    expect(fieldOf(receiptForm, 'lines[1].amount must be a whole number of cents, more than 0')).toBe('lines[1].amount');
+    expect(fieldOf(receiptForm, "lines[0]: fund 'Roof' is closed")).toBe('lines');
+    const refundForm = formById('receipt-refund');
+    expect(fieldOf(refundForm, 'lines[0].receiptLineId: this line is already fully refunded')).toBe('lines[0].receiptLineId');
+    expect(fieldOf(refundForm, 'lines: R-0012 has several lines; name the lines to refund')).toBe('receiptId');
   });
 
   test('no form keeps a submission file: the ledger is the record', () => {

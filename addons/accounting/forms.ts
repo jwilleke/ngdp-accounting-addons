@@ -36,12 +36,29 @@ interface FormsDataManagerLike {
  */
 export const REQUIRED_FORMS: ReadonlySet<string> = new Set(['ledger-entry'])
 
+/** A row of a lines field, as the forms add-on submits it: amounts already in minor units (ngdpbase #1913). */
+type Row = Record<string, unknown>;
+const rows = (v: unknown): Row[] => (Array.isArray(v) ? v.filter((r): r is Row => Boolean(r) && typeof r === 'object') : []);
+
 /**
  * A field of a forms add-on definition. A `checklist` (ngdpbase v5.21.0, #1904) submits the ticked
  * values as an array; with `totalField` it shows whether the ticked amounts match that field. That
  * line is only shown: the ledger checks the sum itself.
  */
-interface FieldDef { name: string; type: string; label: string; required?: boolean; options?: string[]; optionsSource?: string; totalField?: string }
+interface FieldDef {
+  name: string; type: string; label: string; required?: boolean; options?: string[]; optionsSource?: string; totalField?: string;
+  /** lines (ngdpbase #1913): the sub-fields of each row, how many rows, and which sub-field is summed. */
+  fields?: FieldDef[]; minRows?: number; maxRows?: number; amountField?: string;
+}
+
+/** The receipt a submitted Record a Receipt form makes: one line per row (D-033). */
+export function receiptFromForm(data: Data): Record<string, unknown> {
+  return {
+    date: data.date, accountId: str(data.accountId), partyName: data.partyName, paymentMethod: data.paymentMethod,
+    paymentMethodId: str(data.paymentMethodId), memo: data.memo,
+    lines: rows(data.lines).map(r => ({ amount: r.amount, fundId: r.fundId, category: r.category, memo: str(r.memo) }))
+  };
+}
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -148,31 +165,38 @@ export const LEDGER_FORMS: LedgerForm[] = [
     definition: form('receipt-record', 'Record a receipt',
       'Money received: cash, a check, a bank transfer. Each receipt gets a number (R-0001, …) to write on the paper slip. A mistake is voided and recorded again; money returned to the payer is a refund.',
       [{ name: 'money', type: 'section', label: 'Money' },
-        { name: 'amount', type: 'amount', label: 'Amount', required: true },
         { name: 'date', type: 'date', label: 'Date received', required: true },
-        fundsChoice('fundId', 'Fund'),
         accountChoice(),
-        { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories,kind=in)' },
+        { name: 'lines', type: 'lines', label: 'What it is for (one line per fund and category: dues and a gift on one check are two lines)', required: true,
+          minRows: 1, maxRows: 50, amountField: 'amount',
+          fields: [
+            { name: 'amount', type: 'amount', label: 'Amount', required: true },
+            { name: 'fundId', type: 'dropdown', label: 'Fund', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' },
+            { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=categories,kind=in)' },
+            { name: 'memo', type: 'text', label: 'Note (optional)', required: false }
+          ] },
         { name: 'who', type: 'section', label: 'Who, how and why' },
         { name: 'partyName', type: 'text', label: 'Received from', required: true },
         methodChoice(true),
         { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => {
-      const receipt = await receipts.recordReceipt(ctx, {
-        amount: data.amount as number, date: data.date as string, fundId: data.fundId as string, accountId: str(data.accountId), category: data.category as string,
-        partyName: data.partyName as string, paymentMethod: data.paymentMethod as string,
-        paymentMethodId: str(data.paymentMethodId), memo: data.memo as string
-      });
+      const receipt = await receipts.recordReceipt(ctx, receiptFromForm(data) as never);
       return { receiptId: receipt.id, receiptNumber: receipt.number };
     },
-    messageFields: [[/^fund '/, 'fundId'], [/^account '/, 'accountId']]
+    messageFields: [[/^account '/, 'accountId']]
   },
   {
     definition: form('receipt-refund', 'Refund a receipt',
       'Money returned to the payer: all of a receipt, or part. The receipt stays recorded; the refund is linked to it.',
       [{ name: 'receiptId', type: 'dropdown', label: 'Receipt', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=receipts)' },
-        { name: 'amount', type: 'amount', label: 'Amount (blank refunds what is left)', required: false },
+        { name: 'amount', type: 'amount', label: 'Amount, for a one-line receipt (blank refunds what is left)', required: false },
+        { name: 'lines', type: 'lines', label: 'For a receipt with several lines: which lines, and how much of each', required: false,
+          minRows: 0, maxRows: 50, amountField: 'amount',
+          fields: [
+            { name: 'receiptLineId', type: 'dropdown', label: 'Receipt line', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=refundable-lines)' },
+            { name: 'amount', type: 'amount', label: 'Amount', required: true }
+          ] },
         { name: 'date', type: 'date', label: 'Date refunded', required: true },
         methodChoice(false),
         accountChoice('Paid back from (blank: picked by method)'),
@@ -180,7 +204,9 @@ export const LEDGER_FORMS: LedgerForm[] = [
         { name: 'memo', type: 'textarea', label: 'Reason', required: true }]),
     run: async ({ receipts }, ctx, data) => ({
       refundId: (await receipts.refundReceipt(ctx, data.receiptId as string, {
-        amount: typeof data.amount === 'number' ? data.amount : undefined, date: data.date as string,
+        ...(rows(data.lines).length ? { lines: rows(data.lines).map(r => ({ receiptLineId: r.receiptLineId as string, amount: r.amount as number })) }
+          : { amount: typeof data.amount === 'number' ? data.amount : undefined }),
+        date: data.date as string,
         paymentMethod: str(data.paymentMethod), paymentMethodId: str(data.paymentMethodId), memo: data.memo as string,
         accountId: str(data.accountId)
       })).id
@@ -336,6 +362,9 @@ export const LEDGER_FORMS: LedgerForm[] = [
 
 /** The field a LedgerError is about: the form's own mapping, else the message's first word when it is a field. */
 export function fieldOf(ledgerForm: LedgerForm, message: string): string | undefined {
+  // A line's refusal goes under that row's field, the key the lines field shows it at: "lines[1].amount" (ngdpbase #1913).
+  const row = /^(lines\[\d+\])(?:\.(\w+))?/.exec(message);
+  if (row) return row[2] ? `${row[1]}.${row[2] === 'details' ? 'amount' : row[2]}` : 'lines';
   for (const [pattern, field] of ledgerForm.messageFields ?? []) if (pattern.test(message)) return field;
   const first = message.split(/[\s':]/, 1)[0];
   return ledgerForm.definition.fields.some(f => f.name === first) ? first : undefined;

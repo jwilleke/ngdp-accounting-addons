@@ -190,8 +190,6 @@ older one.
 - __Backups__ do not cover the ledger's database yet (ngdpbase #1723).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
-- Receipts and refunds have lines, but the forms record one line each until ngdpbase's lines field
-  ships (ngdpbase #1913); the API (`POST /api/accounting/receipts` with `lines`) takes several.
 - No dues, donations or events modules yet. Donations are decided: see the
   [Donations guide](donations-guide.md).
 - Changing the database key, or encrypting a ledger that was started without one, is not built (#14).
