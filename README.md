@@ -10,7 +10,7 @@ module add-ons (dues, receipts, donations, events) are not built yet.
 - The ledger's API for other add-ons: [docs/managers/LedgerManager.md](docs/managers/LedgerManager.md)
 - The add-on's code: [addons/accounting/](addons/accounting/README.md)
 
-__Requires:__ ngdpbase v5.21.0 or later.
+__Requires:__ ngdpbase v5.22.0 or later.
 
 ## Who it is for
 

@@ -24,10 +24,17 @@ type Data = Record<string, unknown>;
 interface FormsAddonLike {
   registerHandler(formId: string, handler: (submission: { data: Data }, context: { engine: unknown; req: unknown }) => Promise<HandlerResult>): void;
 }
+/** ngdpbase's forms add-on (v5.22.0, #1880, #1918): a shipped form is registered on every start. */
 interface FormsDataManagerLike {
-  getDefinition(formId: string): unknown;
-  saveDefinition(form: unknown): Promise<void>;
+  registerShippedForm(addon: string, definition: unknown, options?: { required?: boolean }): Promise<unknown>;
 }
+
+/**
+ * Forms whose older copies no longer work with the ledger: an outdated copy of
+ * one raises a critical admin notice until it is synced (#1918). Record an
+ * Entry's first copies sent an In or out choice the ledger now refuses.
+ */
+export const REQUIRED_FORMS: ReadonlySet<string> = new Set(['ledger-entry'])
 
 /**
  * A field of a forms add-on definition. A `checklist` (ngdpbase v5.21.0, #1904) submits the ticked
@@ -342,9 +349,9 @@ export async function registerForms(engine: Engine, host: AddonHost): Promise<vo
 
   for (const ledgerForm of LEDGER_FORMS) {
     const { id } = ledgerForm.definition;
-    // The forms add-on reads definitions from its data folder; ship ours there once.
-    // A site that edits one in the form builder keeps its edits.
-    if (!definitions.getDefinition(id)) await definitions.saveDefinition(ledgerForm.definition);
+    // Registered on every start (#1880): a missing form is saved; an outdated copy shows on the
+    // forms admin as an update to Sync, and a copy edited on the site is kept.
+    await definitions.registerShippedForm('accounting', ledgerForm.definition, { required: REQUIRED_FORMS.has(id) });
 
     forms.registerHandler(id, async (submission, { req }) => {
       const ledger = engine.getManager<LedgerManager>('LedgerManager');
