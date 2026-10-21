@@ -30,7 +30,7 @@
     {
       "id": "accounting-donations-treasurer",
       "name": "Treasurer keeps the donations",
-      "description": "The treasurer role records in-kind gifts and pledges. Recording gifts of money is the accounting add-on's ledger-record.",
+      "description": "The treasurer role records in-kind gifts and pledges, finds donors and adds new ones (core's contacts, ngdpbase #1930). Recording gifts of money is the accounting add-on's ledger-record.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
@@ -46,7 +46,9 @@
         }
       ],
       "actions": [
-        "donation-record"
+        "donation-record",
+        "contact-read",
+        "contact-manage"
       ]
     }
   ]

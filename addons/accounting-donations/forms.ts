@@ -32,7 +32,8 @@ export const GIFT_FORM = {
     { name: 'fundId', type: 'dropdown', label: 'Fund', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' },
     { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:DonationManager.toFormOptions(list=gift-categories)' },
     { name: 'who', type: 'section', label: 'From whom, and how' },
-    { name: 'partyName', type: 'text', label: 'Received from', required: true },
+    { name: 'donor', type: 'dropdown', label: 'Donor (a person or organization; add new ones on Add a Donor)', required: false, optionsSource: 'fetch:DonationManager.toFormOptions(list=donors)' },
+    { name: 'partyName', type: 'text', label: 'Received from (if not on the list, e.g. anonymous cash)', required: false },
     { name: 'anonymous', type: 'checkbox', label: 'Anonymous: keep the donor hidden from the board and public totals', required: false },
     { name: 'paymentMethod', type: 'dropdown', label: 'Method', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=payment-methods)' },
     { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
@@ -44,17 +45,22 @@ export const GIFT_FORM = {
   ]
 };
 
-/** The receipt a submitted gift form makes: one line, in the chosen fund and category, with its gift details. */
-export function giftFromForm(data: Data): Record<string, unknown> {
+/** A donor resolved from the donor list (DonationManager.donor). */
+export interface DonorLike { type: 'person' | 'organization'; id: string; name: string }
+
+/** The receipt a submitted gift form makes: one line, in the chosen fund and category, with its gift details and donor. */
+export function giftFromForm(data: Data, donor?: DonorLike): Record<string, unknown> {
   return {
-    date: data.date, partyName: data.partyName, paymentMethod: data.paymentMethod, paymentMethodId: str(data.paymentMethodId), memo: data.memo,
+    date: data.date, partyName: donor?.name ?? data.partyName, paymentMethod: data.paymentMethod, paymentMethodId: str(data.paymentMethodId), memo: data.memo,
+    ...(donor?.type === 'person' ? { partyPersonId: donor.id } : {}),
     lines: [{
       amount: data.amount, fundId: data.fundId, category: data.category,
       details: { gift: {
         goodsValue: typeof data.goodsValue === 'number' ? data.goodsValue : undefined,
         goodsDescription: str(data.goodsDescription),
         anonymous: data.anonymous !== undefined && data.anonymous !== '' && data.anonymous !== false,
-        pledgeId: str(data.pledgeId)
+        pledgeId: str(data.pledgeId),
+        donor: donor ?? null
       } }
     }]
   };
@@ -62,7 +68,7 @@ export function giftFromForm(data: Data): Record<string, unknown> {
 
 /** The form field a refusal is about, from the ledger's message ("lines[0].details.gift.goodsValue …"). */
 export function giftField(message: string): string | undefined {
-  const m = /(goodsValue|goodsDescription|pledgeId|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
+  const m = /(goodsValue|goodsDescription|pledgeId|donor|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
   return m?.[1];
 }
 
@@ -70,13 +76,48 @@ export function giftField(message: string): string | undefined {
 export interface DonationManagerLike {
   recordInKind(actor: ApiContext, input: Record<string, unknown>): Promise<{ id: string }>;
   createPledge(actor: ApiContext, input: Record<string, unknown>): Promise<{ id: string }>;
+  donor(actor: ApiContext, value: string, field?: string): Promise<DonorLike>;
+  addDonor(actor: ApiContext, input: Record<string, unknown>): Promise<DonorLike>;
 }
+
+/** A donor field for the in-kind and pledge forms: pick a contact, or type a name. */
+const donorFields = [
+  { name: 'donor', type: 'dropdown', label: 'Donor (a person or organization)', required: false, optionsSource: 'fetch:DonationManager.toFormOptions(list=donors)' },
+  { name: 'donorName', type: 'text', label: 'Or the donor\'s name, if not on the list', required: false }
+];
+
+/** The donor's name and contact id for an in-kind gift or pledge: the picked contact, else the typed name. */
+async function donorOf(donations: DonationManagerLike, ctx: ApiContext, data: Data): Promise<{ donorName: unknown; donorPersonId?: string }> {
+  const picked = str(data.donor) ? await donations.donor(ctx, data.donor as string) : undefined;
+  return picked ? { donorName: picked.name, donorPersonId: picked.id } : { donorName: data.donorName };
+}
+
+export const DONOR_FORM = {
+  id: 'donor-add', title: 'Add a donor', handler: 'accounting-donations', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'A donor who has no login on this site: a person or an organization. They are kept with the site\'s contacts, and a later sign-up with the same email joins them. A year-end statement needs a postal address.',
+  fields: [
+    { name: 'type', type: 'dropdown', label: 'A person or an organization', required: true, options: ['person', 'organization'] },
+    { name: 'givenName', type: 'text', label: 'Given name (a person)', required: false },
+    { name: 'familyName', type: 'text', label: 'Family name (a person)', required: false },
+    { name: 'name', type: 'text', label: 'Name (an organization)', required: false },
+    { name: 'email', type: 'text', label: 'Email', required: false },
+    { name: 'address', type: 'section', label: 'Postal address' },
+    { name: 'streetAddress', type: 'text', label: 'Street', required: false },
+    { name: 'addressLocality', type: 'text', label: 'City', required: false },
+    { name: 'addressRegion', type: 'text', label: 'State', required: false },
+    { name: 'postalCode', type: 'text', label: 'ZIP code', required: false },
+    { name: 'addressCountry', type: 'text', label: 'Country', required: false },
+    { name: 'affiliation', type: 'section', label: 'Gives on behalf of an organization (a person, optional)' },
+    { name: 'organization', type: 'dropdown', label: 'Organization', required: false, optionsSource: 'fetch:DonationManager.toFormOptions(list=organizations)' },
+    { name: 'role', type: 'text', label: 'Role there (e.g. Treasurer)', required: false }
+  ]
+};
 
 export const INKIND_FORM = {
   id: 'inkind-record', title: 'Record an in-kind gift', handler: 'accounting-donations', store: false, proxySubmission: false, notifyRole: 'admin',
   description: 'A gift of goods or services rather than money. Describe it; do not value it: under IRS rules the organization does not put a value on a non-cash gift. It does not touch fund balances.',
   fields: [
-    { name: 'donorName', type: 'text', label: 'Donor', required: true },
+    ...donorFields,
     { name: 'date', type: 'date', label: 'Date received', required: true },
     { name: 'description', type: 'textarea', label: 'What was given (e.g. Dell laptop, used)', required: true }
   ]
@@ -86,7 +127,7 @@ export const PLEDGE_FORM = {
   id: 'pledge-create', title: 'Record a pledge', handler: 'accounting-donations', store: false, proxySubmission: false, notifyRole: 'admin',
   description: 'A promise to give that is not money yet. It stays outside the ledger; gifts that pay toward it name it on Record a Gift.',
   fields: [
-    { name: 'donorName', type: 'text', label: 'Donor', required: true },
+    ...donorFields,
     { name: 'amount', type: 'amount', label: 'Amount pledged', required: true },
     { name: 'fundId', type: 'dropdown', label: 'Fund', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' },
     { name: 'startDate', type: 'date', label: 'From', required: true },
@@ -102,17 +143,28 @@ export async function registerGiftForms(engine: Engine, host: AddonHost): Promis
   if (!forms || !definitions) { host.logger.info('[accounting-donations] Forms add-on not enabled: the gift screen is off'); return; }
   await definitions.registerShippedForm('accounting-donations', GIFT_FORM);
   for (const [definition, run] of [
-    [INKIND_FORM, (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.recordInKind(ctx, { donorName: data.donorName, date: data.date, description: data.description })],
-    [PLEDGE_FORM, (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.createPledge(ctx, {
-      donorName: data.donorName, amount: data.amount, fundId: data.fundId, startDate: data.startDate, endDate: str(data.endDate), schedule: data.schedule, memo: str(data.memo)
-    })]
+    [INKIND_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.recordInKind(ctx, { ...await donorOf(d, ctx, data), date: data.date, description: data.description })],
+    [PLEDGE_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.createPledge(ctx, {
+      ...await donorOf(d, ctx, data), amount: data.amount, fundId: data.fundId, startDate: data.startDate, endDate: str(data.endDate), schedule: data.schedule, memo: str(data.memo)
+    })],
+    [DONOR_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.addDonor(ctx, data)]
   ] as const) {
     await definitions.registerShippedForm('accounting-donations', definition);
     forms.registerHandler(definition.id, async (submission, { req }) => {
       const donations = engine.getManager<DonationManagerLike>('DonationManager');
       if (!donations) return { ok: false, error: 'Donations are not running on this site' };
       try {
-        return { ok: true, id: (await run(donations, host.ApiContext.from(req as never, engine as never), submission.data)).id };
+        const ctx = host.ApiContext.from(req as never, engine as never);
+        try {
+          return { ok: true, id: (await run(donations, ctx, submission.data)).id };
+        } catch (err) {
+          // Core's contact door said no: its own refusal (401, 403 or step-up), never built here.
+          if ((err as { name?: string }).name === 'ContactRefusedError') {
+            const refused = err as unknown as { permission: string; decision: never };
+            await ctx.enforceDeny(refused.permission, refused.decision);
+          }
+          throw err;
+        }
       } catch (err) {
         if ((err as { name?: string }).name !== 'LedgerError') throw err;
         const message = (err as Error).message;
@@ -123,10 +175,21 @@ export async function registerGiftForms(engine: Engine, host: AddonHost): Promis
   }
   forms.registerHandler(GIFT_FORM.id, async (submission, { req }) => {
     const receipts = engine.getManager<ReceiptManagerLike>('ReceiptManager');
-    if (!receipts) return { ok: false, error: 'The accounting add-on is not running on this site' };
+    const donations = engine.getManager<DonationManagerLike>('DonationManager');
+    if (!receipts || !donations) return { ok: false, error: 'The accounting add-on is not running on this site' };
     try {
       const ctx = host.ApiContext.from(req as never, engine as never);
-      const receipt = await receipts.recordReceipt(ctx, giftFromForm(submission.data));
+      let donor: DonorLike | undefined;
+      try {
+        donor = str(submission.data.donor) ? await donations.donor(ctx, submission.data.donor as string) : undefined;
+      } catch (err) {
+        if ((err as { name?: string }).name === 'ContactRefusedError') {
+          const refused = err as unknown as { permission: string; decision: never };
+          await ctx.enforceDeny(refused.permission, refused.decision);
+        }
+        throw err;
+      }
+      const receipt = await receipts.recordReceipt(ctx, giftFromForm(submission.data, donor));
       return { ok: true, receiptId: receipt.id, receiptNumber: receipt.number, slip: `/api/accounting/receipts/${receipt.id}/slip` };
     } catch (err) {
       // The ledger's own refusals (LedgerError) are shown on the field; a permission refusal is the forms add-on's to answer.

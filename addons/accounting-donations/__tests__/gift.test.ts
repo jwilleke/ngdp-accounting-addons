@@ -41,8 +41,8 @@ describe('gifts', () => {
   test('a gift is a receipt line in a donation category, its deductible amount worked out', async () => {
     const r = await gift(10_000, { goodsValue: 4_000, goodsDescription: 'dinner for one' });
     expect(r.number).toBe('R-0001');
-    expect(r.lines[0].details.gift).toEqual({ goodsValue: 4_000, goodsDescription: 'dinner for one', anonymous: false, deductible: 6_000, pledgeId: null });
-    expect((await gift(2_500, { anonymous: true })).lines[0].details.gift).toEqual({ goodsValue: 0, goodsDescription: null, anonymous: true, deductible: 2_500, pledgeId: null });
+    expect(r.lines[0].details.gift).toEqual({ goodsValue: 4_000, goodsDescription: 'dinner for one', anonymous: false, deductible: 6_000, pledgeId: null, donor: null });
+    expect((await gift(2_500, { anonymous: true })).lines[0].details.gift).toEqual({ goodsValue: 0, goodsDescription: null, anonymous: true, deductible: 2_500, pledgeId: null, donor: null });
   });
 
   test('what is wrong with a gift is refused, naming the field', async () => {

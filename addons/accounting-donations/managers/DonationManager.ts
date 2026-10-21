@@ -8,7 +8,7 @@
  * record and wait for it (on-failure: refuse), then change the rows.
  */
 import { randomUUID } from 'node:crypto';
-import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, Decision, OrganizationManager, PersonManager } from '@jwilleke/ngdpbase-types';
 
 export type DonationsHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
 
@@ -62,6 +62,24 @@ export interface Pledge {
   createdBy: string; createdAt: string;
 }
 
+/**
+ * A donor: an ngdpbase contact, a person or an organization (ngdpbase #1930). The
+ * `@id` is kept with the name, because a deleted account deletes its person.
+ */
+export interface Donor { type: 'person' | 'organization'; id: string; name: string }
+
+/** Core's contact doors (ngdpbase v5.22.0). Every call takes the caller's context first. */
+export interface Contacts { persons?: PersonManager | null; organizations?: OrganizationManager | null }
+
+/** A new donor: a person (given and family name) or an organization (name), with what a statement needs. */
+export interface NewDonor {
+  type: 'person' | 'organization';
+  name?: string; givenName?: string; familyName?: string; email?: string;
+  streetAddress?: string; addressLocality?: string; addressRegion?: string; postalCode?: string; addressCountry?: string;
+  /** A person's organization, as `organization|<@id>` from the donor list, and their role there. */
+  organization?: string; role?: string;
+}
+
 export interface DonationOptions {
   host: DonationsHost;
   db: DonationsDb;
@@ -71,6 +89,8 @@ export interface DonationOptions {
   /** Chart codes a gift may use (configuration). */
   categories: () => string[];
   formatMoney: (minor: number) => string;
+  /** Core's contact doors; looked up when used, so they may arrive after this manager. */
+  contacts?: () => Contacts;
   now?: () => Date;
   newId?: () => string;
 }
@@ -208,6 +228,62 @@ export default class DonationManager {
     return row?.status === 'open';
   }
 
+  // ── Donors: core's contacts (ngdpbase #1930) ───────────────────────────
+
+  /**
+   * A donor from a donor-list value (`person|<@id>` or `organization|<@id>`),
+   * read through core's door with the caller's context (contact-read). A
+   * contact that no longer exists is refused, naming the field.
+   */
+  async donor(actor: DonationsActor, value: string, field = 'donor'): Promise<Donor> {
+    const [type, ...rest] = String(value).split('|');
+    const id = rest.join('|');
+    if ((type !== 'person' && type !== 'organization') || !id) throw new DonationError(400, `${field}: not a donor from the list`);
+    const contacts = this.options.contacts?.() ?? {};
+    const door = type === 'person' ? contacts.persons : contacts.organizations;
+    if (!door) throw new DonationError(409, `${field}: ngdpbase's contacts are not available on this site`);
+    const contact = await door.get(actor.subject as never, id) as { name?: string; email?: string; givenName?: string; familyName?: string } | null;
+    if (!contact) throw new DonationError(404, `${field}: this donor no longer exists`);
+    return { type, id, name: donorName(contact) };
+  }
+
+  /**
+   * Add a donor who has no account: a person or an organization, created
+   * through core's door (contact-manage, audited by core). Returns it as a
+   * donor-list value's parts.
+   */
+  async addDonor(actor: DonationsActor, input: NewDonor): Promise<Donor> {
+    const contacts = this.options.contacts?.() ?? {};
+    const email = text(input.email, 'email', { max: 200 });
+    const address = ['streetAddress', 'addressLocality', 'addressRegion', 'postalCode', 'addressCountry'].some(k => text((input as unknown as Record<string, unknown>)[k], k, { max: 200 }))
+      ? { '@type': 'PostalAddress' as const, streetAddress: text(input.streetAddress, 'streetAddress', { max: 200 }) ?? null,
+          addressLocality: text(input.addressLocality, 'addressLocality', { max: 100 }) ?? null, addressRegion: text(input.addressRegion, 'addressRegion', { max: 100 }) ?? null,
+          postalCode: text(input.postalCode, 'postalCode', { max: 20 }) ?? null, addressCountry: text(input.addressCountry, 'addressCountry', { max: 60 }) ?? null }
+      : undefined;
+    if (input.type === 'organization') {
+      if (!contacts.organizations) throw new DonationError(409, "ngdpbase's contacts are not available on this site");
+      const name = text(input.name, 'name', { required: true, max: 200 }) as string;
+      const org = await contacts.organizations.create(actor.subject as never, { name, ...(email ? { email } : {}), ...(address ? { address } : {}) } as never);
+      return { type: 'organization', id: org['@id'], name };
+    }
+    if (input.type !== 'person') throw new DonationError(400, 'type must be person or organization');
+    if (!contacts.persons) throw new DonationError(409, "ngdpbase's contacts are not available on this site");
+    const givenName = text(input.givenName, 'givenName', { max: 100 });
+    const familyName = text(input.familyName, 'familyName', { required: true, max: 100 }) as string;
+    const name = [givenName, familyName].filter(Boolean).join(' ');
+    const organization = text(input.organization, 'organization', { max: 300 });
+    let affiliation: { organization: string; role?: string }[] | undefined;
+    if (organization) {
+      const org = await this.donor(actor, organization, 'organization');
+      if (org.type !== 'organization') throw new DonationError(400, 'organization: choose an organization');
+      affiliation = [{ organization: org.id, ...(text(input.role, 'role', { max: 100 }) ? { role: text(input.role, 'role', { max: 100 }) } : {}) }];
+    }
+    const person = await contacts.persons.create(actor.subject as never, {
+      name, givenName, familyName, ...(email ? { email } : {}), ...(address ? { address } : {}), ...(affiliation ? { affiliation } : {})
+    } as never);
+    return { type: 'person', id: person['@id'], name };
+  }
+
   // ── Form choices ───────────────────────────────────────────────────────
 
   /**
@@ -215,6 +291,21 @@ export default class DonationManager {
    *   open-pledges     open pledges, with what is left   ledger-read
    */
   async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<{ value: string; label: string; amount?: number }[]> {
+    if (options.list === 'donors' || options.list === 'organizations') {
+      // Core's doors decide with the viewer's own context (contact-read); a refusal is no choices.
+      const contacts = this.options.contacts?.() ?? {};
+      try {
+        const orgs = (await contacts.organizations?.list(viewer as never)) ?? [];
+        const orgChoices = orgs.map(o => ({ value: `organization|${o['@id']}`, label: `${o.name ?? o['@id']} (organization)` }));
+        if (options.list === 'organizations') return orgChoices.sort((a, b) => a.label.localeCompare(b.label));
+        const people = (await contacts.persons?.list(viewer as never)) ?? [];
+        return [...people.map(p => ({ value: `person|${p['@id']}`, label: [donorName(p), p.email].filter(Boolean).join(' · ') })), ...orgChoices]
+          .sort((a, b) => a.label.localeCompare(b.label));
+      } catch (err) {
+        if ((err as Error).name === 'ContactRefusedError') return [];
+        throw err;
+      }
+    }
     if (options.list === 'gift-categories') {
       const allowed = new Set(this.options.categories());
       return (await this.options.ledger.toFormOptions({ list: 'categories', kind: 'in' }, viewer)).filter(c => allowed.has(c.value));
@@ -272,6 +363,14 @@ function viewerActor(viewer: unknown): DonationsActor {
     actingUsername: () => (typeof username === 'string' && username !== '' ? username : 'anonymous'),
     enforceDeny: async (permission: string) => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
   };
+}
+
+/** A contact's name for a gift record: its name, else given and family name, else its email. */
+function donorName(c: { name?: unknown; givenName?: unknown; familyName?: unknown; email?: unknown; '@id'?: unknown }): string {
+  if (typeof c.name === 'string' && c.name.trim() !== '') return c.name.trim();
+  const parts = [c.givenName, c.familyName].filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+  if (parts.length) return parts.join(' ');
+  return typeof c.email === 'string' ? c.email : String(c['@id'] ?? 'unknown');
 }
 
 const toInKind = (r: InKindRow): InKindGift => ({
