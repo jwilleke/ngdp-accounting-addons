@@ -11,9 +11,9 @@ the receipt slip's quid pro quo disclosure, in-kind gifts and pledges. Giving st
   (`LedgerManager.registerLineDetails`, `registerSlipNotes`, `ReceiptManager.recordReceipt`), never its
   database (operator, 2026-10-20). In-kind gifts and pledges are in this add-on's own database,
   declared as `ngdpbase.addons.accounting-donations.database`.
-- __Permissions:__ `donation-record` (in-kind gifts, pledges), its own; and core's `contact-read` (the
-  donor list) and `contact-manage` (Add a Donor). The add-on's policy grants all three to the
-  treasurer role. Donors are ngdpbase contacts (persons and organizations, ngdpbase #1930); a gift
+- __Permissions:__ its own `donation-record` (in-kind gifts, pledges) and `statement-issue` (issue,
+  reissue and email giving statements); and core's `contact-read` (the donor list) and
+  `contact-manage` (Add a Donor). The add-on's policy grants all four to the treasurer role. Donors are ngdpbase contacts (persons and organizations, ngdpbase #1930); a gift
   keeps the donor's `@id` and name.
 
 How donations work, and what the IRS asks for: [docs/guides/donations-guide.md](../../docs/guides/donations-guide.md),

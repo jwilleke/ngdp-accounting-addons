@@ -284,6 +284,8 @@ interface DocumentBase {
 export interface Receipt extends DocumentBase {
   kind: 'receipt';
   provider: string | null;
+  /** The bank returned it (D-032): it stays posted, but its money came back out. */
+  bounced: boolean;
   /** What it pays for, once dues, donations and events exist. */
   reference: { type: string; id: string } | null;
 }
@@ -1566,7 +1568,7 @@ export default class LedgerManager {
     }));
     const head = lines[0];
     const receipt: Receipt = {
-      kind: 'receipt', id, number: given ?? null, provider, date: head.date, partyName, partyPersonId: head.partyPersonId,
+      kind: 'receipt', id, number: given ?? null, provider, bounced: false, date: head.date, partyName, partyPersonId: head.partyPersonId,
       paymentMethod: head.paymentMethod, paymentMethodId: head.paymentMethodId, accountId: head.accountId,
       total: lines.reduce((t, l) => t + l.amount, 0), memo, status: 'posted', voidReason: null,
       reference: referenceType && referenceId ? { type: referenceType, id: referenceId } : null,
@@ -2319,7 +2321,8 @@ export default class LedgerManager {
       memo: row.memo, status: row.status, voidReason: row.void_reason, lines, createdBy: row.created_by, createdAt: row.created_at
     };
     return row.kind === 'receipt'
-      ? { ...base, kind: 'receipt', provider: row.provider, reference: row.source_type && row.source_id ? { type: row.source_type, id: row.source_id } : null }
+      ? { ...base, kind: 'receipt', provider: row.provider, reference: row.source_type && row.source_id ? { type: row.source_type, id: row.source_id } : null,
+          bounced: Boolean(this.db.prepare('SELECT 1 FROM accounting_bounces WHERE receipt_id = ?').get(row.id)) }
       : { ...base, kind: 'refund', receiptId: row.source_id as string };
   }
 

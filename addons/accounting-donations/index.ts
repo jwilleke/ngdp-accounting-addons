@@ -19,10 +19,14 @@ import { registerGiftForms } from './forms.js';
 import DonationManager, { type Contacts, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from './managers/migrations.js';
 import DonationsPlugin from './plugins/DonationsPlugin.js';
+import donationRoutes from './routes/api.js';
+import { DEFAULT_WORDING } from './managers/statement.js';
 
 interface Engine {
   getManager<T = unknown>(name: string): T | null | undefined;
   registerManager(name: string, manager: unknown): void;
+  app?: { use(route: string, handler: unknown): void };
+  createRouter(): import('express').Router;
 }
 
 /** The slice of the accounting add-on's LedgerManager this add-on calls. */
@@ -81,6 +85,18 @@ const AccountingDonationsAddon = {
     const donations = new DonationManager({
       host, db, ledger, categories: settings.categories, formatMoney: settings.formatMoney,
       // Donors are core's contacts (ngdpbase #1930): persons and organizations, through their doors.
+      wording: () => {
+        const org = (setting('organization', {}) ?? {}) as Record<string, unknown>;
+        const words = (setting('wording', {}) ?? {}) as Record<string, unknown>;
+        const pick = (key: string, fallback: string) => (typeof words[key] === 'string' && words[key] !== '' ? words[key] as string : fallback);
+        const str = (v: unknown) => (typeof v === 'string' ? v : '');
+        return {
+          organization: { name: str(org.name) || 'the organization', taxId: str(org.taxId), address: str(org.address) },
+          intro: pick('statement-intro', DEFAULT_WORDING.intro), noGoods: pick('no-goods', DEFAULT_WORDING.noGoods),
+          goodsNote: pick('goods-note', DEFAULT_WORDING.goodsNote), taxIdNote: pick('tax-id', DEFAULT_WORDING.taxIdNote)
+        };
+      },
+      email: () => engine.getManager<{ sendTo(to: string, subject: string, text: string, html?: string): Promise<void> }>('EmailManager'),
       contacts: () => ({
         persons: engine.getManager<NonNullable<Contacts['persons']>>('PersonManager'),
         organizations: engine.getManager<NonNullable<Contacts['organizations']>>('OrganizationManager')
@@ -92,6 +108,7 @@ const AccountingDonationsAddon = {
     ledger.registerSlipNotes(giftSlipNotes(settings));
     engine.registerManager('DonationManager', donations);
     await engine.getManager<{ registerPlugin(name: string, plugin: unknown): Promise<void> }>('PluginManager')?.registerPlugin('Donations', DonationsPlugin);
+    engine.app?.use('/api/accounting-donations', donationRoutes(engine, host));
     await registerGiftForms(engine, host);
     unavailable = null;
     host.logger.info('[accounting-donations] Gifts ready');

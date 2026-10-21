@@ -19,7 +19,10 @@ donations work is made here first, and the code follows it.
 __Status:__ the `accounting-donations` add-on records gifts: a receipt line in a donation category
 with its gift details, and the receipt slip's quid pro quo disclosure (Record a Gift); in-kind gifts
 and pledges (In-kind Gifts, Pledges), with a gift able to pay toward a pledge; donors as ngdpbase
-contacts, picked from a list or added on Add a Donor. Still to build: year-end statements. The add-on calls the `accounting` add-on's managers and never its database; in-kind gifts
+contacts, picked from a list or added on Add a Donor; year-end giving statements (Giving Statements,
+Issue Statements, Reissue a Statement), stored exactly as issued and emailed or printed. Set the
+organization's name, tax ID and address (`ngdpbase.addons.accounting-donations.organization`) and
+check the wording (`.wording`) with your accountant before the first statements go out. The add-on calls the `accounting` add-on's managers and never its database; in-kind gifts
 and pledges are in a database of its own.
 
 ## A donation is a receipt line

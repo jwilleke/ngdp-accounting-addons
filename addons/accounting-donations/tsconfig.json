@@ -31,7 +31,8 @@
     "gift.ts",
     "forms.ts",
     "managers/**/*.ts",
-    "plugins/**/*.ts"
+    "plugins/**/*.ts",
+    "routes/**/*.ts"
   ],
   "exclude": [
     "node_modules",

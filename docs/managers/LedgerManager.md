@@ -145,6 +145,7 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   Anything dated on or before the lock is refused: posting, receipts, refunds, transfers, deposits,
   bounces, voids, undoing a deposit, and fund and account openings. `periodEnds(settings, after,
   until)` lists period ends.
+- A `Receipt` says `bounced: true` once its check has bounced (it stays posted).
 - `listDocuments(actor, 'receipt' | 'refund', { includeVoided? })`, `getDocument(actor, id)` → receipts
   and refunds with their lines, newest first (`ledger-read`).
 - `transferBetweenFunds(actor, { fromFundId, toFundId, amount, date, memo? })` → the linked out and

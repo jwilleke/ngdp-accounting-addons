@@ -67,4 +67,48 @@ const INKIND_AND_PLEDGES: DonationsMigration = {
   }
 };
 
-export const DONATIONS_MIGRATIONS: DonationsMigration[] = [INKIND_AND_PLEDGES];
+const STATEMENTS: DonationsMigration = {
+  id: '20261021120000',
+  description: 'issued year-end giving statements, kept exactly as sent (D-036)',
+  up: (db) => {
+    db.exec(`
+      -- A year-end giving statement as issued: its page, fingerprint and totals, never changed. A
+      -- correction is a new statement; the one it replaces is marked superseded, with the reason.
+      CREATE TABLE accounting_donations_statements (
+        id              TEXT PRIMARY KEY,
+        donor_type      TEXT NOT NULL CHECK (donor_type IN ('person', 'organization')),
+        donor_id        TEXT NOT NULL,
+        donor_name      TEXT NOT NULL,
+        year            INTEGER NOT NULL,
+        html            TEXT NOT NULL,
+        sha256          TEXT NOT NULL,
+        total           INTEGER NOT NULL,
+        deductible      INTEGER NOT NULL,
+        gift_count      INTEGER NOT NULL,
+        status          TEXT NOT NULL CHECK (status IN ('issued', 'superseded')),
+        superseded_by   TEXT,
+        reissue_reason  TEXT,
+        emailed_to      TEXT,
+        emailed_at      TEXT,
+        issued_by       TEXT NOT NULL,
+        issued_at       TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX accounting_donations_statements_current ON accounting_donations_statements (donor_id, year) WHERE status = 'issued';
+      CREATE TRIGGER accounting_donations_statements_no_delete BEFORE DELETE ON accounting_donations_statements
+      BEGIN SELECT RAISE(ABORT, 'donations: an issued statement is never deleted'); END;
+      -- Only two changes: superseded once (with what replaces it and why), and the email recorded once.
+      CREATE TRIGGER accounting_donations_statements_fixed BEFORE UPDATE ON accounting_donations_statements
+      WHEN NEW.id IS NOT OLD.id OR NEW.donor_type IS NOT OLD.donor_type OR NEW.donor_id IS NOT OLD.donor_id
+        OR NEW.donor_name IS NOT OLD.donor_name OR NEW.year IS NOT OLD.year OR NEW.html IS NOT OLD.html
+        OR NEW.sha256 IS NOT OLD.sha256 OR NEW.total IS NOT OLD.total OR NEW.deductible IS NOT OLD.deductible
+        OR NEW.gift_count IS NOT OLD.gift_count OR NEW.issued_by IS NOT OLD.issued_by OR NEW.issued_at IS NOT OLD.issued_at
+        OR (NEW.status IS NOT OLD.status AND NOT (OLD.status = 'issued' AND NEW.status = 'superseded'
+              AND NEW.superseded_by IS NOT NULL AND NEW.reissue_reason IS NOT NULL AND NEW.reissue_reason <> ''))
+        OR (NEW.superseded_by IS NOT OLD.superseded_by AND NEW.status = OLD.status)
+        OR (NEW.emailed_at IS NOT OLD.emailed_at AND OLD.emailed_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'donations: an issued statement never changes; reissue it'); END;
+    `);
+  }
+};
+
+export const DONATIONS_MIGRATIONS: DonationsMigration[] = [INKIND_AND_PLEDGES, STATEMENTS];

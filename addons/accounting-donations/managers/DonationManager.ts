@@ -7,7 +7,8 @@
  * Every write: ask the decision point for `donation-record`, write the audit
  * record and wait for it (on-failure: refuse), then change the rows.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { giftsFor, renderStatement, type StatementContent, type StatementWording } from './statement.js';
 import type { ActorContext, AddonHost, Decision, OrganizationManager, PersonManager } from '@jwilleke/ngdpbase-types';
 
 export type DonationsHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
@@ -29,9 +30,9 @@ export interface DonationsDb {
 export interface LedgerLike {
   currencyCode(): string;
   listFunds(actor: DonationsActor): Promise<{ id: string; name: string; active: boolean }[]>;
-  listDocuments(actor: DonationsActor, kind: 'receipt', filter?: { includeVoided?: boolean }): Promise<{
-    id: string; number: string | null; date: string; status: 'posted' | 'voided';
-    lines: { amount: number; status: 'posted' | 'voided'; details: Record<string, Record<string, unknown>> }[];
+  listDocuments(actor: DonationsActor, kind: 'receipt' | 'refund', filter?: { includeVoided?: boolean }): Promise<{
+    id: string; number: string | null; date: string; status: 'posted' | 'voided'; bounced?: boolean;
+    lines: { id: string; amount: number; status: 'posted' | 'voided'; receiptLineId: string | null; details: Record<string, Record<string, unknown>> }[];
   }[]>;
   toFormOptions(options: Record<string, string>, viewer?: unknown): Promise<{ value: string; label: string }[]>;
 }
@@ -80,6 +81,19 @@ export interface NewDonor {
   organization?: string; role?: string;
 }
 
+/** One donor's year, for the Giving Statements page. */
+export interface DonorYear {
+  donor: Donor; total: number; deductible: number; giftCount: number; inKindCount: number;
+  /** The standing statement for the year, if issued; needsReissue when the gifts have changed since. */
+  statement: { id: string; issuedAt: string; emailedTo: string | null; needsReissue: boolean } | null;
+}
+
+export interface IssuedStatement {
+  id: string; donor: Donor; year: number; html: string; sha256: string; total: number; deductible: number; giftCount: number;
+  status: 'issued' | 'superseded'; supersededBy: string | null; reissueReason: string | null;
+  emailedTo: string | null; emailedAt: string | null; issuedBy: string; issuedAt: string;
+}
+
 export interface DonationOptions {
   host: DonationsHost;
   db: DonationsDb;
@@ -91,6 +105,10 @@ export interface DonationOptions {
   formatMoney: (minor: number) => string;
   /** Core's contact doors; looked up when used, so they may arrive after this manager. */
   contacts?: () => Contacts;
+  /** The statement's organization and wording (configuration). */
+  wording?: () => StatementWording;
+  /** ngdpbase's EmailManager, to send statements. */
+  email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
   now?: () => Date;
   newId?: () => string;
 }
@@ -228,6 +246,96 @@ export default class DonationManager {
     return row?.status === 'open';
   }
 
+  // ── Year-end giving statements (D-036) ──────────────────────────────────
+
+  /** Each donor with gifts or in-kind gifts in a year, their totals and their statement's standing. Needs ledger-read. */
+  async yearOverview(actor: DonationsActor, year: number): Promise<DonorYear[]> {
+    await this.authorize(actor, 'ledger-read');
+    const y = statementYear(year);
+    const out: DonorYear[] = [];
+    for (const donor of (await this.donorsOfYear(actor, y)).values()) {
+      const content = await this.contentFor(actor, donor, y);
+      const row = this.currentStatement(donor.id, y);
+      out.push({
+        donor, total: content.total, deductible: content.deductible, giftCount: content.gifts.length, inKindCount: content.inKind.length,
+        statement: row ? { id: row.id, issuedAt: row.issued_at, emailedTo: row.emailed_to, needsReissue: changed(row, content) } : null
+      });
+    }
+    return out.sort((a, b) => a.donor.name.localeCompare(b.donor.name));
+  }
+
+  /** What a donor's statement would say now, without issuing it. Needs ledger-read. */
+  async previewStatement(actor: DonationsActor, donorValue: string, year: number): Promise<string> {
+    await this.authorize(actor, 'ledger-read');
+    const content = await this.contentFor(actor, await this.donor(actor, donorValue), statementYear(year));
+    return renderStatement(content, this.wording(), this.options.formatMoney, this.stamp().slice(0, 10));
+  }
+
+  /**
+   * Issue the year's statements: to one donor, or to every donor with gifts in
+   * the year who has none yet. Each is stored exactly as issued, with its
+   * fingerprint. With `email`, each is sent to the donor's email on file.
+   */
+  async issueStatements(actor: DonationsActor, input: { year: number; donor?: string; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[] }> {
+    await this.authorize(actor, 'statement-issue');
+    const year = statementYear(input.year);
+    const donors = input.donor ? [await this.donor(actor, input.donor)] : [...(await this.donorsOfYear(actor, year)).values()];
+    const pending: { donor: Donor; content: StatementContent }[] = [];
+    for (const donor of donors) {
+      if (this.currentStatement(donor.id, year)) {
+        if (input.donor) throw new DonationError(409, `donor: ${donor.name} already has a ${year} statement; reissue it instead`);
+        continue;
+      }
+      const content = await this.contentFor(actor, donor, year);
+      if (content.gifts.length || content.inKind.length) pending.push({ donor, content });
+    }
+    await this.audit(actor, { eventType: 'statement-issue', action: 'statement-issue', severity: 'high', resource: `statements:${year}`, resourceType: 'donations-statement',
+      metadata: { year, count: pending.length, donors: pending.map(p => p.donor.id), email: input.email === true } });
+    let emailed = 0;
+    const notEmailed: string[] = [];
+    for (const { donor, content } of pending) {
+      const id = this.insertStatement(actor, content);
+      if (input.email) {
+        const sent = await this.sendStatement(actor, id);
+        if (sent) emailed++; else notEmailed.push(donor.name);
+      }
+    }
+    return { issued: pending.length, emailed, notEmailed };
+  }
+
+  /** Reissue a statement, with a reason: a new one is stored, and the old one is marked superseded by it. */
+  async reissueStatement(actor: DonationsActor, statementId: string, reason: string, options: { email?: boolean } = {}): Promise<IssuedStatement> {
+    await this.authorize(actor, 'statement-issue');
+    const why = text(reason, 'reason', { required: true }) as string;
+    const old = this.statementRow(text(statementId, 'statementId', { required: true }) as string);
+    if (old.status !== 'issued') throw new DonationError(409, 'statementId: this statement was already reissued');
+    const donor: Donor = { type: old.donor_type, id: old.donor_id, name: old.donor_name };
+    const fresh = await this.contentFor(actor, { ...donor, name: (await this.donorOrNull(actor, donor)) ?? donor.name }, old.year);
+    await this.audit(actor, { eventType: 'statement-issue', action: 'statement-reissue', severity: 'high', resource: old.id, resourceType: 'donations-statement', reason: why,
+      metadata: { year: old.year, donor: donor.id, totalBefore: old.total, totalAfter: fresh.total } });
+    const id = this.newId();
+    this.options.db.transaction(() => {
+      this.options.db.prepare("UPDATE accounting_donations_statements SET status = 'superseded', superseded_by = ?, reissue_reason = ? WHERE id = ? AND status = 'issued'").run(id, why, old.id);
+      this.insertStatement(actor, fresh, id);
+    })();
+    if (options.email) await this.sendStatement(actor, id);
+    return this.getStatementRow(id);
+  }
+
+  /** An issued statement, exactly as stored. Needs ledger-read. */
+  async getStatement(actor: DonationsActor, statementId: string): Promise<IssuedStatement> {
+    await this.authorize(actor, 'ledger-read');
+    return this.getStatementRow(statementId);
+  }
+
+  /** Issued statements, newest first; superseded ones only when asked. Needs ledger-read. */
+  async listStatements(actor: DonationsActor, filter: { year?: number; includeSuperseded?: boolean } = {}): Promise<IssuedStatement[]> {
+    await this.authorize(actor, 'ledger-read');
+    const where = [filter.includeSuperseded ? '' : "status = 'issued'", filter.year ? 'year = ?' : ''].filter(Boolean);
+    return (this.options.db.prepare(`SELECT id FROM accounting_donations_statements ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY issued_at DESC`)
+      .all(...(filter.year ? [statementYear(filter.year)] : [])) as { id: string }[]).map(r => this.getStatementRow(r.id));
+  }
+
   // ── Donors: core's contacts (ngdpbase #1930) ───────────────────────────
 
   /**
@@ -310,6 +418,18 @@ export default class DonationManager {
       const allowed = new Set(this.options.categories());
       return (await this.options.ledger.toFormOptions({ list: 'categories', kind: 'in' }, viewer)).filter(c => allowed.has(c.value));
     }
+    if (options.list === 'statement-years') {
+      const year = Number(this.stamp().slice(0, 4));
+      return [year - 1, year, year - 2].map(y => ({ value: String(y), label: String(y) }));
+    }
+    if (options.list === 'statements') {
+      try {
+        const actor = viewerActor(viewer);
+        return (await this.listStatements(actor)).slice(0, 200).map(st => ({ value: st.id, label: `${st.donor.name} · ${st.year} · issued ${st.issuedAt.slice(0, 10)}` }));
+      } catch {
+        return [];
+      }
+    }
     if (options.list === 'open-pledges') {
       try {
         return (await this.listPledges(viewerActor(viewer))).map(p => ({
@@ -324,17 +444,96 @@ export default class DonationManager {
 
   // ── Internals ──────────────────────────────────────────────────────────
 
+  /** Donors named by the year's gift lines and in-kind gifts, by @id; the latest name each was recorded under. */
+  private async donorsOfYear(actor: DonationsActor, year: number): Promise<Map<string, Donor>> {
+    const donors = new Map<string, Donor>();
+    for (const r of await this.options.ledger.listDocuments(actor, 'receipt')) {
+      if (Number(r.date.slice(0, 4)) !== year) continue;
+      for (const l of r.lines) {
+        const d = l.details.gift?.donor as Donor | null | undefined;
+        if (d?.id) donors.set(d.id, d);
+      }
+    }
+    const inKind = this.options.db.prepare(`SELECT donor_person_id, donor_name FROM accounting_donations_inkind
+      WHERE status = 'posted' AND donor_person_id IS NOT NULL AND substr(date, 1, 4) = ?`).all(String(year)) as { donor_person_id: string; donor_name: string }[];
+    for (const i of inKind) if (!donors.has(i.donor_person_id)) donors.set(i.donor_person_id, { type: 'person', id: i.donor_person_id, name: i.donor_name });
+    return donors;
+  }
+
+  private async contentFor(actor: DonationsActor, donor: Donor, year: number): Promise<StatementContent> {
+    const gifts = giftsFor(donor.id, year, await this.options.ledger.listDocuments(actor, 'receipt'), await this.options.ledger.listDocuments(actor, 'refund'));
+    const inKind = (this.options.db.prepare(`SELECT date, description FROM accounting_donations_inkind
+      WHERE status = 'posted' AND donor_person_id = ? AND substr(date, 1, 4) = ? ORDER BY date`).all(donor.id, String(year)) as { date: string; description: string }[]);
+    return { donor, year, gifts, inKind, total: gifts.reduce((t, g) => t + g.amount, 0), deductible: gifts.reduce((t, g) => t + g.deductible, 0) };
+  }
+
+  private wording(): StatementWording {
+    return this.options.wording?.() ?? { organization: { name: 'the organization', taxId: '', address: '' }, intro: '', noGoods: '', goodsNote: '', taxIdNote: '' };
+  }
+
+  private insertStatement(actor: DonationsActor, content: StatementContent, id: string = this.newId()): string {
+    const issuedAt = this.stamp();
+    const html = renderStatement(content, this.wording(), this.options.formatMoney, issuedAt.slice(0, 10));
+    this.options.db.prepare(`INSERT INTO accounting_donations_statements (id, donor_type, donor_id, donor_name, year, html, sha256, total, deductible,
+        gift_count, status, issued_by, issued_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`).run(
+      id, content.donor.type, content.donor.id, content.donor.name, content.year, html, createHash('sha256').update(html).digest('hex'),
+      content.total, content.deductible, content.gifts.length, actor.actingUsername(), issuedAt);
+    return id;
+  }
+
+  /** Email a stored statement to the donor's address on file; false when there is none, or it could not be sent. */
+  private async sendStatement(actor: DonationsActor, id: string): Promise<boolean> {
+    const row = this.statementRow(id);
+    const contacts = this.options.contacts?.() ?? {};
+    const door = row.donor_type === 'person' ? contacts.persons : contacts.organizations;
+    const contact = door ? await door.get(actor.subject as never, row.donor_id).catch(() => null) as { email?: string } | null : null;
+    const mailer = this.options.email?.();
+    if (!contact?.email || !mailer) return false;
+    try {
+      const org = this.wording().organization.name;
+      await mailer.sendTo(contact.email, `${row.year} giving statement from ${org}`, `Your ${row.year} giving statement from ${org} is below.`, row.html);
+    } catch {
+      return false; // EmailManager reports the failure to administrators itself (#1916)
+    }
+    this.options.db.prepare('UPDATE accounting_donations_statements SET emailed_to = ?, emailed_at = ? WHERE id = ? AND emailed_at IS NULL').run(contact.email, this.stamp(), id);
+    return true;
+  }
+
+  private async donorOrNull(actor: DonationsActor, donor: Donor): Promise<string | null> {
+    try { return (await this.donor(actor, `${donor.type}|${donor.id}`)).name; } catch { return null; }
+  }
+
+  private currentStatement(donorId: string, year: number): StatementRow | undefined {
+    return this.options.db.prepare("SELECT * FROM accounting_donations_statements WHERE donor_id = ? AND year = ? AND status = 'issued'").get(donorId, year) as StatementRow | undefined;
+  }
+
+  private statementRow(id: string): StatementRow {
+    const row = this.options.db.prepare('SELECT * FROM accounting_donations_statements WHERE id = ?').get(id) as StatementRow | undefined;
+    if (!row) throw new DonationError(404, 'statementId: unknown statement');
+    return row;
+  }
+
+  private getStatementRow(id: string): IssuedStatement {
+    const r = this.statementRow(id);
+    return {
+      id: r.id, donor: { type: r.donor_type, id: r.donor_id, name: r.donor_name }, year: r.year, html: r.html, sha256: r.sha256, total: r.total,
+      deductible: r.deductible, giftCount: r.gift_count, status: r.status, supersededBy: r.superseded_by, reissueReason: r.reissue_reason,
+      emailedTo: r.emailed_to, emailedAt: r.emailed_at, issuedBy: r.issued_by, issuedAt: r.issued_at
+    };
+  }
+
   private async authorize(actor: DonationsActor, action: string): Promise<void> {
     const decision = await this.options.decide(actor.subject, { action });
     if (!decision.permit) await actor.enforceDeny(action, decision);
   }
 
-  private async audit(actor: DonationsActor, record: { action: string; severity: string; resource: string; resourceType: string; reason?: string; metadata: Record<string, unknown> }): Promise<void> {
+  private async audit(actor: DonationsActor, record: { action: string; severity: string; resource: string; resourceType: string; reason?: string; metadata: Record<string, unknown>; eventType?: string }): Promise<void> {
     const who = actor.subject
       ? this.options.host.actorOf(actor.subject)
       : { user: 'unknown', ipAddress: actor.ipAddress, metadata: { actorMissing: true } };
     const { metadata: whoMetadata, ...fields } = who as { user: string; actor?: string; ipAddress?: string; metadata: Record<string, unknown> };
-    await this.options.recordAudit({ ...record, eventType: this.options.host.addonAuditEventName('donation-record'), ...fields,
+    const { eventType = 'donation-record', ...rest } = record;
+    await this.options.recordAudit({ ...rest, eventType: this.options.host.addonAuditEventName(eventType), ...fields,
       ipAddress: fields.ipAddress, metadata: { ...whoMetadata, ...record.metadata } });
   }
 
@@ -363,6 +562,24 @@ function viewerActor(viewer: unknown): DonationsActor {
     actingUsername: () => (typeof username === 'string' && username !== '' ? username : 'anonymous'),
     enforceDeny: async (permission: string) => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
   };
+}
+
+interface StatementRow {
+  id: string; donor_type: 'person' | 'organization'; donor_id: string; donor_name: string; year: number; html: string; sha256: string;
+  total: number; deductible: number; gift_count: number; status: 'issued' | 'superseded'; superseded_by: string | null;
+  reissue_reason: string | null; emailed_to: string | null; emailed_at: string | null; issued_by: string; issued_at: string;
+}
+
+/** A statement year: a whole number, 2000 to 9999. */
+function statementYear(value: unknown): number {
+  const year = Number(value);
+  if (!Number.isInteger(year) || year < 2000 || year > 9999) throw new DonationError(400, 'year must be a year, e.g. 2026');
+  return year;
+}
+
+/** Whether the gifts behind a statement have changed since it was issued (a gift voided, refunded or added). */
+function changed(row: StatementRow, content: StatementContent): boolean {
+  return row.total !== content.total || row.deductible !== content.deductible || row.gift_count !== content.gifts.length;
 }
 
 /** A contact's name for a gift record: its name, else given and family name, else its email. */
