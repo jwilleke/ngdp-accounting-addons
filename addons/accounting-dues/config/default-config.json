@@ -1,0 +1,62 @@
+{
+  "_comment_accounting_dues": "Dues and assessments for the accounting add-on (D-035). Merged into the site's configuration only while ngdpbase.addons.accounting-dues.enabled is true. It needs the accounting add-on, whose managers it calls, and a manager that holds the accounts it bills.",
+  "ngdpbase.addons.accounting-dues.enabled": false,
+  "_comment_label": "What the site calls the charge on the module's screens and emails. A condominium says Assessment; money lines show the chart category's own name (docs/guides/chart-of-accounts-guide.md).",
+  "ngdpbase.addons.accounting-dues.label": {
+    "singular": "Dues",
+    "plural": "Dues"
+  },
+  "_comment_accounts_manager": "The manager that holds the accounts billed: list(), get(id), assessment(id), owners(ctx, id) and lateCharges(). A condominium uses the condo add-on's CondoUnitManager (ngdpbase-addons).",
+  "ngdpbase.addons.accounting-dues.accounts-manager": "CondoUnitManager",
+  "_comment_categories": "Chart codes a payment may be recorded under; the first is the one invoices charge. A list, so a site's value replaces this one.",
+  "ngdpbase.addons.accounting-dues.categories": [
+    "4100"
+  ],
+  "_comment_organization": "Who the invoices are from: the organization's name and postal address, and where to send payment.",
+  "ngdpbase.addons.accounting-dues.organization": {
+    "name": "",
+    "address": "",
+    "pay-to": ""
+  },
+  "_comment_database": "The dues add-on's own database (D-035): invoices, kept outside the ledger, which holds only money that moved. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
+  "ngdpbase.addons.accounting-dues.database": {
+    "owner": "accounting-dues",
+    "ledgerTable": "accounting_dues_schema_migrations",
+    "encrypt": "optional"
+  },
+  "ngdpbase.permissions.definitions": {
+    "invoice-issue": {
+      "description": "Issue, void and email invoices for dues or assessments",
+      "icon": "file-invoice",
+      "color": "#0d6efd",
+      "audit": {
+        "on-failure": "refuse",
+        "description": "Invoices issued, voided or emailed"
+      }
+    }
+  },
+  "ngdpbase.access.policies": [
+    {
+      "id": "accounting-dues-treasurer",
+      "name": "Treasurer bills dues and assessments",
+      "description": "The treasurer role issues and voids invoices. Recording payments is the accounting add-on's ledger-record.",
+      "priority": 90,
+      "effect": "allow",
+      "subjects": [
+        {
+          "type": "role",
+          "value": "treasurer"
+        }
+      ],
+      "resources": [
+        {
+          "type": "page",
+          "pattern": "*"
+        }
+      ],
+      "actions": [
+        "invoice-issue"
+      ]
+    }
+  ]
+}

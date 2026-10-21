@@ -190,6 +190,8 @@ older one.
 - __Backups__ do not cover the ledger's database yet (ngdpbase #1723).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
-- No dues, donations or events modules yet. Donations are decided: see the
-  [Donations guide](donations-guide.md).
+- No events module yet. Donations are the `accounting-donations` add-on
+  ([Donations guide](donations-guide.md)); dues and assessments are the `accounting-dues` add-on
+  ([its README](../../addons/accounting-dues/README.md)), whose accounts come from another add-on,
+  such as condo's units.
 - Changing the database key, or encrypting a ledger that was started without one, is not built (#14).
