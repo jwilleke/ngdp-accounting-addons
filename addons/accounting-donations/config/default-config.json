@@ -5,9 +5,13 @@
   "ngdpbase.addons.accounting-donations.categories": [
     "4200"
   ],
-  "_comment_wording": "The receipt slip's quid pro quo disclosure, for a gift over $75 where the donor received goods or services (IRS Publication 1771). {amount}, {deductible}, {goods} and {value} are filled in. The organization checks the wording with its accountant.",
+  "_comment_wording": "The receipt slip's quid pro quo disclosure and the year-end statement's wording (IRS Publication 1771). {amount}, {deductible}, {goods}, {value}, {organization}, {year} and {taxId} are filled in. The organization checks the wording with its accountant.",
   "ngdpbase.addons.accounting-donations.wording": {
-    "quid-pro-quo": "Of your gift of {amount}, {deductible} is deductible for federal income tax purposes. You received {goods}, valued at {value}."
+    "quid-pro-quo": "Of your gift of {amount}, {deductible} is deductible for federal income tax purposes. You received {goods}, valued at {value}.",
+    "statement-intro": "Thank you for your support of {organization}. This statement lists your contributions received in {year}.",
+    "no-goods": "No goods or services were provided in exchange for these contributions.",
+    "goods-note": "Where goods or services were provided in exchange for a contribution, their value is shown, and only the amount above it is deductible.",
+    "tax-id": "{organization} is a tax-exempt organization. Its federal tax identification number is {taxId}."
   },
   "_comment_database": "Donations' own database (operator, 2026-10-20): in-kind gifts and pledges. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
   "ngdpbase.addons.accounting-donations.database": {
@@ -23,6 +27,15 @@
       "audit": {
         "on-failure": "refuse",
         "description": "In-kind gift or pledge recorded, voided or cancelled"
+      }
+    },
+    "statement-issue": {
+      "description": "Issue, reissue and email year-end giving statements",
+      "icon": "file-invoice-dollar",
+      "color": "#fd7e14",
+      "audit": {
+        "on-failure": "refuse",
+        "description": "Giving statements issued, reissued or emailed"
       }
     }
   },
@@ -47,9 +60,16 @@
       ],
       "actions": [
         "donation-record",
+        "statement-issue",
         "contact-read",
         "contact-manage"
       ]
     }
-  ]
+  ],
+  "_comment_organization": "Who the giving statements are from: the organization's name, its federal tax ID (EIN) and postal address, printed on every statement.",
+  "ngdpbase.addons.accounting-donations.organization": {
+    "name": "",
+    "taxId": "",
+    "address": ""
+  }
 }

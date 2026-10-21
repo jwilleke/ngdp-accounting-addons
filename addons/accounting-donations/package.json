@@ -35,6 +35,7 @@
     "forms.js",
     "managers/*.js",
     "plugins/*.js",
+    "routes/*.js",
     "config/",
     "pages/",
     "README.md"

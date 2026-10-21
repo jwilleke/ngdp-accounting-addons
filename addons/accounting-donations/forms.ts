@@ -77,6 +77,8 @@ export interface DonationManagerLike {
   recordInKind(actor: ApiContext, input: Record<string, unknown>): Promise<{ id: string }>;
   createPledge(actor: ApiContext, input: Record<string, unknown>): Promise<{ id: string }>;
   donor(actor: ApiContext, value: string, field?: string): Promise<DonorLike>;
+  issueStatements(actor: ApiContext, input: Record<string, unknown>): Promise<{ issued: number; emailed: number; notEmailed: string[] }>;
+  reissueStatement(actor: ApiContext, id: string, reason: string, options?: { email?: boolean }): Promise<{ id: string }>;
   addDonor(actor: ApiContext, input: Record<string, unknown>): Promise<DonorLike>;
 }
 
@@ -91,6 +93,28 @@ async function donorOf(donations: DonationManagerLike, ctx: ApiContext, data: Da
   const picked = str(data.donor) ? await donations.donor(ctx, data.donor as string) : undefined;
   return picked ? { donorName: picked.name, donorPersonId: picked.id } : { donorName: data.donorName };
 }
+
+const checked = (v: unknown): boolean => v !== undefined && v !== '' && v !== false;
+
+export const STATEMENT_ISSUE_FORM = {
+  id: 'statement-issue', title: 'Issue giving statements', handler: 'accounting-donations', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'Year-end giving statements: one per donor with gifts in the year who has none yet, or one donor. Each is kept exactly as issued. Tick email to send each to the donor\'s address on file.',
+  fields: [
+    { name: 'year', type: 'dropdown', label: 'Year', required: true, optionsSource: 'fetch:DonationManager.toFormOptions(list=statement-years)' },
+    { name: 'donor', type: 'dropdown', label: 'Only this donor (blank: every donor still without one)', required: false, optionsSource: 'fetch:DonationManager.toFormOptions(list=donors)' },
+    { name: 'email', type: 'checkbox', label: 'Email each statement to the donor', required: false }
+  ]
+};
+
+export const STATEMENT_REISSUE_FORM = {
+  id: 'statement-reissue', title: 'Reissue a giving statement', handler: 'accounting-donations', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'A statement whose gifts have changed since it was issued (a gift voided, refunded or added): issue a new one, with the reason. The old one is kept, marked superseded.',
+  fields: [
+    { name: 'statementId', type: 'dropdown', label: 'Statement', required: true, optionsSource: 'fetch:DonationManager.toFormOptions(list=statements)' },
+    { name: 'reason', type: 'textarea', label: 'Reason', required: true },
+    { name: 'email', type: 'checkbox', label: 'Email the new statement to the donor', required: false }
+  ]
+};
 
 export const DONOR_FORM = {
   id: 'donor-add', title: 'Add a donor', handler: 'accounting-donations', store: false, proxySubmission: false, notifyRole: 'admin',
@@ -147,7 +171,13 @@ export async function registerGiftForms(engine: Engine, host: AddonHost): Promis
     [PLEDGE_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.createPledge(ctx, {
       ...await donorOf(d, ctx, data), amount: data.amount, fundId: data.fundId, startDate: data.startDate, endDate: str(data.endDate), schedule: data.schedule, memo: str(data.memo)
     })],
-    [DONOR_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.addDonor(ctx, data)]
+    [DONOR_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.addDonor(ctx, data)],
+    [STATEMENT_ISSUE_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => {
+      const result = await d.issueStatements(ctx, { year: Number(data.year), donor: str(data.donor), email: checked(data.email) });
+      return { id: `${result.issued} issued, ${result.emailed} emailed${result.notEmailed.length ? `; not emailed: ${result.notEmailed.join(', ')}` : ''}` };
+    }],
+    [STATEMENT_REISSUE_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) =>
+      d.reissueStatement(ctx, data.statementId as string, data.reason as string, { email: checked(data.email) })]
   ] as const) {
     await definitions.registerShippedForm('accounting-donations', definition);
     forms.registerHandler(definition.id, async (submission, { req }) => {

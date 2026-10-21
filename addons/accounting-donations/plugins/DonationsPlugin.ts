@@ -4,6 +4,7 @@
  *   [{Donations view='pledges'}]          open pledges: pledged, given, left
  *   [{Donations view='pledges' cancelled='true'}]
  *   [{Donations view='inkind'}]           in-kind gifts: donor, date, description (never a value)
+ *   [{Donations view='statements' year='2026'}]  each donor's year: totals and statement (blank year: last year)
  *
  * Every read goes through DonationManager as the viewer, so its permissions
  * decide (ledger-read: these name donors).
@@ -36,7 +37,18 @@ export async function renderDonationsView(f: PluginFormatters, donations: Donati
         gifts.map(g => [escapeHtml(g.date), escapeHtml(g.donorName), escapeHtml(g.description), g.status === 'voided' ? `voided: ${escapeHtml(g.voidReason ?? '')}` : 'posted']),
         { sortable: true, emptyMessage: 'No in-kind gifts.' });
     }
-    return note(f, `Donations: unknown view '${view}'; use pledges or inkind.`);
+    if (view === 'statements') {
+      const year = Number(params.year) || new Date().getUTCFullYear() - 1;
+      const rows = await donations.yearOverview(actor, year);
+      return `<p class="text-muted">${year}</p>` + formatAsTable(['Donor', 'Gifts', 'Total', 'Deductible', 'In-kind', 'Statement'],
+        rows.map(r => [escapeHtml(r.donor.name), String(r.giftCount), money(r.total), money(r.deductible), String(r.inKindCount),
+          r.statement
+            ? `<a href="/api/accounting-donations/statements/${encodeURIComponent(r.statement.id)}">issued ${escapeHtml(r.statement.issuedAt.slice(0, 10))}</a>`
+              + (r.statement.emailedTo ? ' · emailed' : '') + (r.statement.needsReissue ? ' · <strong>needs reissue</strong>' : '')
+            : `<a href="/api/accounting-donations/statements/preview?donor=${encodeURIComponent(`${r.donor.type}|${r.donor.id}`)}&amp;year=${year}">not issued: preview</a>`]),
+        { sortable: true, emptyMessage: 'No donors with gifts in this year.' });
+    }
+    return note(f, `Donations: unknown view '${view}'; use pledges, inkind or statements.`);
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status === 401 || status === 403) return note(f, 'You may not see the donations.');
