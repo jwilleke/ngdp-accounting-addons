@@ -6,7 +6,7 @@ the receipt slip's quid pro quo disclosure, in-kind gifts and pledges. Giving st
 
 - __Slug:__ `accounting-donations`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the gift screen.
-- __Requires:__ ngdpbase 5.21.0 or later.
+- __Requires:__ ngdpbase 5.22.0 or later.
 - __Data:__ gifts of money are receipts in the accounting add-on, reached only through its managers
   (`LedgerManager.registerLineDetails`, `registerSlipNotes`, `ReceiptManager.recordReceipt`), never its
   database (operator, 2026-10-20). In-kind gifts and pledges are in this add-on's own database,

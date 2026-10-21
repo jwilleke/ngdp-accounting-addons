@@ -16,7 +16,7 @@ books of record stay in QuickBooks or Wave, and accounting hands them a CSV.
 
 ## Before you start
 
-- ngdpbase __5.21.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
+- ngdpbase __5.22.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
   to load it.
 - The site's database on: `ngdpbase.database.provider` set to `sqlite`.
 - The __forms__ add-on enabled. The treasurer's screens are forms; without it the ledger still works
@@ -111,6 +111,11 @@ transfers), which is always on. Online providers will be added to
 
 If the database is off, the add-on starts nothing and says why on __Admin → Add-ons__.
 
+When an update changes one of the add-on's forms, the site's copy is not replaced on its own. The
+forms admin shows it as an update to __Sync__, like Admin → Required Pages, and administrators get a
+notice. A form whose old copy no longer works with the ledger (Record an Entry) raises that notice
+as critical. A form edited on the site is kept unless an administrator chooses to overwrite it.
+
 ## Give the treasurer access
 
 The add-on ships a __treasurer__ role holding every accounting permission. Give it to the people who
@@ -189,7 +194,4 @@ older one.
   ships (ngdpbase #1913); the API (`POST /api/accounting/receipts` with `lines`) takes several.
 - No dues, donations or events modules yet. Donations are decided: see the
   [Donations guide](donations-guide.md).
-- A site that enabled accounting before receipts keeps the forms it first saved: its "Record an
-  Entry" form still shows an In or out choice and an optional memo. The ledger records only money out
-  there and asks for the reason; delete those saved form definitions to get the current forms.
 - Changing the database key, or encrypting a ledger that was started without one, is not built (#14).

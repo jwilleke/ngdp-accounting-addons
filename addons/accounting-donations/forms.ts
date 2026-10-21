@@ -12,7 +12,8 @@ type Data = Record<string, unknown>;
 interface FormsAddonLike {
   registerHandler(formId: string, handler: (submission: { data: Data }, context: { engine: unknown; req: unknown }) => Promise<HandlerResult>): void;
 }
-interface FormsDataManagerLike { getDefinition(formId: string): unknown; saveDefinition(form: unknown): Promise<void> }
+/** ngdpbase's forms add-on (v5.22.0, #1880, #1918): a shipped form is registered on every start. */
+interface FormsDataManagerLike { registerShippedForm(addon: string, definition: unknown, options?: { required?: boolean }): Promise<unknown> }
 
 /** The slice of the accounting add-on's ReceiptManager this add-on calls. */
 export interface ReceiptManagerLike {
@@ -99,14 +100,14 @@ export async function registerGiftForms(engine: Engine, host: AddonHost): Promis
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
   if (!forms || !definitions) { host.logger.info('[accounting-donations] Forms add-on not enabled: the gift screen is off'); return; }
-  if (!definitions.getDefinition(GIFT_FORM.id)) await definitions.saveDefinition(GIFT_FORM);
+  await definitions.registerShippedForm('accounting-donations', GIFT_FORM);
   for (const [definition, run] of [
     [INKIND_FORM, (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.recordInKind(ctx, { donorName: data.donorName, date: data.date, description: data.description })],
     [PLEDGE_FORM, (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.createPledge(ctx, {
       donorName: data.donorName, amount: data.amount, fundId: data.fundId, startDate: data.startDate, endDate: str(data.endDate), schedule: data.schedule, memo: str(data.memo)
     })]
   ] as const) {
-    if (!definitions.getDefinition(definition.id)) await definitions.saveDefinition(definition);
+    await definitions.registerShippedForm('accounting-donations', definition);
     forms.registerHandler(definition.id, async (submission, { req }) => {
       const donations = engine.getManager<DonationManagerLike>('DonationManager');
       if (!donations) return { ok: false, error: 'Donations are not running on this site' };
