@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-18"
+last_updated: "2026-10-21"
 ---
 
 # TODO
@@ -38,7 +38,6 @@ last_updated: "2026-10-18"
 
 ## 🟡 P2
 
-- [#19](https://github.com/jwilleke/ngdp-accounting-addons/issues/19) — Period lock: lock a reporting period after the board report (monthly, quarterly, semi-annual, annual)
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
 - [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled jobs from ngdpbase core (blocked by jwilleke/ngdpbase#1611)
@@ -66,7 +65,8 @@ last_updated: "2026-10-18"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-*None.*
+- [#35](https://github.com/jwilleke/ngdp-accounting-addons/pull/35) — chore(kit): sync to v1.14.0 *(PR · ready)* — no linked issue
+- [#32](https://github.com/jwilleke/ngdp-accounting-addons/pull/32) — chore(kit): sync to v1.14.0-0-g282c9b7 *(PR · ready)* — no linked issue
 
 <!-- KIT:END -->
 
