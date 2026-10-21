@@ -1240,10 +1240,13 @@ __Decision (operator, 2026-10-20):__ keep the design flexible; do not go deeper 
 - __Accounts are in ngdpbase.__ The site chooses what holds accounts (people, households, units).
   Every account has one or more people responsible for it (every unit has at least one owner), and
   they are ngdpbase users. No core change (operator, 2026-10-20): ngdpbase has no groups;
-  `unit-01` is a role. Units belong to the site's own add-on (The Fairways: `FairwaysUnitManager`,
-  id = the role, address, phone, owners, notes), and a payer's share of a unit belongs on that unit
-  record, e.g. `owners: [{ user, share }]`, a change in the condo add-on. Accounting reads units
-  through `getManager('FairwaysUnitManager')` and keeps no copy, only the money side. Accounting's
+  `unit-01` is a role. Units belong to the generic `condo` add-on
+  ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons/tree/main/addons/condo), The
+  Fairways its reference site): `CondoUnitManager`, keyed by the county parcel, with owners
+  `{ name, person, share }`. Each unit has a __unit type__ carrying its assessment (cents, monthly or
+  annual, due day), from `ngdpbase.addons.condo.unit-types` (operator, 2026-10-21). Accounting reads
+  `owners(id)` and `assessment(id)` through `getManager('CondoUnitManager')` and keeps no copy, only
+  the money side. Accounting's
   profile panel (balance, statements) uses ngdpbase's existing add-on profile hook
   (`profileSection` / `saveProfileSection`, ngdpbase #534).
 - __Charges are configuration:__ charge schedules with a category, a billing period and an amount
