@@ -1,0 +1,43 @@
+{
+  "name": "@jwilleke/accounting-dues-addon",
+  "version": "0.1.0",
+  "description": "Dues and assessments for the ngdpbase accounting add-on: invoices, payments, credits and late charges",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwilleke/ngdp-accounting-addons.git",
+    "directory": "addons/accounting-dues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "devDependencies": {
+    "@jwilleke/ngdpbase-types": "5.22.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.19.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "ngdpbase": {
+    "slug": "accounting-dues",
+    "type": "additive",
+    "minVersion": "5.22.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build",
+    "test": "vitest run"
+  },
+  "files": [
+    "index.js",
+    "billing.js",
+    "forms.js",
+    "managers/*.js",
+    "plugins/*.js",
+    "routes/*.js",
+    "config/",
+    "pages/",
+    "README.md"
+  ]
+}
