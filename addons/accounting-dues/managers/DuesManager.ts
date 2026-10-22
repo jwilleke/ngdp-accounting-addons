@@ -105,6 +105,10 @@ export interface DuesOptions {
   label: () => { singular: string; plural: string };
   wording?: () => InvoiceWording;
   formatMoney: (minor: number) => string;
+  /** Told after every committed write; index.ts bumps the `DuesManager` cache topic (ngdpbase caching guide: the owner bumps). */
+  changed?: () => Promise<void>;
+  /** The account source's manager name, for pages to depend on its cache topic. */
+  accountsManager?: string;
   /** ngdpbase's EmailManager, to send invoices. */
   email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
   now?: () => Date;
@@ -150,10 +154,15 @@ export default class DuesManager {
       const charge = chargeFor(source.assessment(unit.id), m);
       const lateCharges = lateChargesDue(state.invoices, state.paid, rules, `${m}-01`, made);
       const existing = this.monthInvoice(unit.id, m);
-      if (!charge && !lateCharges.length && !existing) continue;
+      if (existing) {
+        // Already invoiced: the invoice's own figures, as issued.
+        rows.push({ accountId: unit.id, label: accountLabel(unit), charge, lateCharges: [], previous: existing.previous, total: existing.total, owed: existing.owed, invoiced: existing.number });
+        continue;
+      }
+      if (!charge && !lateCharges.length) continue;
       const previous = state.invoiced - state.payments;
       const total = (charge?.amount ?? 0) + lateCharges.reduce((t, l) => t + l.amount, 0);
-      rows.push({ accountId: unit.id, label: accountLabel(unit), charge, lateCharges, previous, total, owed: Math.max(0, previous + total), invoiced: existing?.number ?? null });
+      rows.push({ accountId: unit.id, label: accountLabel(unit), charge, lateCharges, previous, total, owed: Math.max(0, previous + total), invoiced: null });
     }
     return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
@@ -193,6 +202,7 @@ export default class DuesManager {
         if (await this.sendInvoice(id, p.owners)) emailed++; else notEmailed.push(p.row.label);
       }
     }
+    if (pending.length) await this.options.changed?.();
     return { issued: pending.length, emailed, notEmailed };
   }
 
@@ -207,6 +217,7 @@ export default class DuesManager {
     this.options.db.transaction(() => {
       this.options.db.prepare("UPDATE accounting_dues_invoices SET status = 'voided', void_reason = ? WHERE id = ? AND status = 'issued'").run(why, row.id);
     })();
+    await this.options.changed?.();
     return this.getInvoice(actor, row.id);
   }
 
@@ -247,6 +258,11 @@ export default class DuesManager {
   invoiceOf(invoiceId: string): { accountId: string; status: string } | null {
     const row = this.options.db.prepare('SELECT account_id, status FROM accounting_dues_invoices WHERE id = ?').get(invoiceId) as { account_id: string; status: string } | undefined;
     return row ? { accountId: row.account_id, status: row.status } : null;
+  }
+
+  /** The manager holding the accounts, so a page showing them depends on its cache topic too. */
+  accountsManagerName(): string | undefined {
+    return this.options.accountsManager;
   }
 
   /** Whether an account exists in the account source, for the validator. */
@@ -340,8 +356,9 @@ export default class DuesManager {
       WHERE i.status = 'issued' AND l.charge_key IS NOT NULL`).all() as { charge_key: string }[]).map(r => r.charge_key));
   }
 
-  private monthInvoice(accountId: string, month: string): { number: string } | undefined {
-    return this.options.db.prepare("SELECT number FROM accounting_dues_invoices WHERE account_id = ? AND month = ? AND status = 'issued'").get(accountId, month) as { number: string } | undefined;
+  private monthInvoice(accountId: string, month: string): { number: string; previous: number; total: number; owed: number } | undefined {
+    return this.options.db.prepare("SELECT number, previous, total, owed FROM accounting_dues_invoices WHERE account_id = ? AND month = ? AND status = 'issued'")
+      .get(accountId, month) as { number: string; previous: number; total: number; owed: number } | undefined;
   }
 
   private insertInvoice(actor: DuesActor, month: string, row: MonthRow, late: ProposedLateCharge[], owners: AccountOwner[]): string {

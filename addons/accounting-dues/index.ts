@@ -75,8 +75,11 @@ const AccountingDuesAddon = {
       const value = setting('categories', []);
       return Array.isArray(value) ? value.filter((c): c is string => typeof c === 'string') : [];
     };
+    // The owner bumps (ngdpbase caching guide): pages that show invoices re-render after each write.
+    const cache = engine.getManager<{ bump(topic: string): Promise<unknown> }>('CacheManager');
     const dues = new DuesManager({
-      host, db, ledger, accounts, categories,
+      host, db, ledger, accounts, categories, accountsManager: sourceName,
+      changed: async () => { await cache?.bump('DuesManager'); },
       label: () => {
         const l = (setting('label', {}) ?? {}) as Record<string, unknown>;
         return { singular: str(l.singular, 'Dues'), plural: str(l.plural, 'Dues') };

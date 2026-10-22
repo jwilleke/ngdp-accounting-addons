@@ -2,7 +2,7 @@
  * DuesPlugin — dues drawn on a page for the person viewing it:
  *
  *   [{Dues view='prepare'}]                 this month: each account's charge, late charges, balance and amount owed
- *   [{Dues view='prepare' month='2026-11'}]
+ *   [{Dues view='prepare' month='next'}]     current (the default), next, previous, or YYYY-MM
  *   [{Dues view='invoices' month='2026-10'}] invoices, newest first (blank month: all; voided='true' adds voided ones)
  *   [{Dues view='balances'}]                each account: invoiced, paid, balance or credit
  *
@@ -13,6 +13,13 @@ import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type DuesManager from '../managers/DuesManager.js';
 
 type Params = Record<string, string | number | boolean>;
+/** A month parameter: current, next or previous (from today), else as given (YYYY-MM). */
+function monthParam(value: unknown, today: Date): string {
+  const offset = { current: 0, next: 1, previous: -1 }[String(value ?? 'current')];
+  if (offset === undefined) return String(value);
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + offset, 1)).toISOString().slice(0, 7);
+}
+
 const note = (f: PluginFormatters, text: string): string => `<p class="text-muted"><em>${f.escapeHtml(text)}</em></p>`;
 
 export async function renderDuesView(f: PluginFormatters, dues: DuesManager, viewer: unknown, currency: string, params: Params, today: Date = new Date()): Promise<string> {
@@ -26,7 +33,7 @@ export async function renderDuesView(f: PluginFormatters, dues: DuesManager, vie
   try {
     const view = String(params.view ?? 'prepare');
     if (view === 'prepare') {
-      const month = typeof params.month === 'string' && params.month !== '' ? params.month : today.toISOString().slice(0, 7);
+      const month = monthParam(params.month, today);
       const rows = await dues.prepareMonth(actor, month);
       const totals = rows.filter(r => !r.invoiced);
       return `<p class="text-muted">${escapeHtml(month)}: ${totals.length} to invoice, ${money(totals.reduce((t, r) => t + r.owed, 0))} owed</p>`
@@ -69,6 +76,9 @@ const DuesPlugin = {
     const dues = context.engine.getManager<DuesManager>('DuesManager');
     const ledger = context.engine.getManager<{ currencyCode(): string }>('LedgerManager');
     if (!dues || !ledger) return note(context.formatters, 'Dues are not available on this site.');
+    // Fetched so the cached page depends on the accounts' topic too (ngdpbase caching guide: plugins declare nothing).
+    const source = dues.accountsManagerName();
+    if (source) context.engine.getManager(source);
     return renderDuesView(context.formatters, dues, context.userContext, ledger.currencyCode(), params);
   }
 };

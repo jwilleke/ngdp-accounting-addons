@@ -47,6 +47,7 @@ describe('dues', () => {
   let sent: { to: string; subject: string }[];
   let fundId: string;
   let today: string;
+  let bumps: number;
 
   beforeEach(async () => {
     ledgerDb = openTestLedgerDatabase();
@@ -54,12 +55,13 @@ describe('dues', () => {
       { migrations: DUES_MIGRATIONS as never, ledgerTable: DUES_LEDGER_TABLE }, { slug: 'accounting-dues', defaults });
     audit = [];
     sent = [];
+    bumps = 0;
     today = '2026-09-01';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     dues = new DuesManager({
       host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
-      recordAudit: async (r) => { audit.push(r); }, now: () => new Date(`${today}T12:00:00Z`),
+      recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
       email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } })
     });
     ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
@@ -83,7 +85,11 @@ describe('dues', () => {
     expect(one!.owners).toEqual([{ username: 'pat', name: 'Pat Lee', share: 60 }, { username: 'sam', name: 'Sam Lee', share: 40 }]);
     expect(one!.html).toContain("Owners' shares");
     expect(audit.at(-1)).toMatchObject({ action: 'invoice-issue', resource: 'invoices:2026-09' });
+    expect(bumps).toBe(1);
+    // Once invoiced, the month shows the invoice's own figures.
+    expect((await dues.prepareMonth(actor(), '2026-09')).map(r => [r.previous, r.owed, r.invoiced])).toEqual([[0, 41000, 'I-0001'], [0, 30000, 'I-0002']]);
     expect((await dues.issueMonth(actor(), { month: '2026-09' })).issued).toBe(0);
+    expect(bumps).toBe(1);
     expect((await ledger.fundBalances(actor()))[0]!.balance).toBe(0);
     expect(() => ownDb.prepare('DELETE FROM accounting_dues_invoices').run()).toThrow(/never deleted/);
     await expect(dues.issueMonth(actor(['ledger-read']), { month: '2026-10' })).rejects.toThrow('refused: invoice-issue');
