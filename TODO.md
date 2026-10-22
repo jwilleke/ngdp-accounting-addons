@@ -38,12 +38,12 @@ last_updated: "2026-10-22"
 
 ## 🟡 P2
 
+- [#51](https://github.com/jwilleke/ngdp-accounting-addons/issues/51) — [FEATURE] Adopt ngdpbase PDF export, ctx-first EmailManager and versioned shipped forms
+- [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50) — [FEATURE] Self-service profile panels: donor's gifts and statements, owner's invoices and balance
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
-- [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled jobs from ngdpbase core (blocked by jwilleke/ngdpbase#1611)
+- [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled invoice send for accounting-dues (BackgroundJobManager)
 - [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
-- [#4](https://github.com/jwilleke/ngdp-accounting-addons/issues/4) — Donations and year-end giving statements
-- [#3](https://github.com/jwilleke/ngdp-accounting-addons/issues/3) — Receipts: cash and check by hand, Stripe cards and ACH, refunds
 - [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 
 ## 🔵 In review
@@ -55,6 +55,7 @@ last_updated: "2026-10-22"
 
 ## ⏸ Deferred
 
+- [#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49) — [FEATURE] Stripe online payments: cards, ACH and recurring gifts
 - [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21) — [FEATURE] Board report: large or unusual items, and printable / PDF / wiki-page output
 - [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
 - [#9](https://github.com/jwilleke/ngdp-accounting-addons/issues/9) — Treasurer handover record tied to board memory
