@@ -31,6 +31,8 @@ export default function donationRoutes(engine: Engine, host: AddonHost): Router 
 
   // A stored statement, exactly as issued; ?donor=person|<@id>&year=2026 previews one not yet issued.
   router.get('/statements/preview', page((d, ctx, req) => d.previewStatement(ctx, query(req, 'donor'), Number(query(req, 'year')))));
+  // The signed-in donor's own statement (D-037, ledger-self); another donor's is not found.
+  router.get('/my-statements/:id', page(async (d, ctx, req) => (await d.myStatement(ctx, String(req.params.id))).html));
   router.get('/statements/:id', page(async (d, ctx, req) => (await d.getStatement(ctx, String(req.params.id))).html));
   return router;
 }

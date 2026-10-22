@@ -303,3 +303,31 @@ test('upgrading the database turns each receipt into a one-line receipt and numb
     handle.close();
   }
 });
+
+describe('own receipts (D-037)', () => {
+  test('a person sees only the receipts they paid, and refunds of them, under ledger-self', async () => {
+    const provider = openTestLedgerDatabase();
+    const people: Record<string, string> = { 'treasurer-tess': 'urn:uuid:tess', pat: 'urn:uuid:pat' };
+    const ledger = new LedgerManager({ ...testLedgerParts, db: provider.handle as LedgerDb, decide, currency: 'USD', recordAudit: () => Promise.resolve(),
+      personOf: async (username) => people[username] ?? null });
+    const person = (username: string, granted: string[]): LedgerActor => ({
+      ipAddress: undefined, subject: { username, roles: ['reader'], isAuthenticated: true, granted } as never,
+      actingUsername: () => username, enforceDeny: (permission: string) => Promise.reject(new Refused(permission))
+    });
+    const fundId = (await ledger.createFund(actor(), { name: 'General' })).id;
+    const paid = (partyPersonId?: string) => ledger.postReceipt(actor(), { amount: 1_000, date: '2026-10-18', fundId, category: '4100', partyName: 'x',
+      paymentMethod: '20', memo: 'm', ...(partyPersonId ? { partyPersonId } : {}) }, { provider: 'manual' });
+    const mine = await paid('urn:uuid:pat');
+    await paid('urn:uuid:someone-else');
+    await paid();
+    await ledger.refundReceipt(actor(), mine.id, { amount: 200, date: '2026-10-19', memo: 'overpaid' });
+
+    const pat = person('pat', ['ledger-self']);
+    expect((await ledger.ownDocuments(pat, 'receipt')).map(d => d.id)).toEqual([mine.id]);
+    expect((await ledger.ownDocuments(pat, 'refund')).map(d => d.total)).toEqual([200]);
+    await expect(ledger.listDocuments(pat, 'receipt')).rejects.toThrow('refused: ledger-read');
+    await expect(ledger.ownDocuments(person('pat', []), 'receipt')).rejects.toThrow('refused: ledger-self');
+    expect(await ledger.ownDocuments(person('nobody', ['ledger-self']), 'receipt')).toEqual([]);
+    provider.close();
+  });
+});

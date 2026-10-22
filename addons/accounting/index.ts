@@ -115,7 +115,10 @@ const AccountingAddon = {
       managerOf<PluginManagerFormatters>('PluginManager').formatters.formatMoney(minor, code);
     const toCsv: ExportManagerLike['toCsv'] = (headers, rows) => managerOf<ExportManagerLike>('ExportManager').toCsv(headers, rows);
 
-    const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv });
+    // A person's own receipts (D-037): core's person for a username, read when asked.
+    const personOf = async (username: string): Promise<string | null> =>
+      (await engine.getManager<{ getByUserIdentifier(u: string): Promise<{ '@id': string } | null> }>('PersonManager')?.getByUserIdentifier(username))?.['@id'] ?? null;
+    const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv, personOf });
     engine.registerManager('LedgerManager', ledger);
     // Say once, at startup, what the account configuration gets wrong; history is never lost (D-031).
     accountsFrom(accounts(), (m) => logger.warn(m));

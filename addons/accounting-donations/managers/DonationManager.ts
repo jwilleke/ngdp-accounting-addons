@@ -30,6 +30,8 @@ export interface DonationsDb {
 export interface LedgerLike {
   currencyCode(): string;
   listFunds(actor: DonationsActor): Promise<{ id: string; name: string; active: boolean }[]>;
+  /** The caller's own receipts and refunds (D-037, ledger-self). */
+  ownDocuments(actor: DonationsActor, kind: 'receipt' | 'refund'): ReturnType<LedgerLike['listDocuments']>;
   listDocuments(actor: DonationsActor, kind: 'receipt' | 'refund', filter?: { includeVoided?: boolean }): Promise<{
     id: string; number: string | null; date: string; status: 'posted' | 'voided'; bounced?: boolean;
     lines: { id: string; amount: number; status: 'posted' | 'voided'; receiptLineId: string | null; details: Record<string, Record<string, unknown>> }[];
@@ -109,6 +111,8 @@ export interface DonationOptions {
   wording?: () => StatementWording;
   /** ngdpbase's EmailManager, to send statements. */
   email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
+  /** The ngdpbase person a username is, as its `@id` (PersonManager.getByUserIdentifier), for a donor's own view (D-037). */
+  personOf?: (username: string) => Promise<string | null>;
   now?: () => Date;
   newId?: () => string;
 }
@@ -334,6 +338,38 @@ export default class DonationManager {
     const where = [filter.includeSuperseded ? '' : "status = 'issued'", filter.year ? 'year = ?' : ''].filter(Boolean);
     return (this.options.db.prepare(`SELECT id FROM accounting_donations_statements ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY issued_at DESC`)
       .all(...(filter.year ? [statementYear(filter.year)] : [])) as { id: string }[]).map(r => this.getStatementRow(r.id));
+  }
+
+  // ── A donor's own view (D-037) ──────────────────────────────────────────
+
+  /**
+   * The signed-in donor's own giving, by year, newest first: their gifts (their
+   * own receipts' gift lines, net of refunds) and their issued statements.
+   * Needs ledger-self, which every signed-in person holds.
+   */
+  async myGiving(actor: DonationsActor): Promise<{ year: number; giftCount: number; total: number; deductible: number; statements: { id: string; issuedAt: string }[] }[]> {
+    await this.authorize(actor, 'ledger-self');
+    const personId = await this.options.personOf?.(actor.actingUsername());
+    if (!personId) return [];
+    const receipts = await this.options.ledger.ownDocuments(actor, 'receipt');
+    const refunds = await this.options.ledger.ownDocuments(actor, 'refund');
+    const statements = this.options.db.prepare("SELECT id, year, issued_at FROM accounting_donations_statements WHERE donor_id = ? AND status = 'issued' ORDER BY issued_at DESC")
+      .all(personId) as { id: string; year: number; issued_at: string }[];
+    const years = new Set([...receipts.map(r => Number(r.date.slice(0, 4))), ...statements.map(s => s.year)]);
+    return [...years].sort((a, b) => b - a).map(year => {
+      const gifts = giftsFor(personId, year, receipts, refunds);
+      return { year, giftCount: gifts.length, total: gifts.reduce((t, g) => t + g.amount, 0), deductible: gifts.reduce((t, g) => t + g.deductible, 0),
+        statements: statements.filter(s => s.year === year).map(s => ({ id: s.id, issuedAt: s.issued_at })) };
+    }).filter(y => y.giftCount || y.statements.length);
+  }
+
+  /** One of the signed-in donor's own issued statements, exactly as stored; another donor's is not found. Needs ledger-self. */
+  async myStatement(actor: DonationsActor, statementId: string): Promise<IssuedStatement> {
+    await this.authorize(actor, 'ledger-self');
+    const personId = await this.options.personOf?.(actor.actingUsername());
+    const row = this.options.db.prepare('SELECT donor_id FROM accounting_donations_statements WHERE id = ?').get(statementId) as { donor_id: string } | undefined;
+    if (!personId || !row || row.donor_id !== personId) throw new DonationError(404, 'statementId: unknown statement');
+    return this.getStatementRow(statementId);
   }
 
   // ── Donors: core's contacts (ngdpbase #1930) ───────────────────────────

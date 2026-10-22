@@ -41,6 +41,8 @@ interface DatabaseManagerLike {
 }
 
 let unavailable: string | null = 'not registered yet';
+/** What the profile card needs, set by register() (ngdpbase's profile hook, #534, calls the module, not a manager). */
+let profile: { donations: DonationManager; escapeHtml(s: string): string; money(minor: number): string } | null = null;
 
 const AccountingDonationsAddon = {
   name: 'accounting-donations',
@@ -97,6 +99,8 @@ const AccountingDonationsAddon = {
         };
       },
       email: () => engine.getManager<{ sendTo(to: string, subject: string, text: string, html?: string): Promise<void> }>('EmailManager'),
+      personOf: async (username) =>
+        (await engine.getManager<{ getByUserIdentifier(u: string): Promise<{ '@id': string } | null> }>('PersonManager')?.getByUserIdentifier(username))?.['@id'] ?? null,
       contacts: () => ({
         persons: engine.getManager<NonNullable<Contacts['persons']>>('PersonManager'),
         organizations: engine.getManager<NonNullable<Contacts['organizations']>>('OrganizationManager')
@@ -110,8 +114,32 @@ const AccountingDonationsAddon = {
     await engine.getManager<{ registerPlugin(name: string, plugin: unknown): Promise<void> }>('PluginManager')?.registerPlugin('Donations', DonationsPlugin);
     engine.app?.use('/api/accounting-donations', donationRoutes(engine, host));
     await registerGiftForms(engine, host);
+    const fmt = engine.getManager<{ formatters: { escapeHtml(s: string): string } }>('PluginManager')?.formatters;
+    // Core's escaper (PluginManager formatters); without it the card stays off rather than escape by hand.
+    profile = fmt ? { donations, escapeHtml: (s) => fmt.escapeHtml(s), money: settings.formatMoney } : null;
     unavailable = null;
     host.logger.info('[accounting-donations] Gifts ready');
+  },
+
+  /**
+   * The signed-in donor's own giving on their profile (D-037): each year's gifts and
+   * statements. Nothing for someone with no gifts, or without ledger-self.
+   */
+  async profileSection(user: { username: string; roles?: string[] }): Promise<{ title: string; html: string } | null> {
+    if (!profile) return null;
+    const actor = {
+      ipAddress: undefined, actingUsername: () => user.username,
+      subject: { username: user.username, roles: user.roles ?? [], isAuthenticated: true } as never,
+      enforceDeny: async (permission: string): Promise<never> => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
+    };
+    let years;
+    try { years = await profile.donations.myGiving(actor); } catch { return null; }
+    if (!years.length) return null;
+    const { escapeHtml: esc, money } = profile;
+    const rows = years.map(y => `<tr><td>${y.year}</td><td>${y.giftCount}</td><td class="text-end">${esc(money(y.total))}</td><td class="text-end">${esc(money(y.deductible))}</td><td>`
+      + (y.statements.map(s => `<a href="/api/accounting-donations/my-statements/${encodeURIComponent(s.id)}">statement, issued ${esc(s.issuedAt.slice(0, 10))}</a>`).join('<br>') || 'not issued yet')
+      + '</td></tr>').join('');
+    return { title: 'Your giving', html: `<table class="table table-sm"><thead><tr><th>Year</th><th>Gifts</th><th class="text-end">Total</th><th class="text-end">Deductible</th><th>Statement</th></tr></thead><tbody>${rows}</tbody></table>` };
   },
 
   status(): { healthy: boolean; message: string } {

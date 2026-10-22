@@ -524,6 +524,11 @@ export interface LedgerOptions {
    * (ngdpbase docs/guides/caching-developer-guide.md: the owner bumps).
    */
   dataChanged?: () => Promise<void> | void;
+  /**
+   * The ngdpbase person a username is, as its `@id` (PersonManager.getByUserIdentifier), for the
+   * caller's own receipts (D-037). Without it a person has no receipts of their own.
+   */
+  personOf?: (username: string) => Promise<string | null>;
 }
 
 /**
@@ -763,6 +768,7 @@ export default class LedgerManager {
   private readonly formatMoney: LedgerOptions['formatMoney'];
   private readonly toCsv: LedgerOptions['toCsv'];
   private readonly dataChanged: () => Promise<void> | void;
+  private readonly personOf: (username: string) => Promise<string | null>;
 
   constructor(options: LedgerOptions) {
     if (!CURRENCY.test(options.currency)) throw new Error(`accounting: currency '${options.currency}' is not an ISO 4217 code`);
@@ -779,6 +785,7 @@ export default class LedgerManager {
     this.formatMoney = options.formatMoney;
     this.toCsv = options.toCsv;
     this.dataChanged = options.dataChanged ?? (() => undefined);
+    this.personOf = options.personOf ?? (async () => null);
   }
 
   /**
@@ -1911,6 +1918,22 @@ export default class LedgerManager {
   async listDocuments(actor: LedgerActor, kind: 'receipt' | 'refund', filter: { includeVoided?: boolean } = {}): Promise<(Receipt | Refund)[]> {
     await this.authorize(actor, 'ledger-read');
     return this.documents(kind, filter);
+  }
+
+  /**
+   * The caller's own receipts, or refunds of them: those whose payer is the
+   * caller's own ngdpbase person (D-037). Needs ledger-self, which every
+   * signed-in person holds; the modules show their own lines from it (gifts,
+   * dues payments).
+   */
+  async ownDocuments(actor: LedgerActor, kind: 'receipt' | 'refund', filter: { includeVoided?: boolean } = {}): Promise<(Receipt | Refund)[]> {
+    await this.authorize(actor, 'ledger-self');
+    const personId = await this.personOf(actor.actingUsername());
+    if (!personId) return [];
+    const own = this.documents('receipt', filter).filter(d => d.partyPersonId === personId);
+    if (kind === 'receipt') return own;
+    const ids = new Set(own.map(r => r.id));
+    return this.documents('refund', filter).filter(d => ids.has((d as Refund).receiptId));
   }
 
   /** One receipt or refund, with its lines. */
