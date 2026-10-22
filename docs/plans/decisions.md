@@ -1264,7 +1264,7 @@ __Decision (operator, 2026-10-20):__ keep the design flexible; do not go deeper 
 - __The treasurer starts each month's billing__ (operator, 2026-10-21, for now): a Prepare This
   Month's Invoices page shows each unit's amount owed, credit and proposed late charges; the
   treasurer checks and issues. Later, an optional automation sends on a configured schedule (the
-  10th of the month, a day of the year), through ngdpbase's `BackgroundJobManager`. The scheduled run includes the late charges due (operator, 2026-10-22, [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11)): turning the schedule on is the site's standing confirmation. The setting is `ngdpbase.addons.accounting-dues.schedule` (empty: off; an RRULE with its timezone). The run does not email: delivery is by each owner's communication preference, and until that exists it issues only and notifies the treasurer.
+  10th of the month, a day of the year), through ngdpbase's `BackgroundJobManager`. The scheduled run includes the late charges due (operator, 2026-10-22, [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11)): turning the schedule on is the site's standing confirmation. The setting is `ngdpbase.addons.accounting-dues.schedule` (empty: off; an RRULE with its timezone). The run sends nothing to owners: it issues and notifies the treasurer, who sends the invoices.
 - __Invoices reach each owner by their communication preference__, a core user preference
   (ngdpbase #1969). Each invoice is stored as issued with a fingerprint, and sent as a __PDF__
   attachment once ngdpbase has a core PDF export (requested, P1, operator 2026-10-21); statements
