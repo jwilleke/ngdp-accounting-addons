@@ -111,6 +111,8 @@ export interface DuesOptions {
   accountsManager?: string;
   /** ngdpbase's EmailManager, to send invoices. */
   email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
+  /** Whether anything may be sent to owners (`send-to-owners`, off by default): a development or copied site never mails real owners. */
+  sendToOwners?: () => boolean;
   now?: () => Date;
   newId?: () => string;
 }
@@ -175,7 +177,7 @@ export default class DuesManager {
    * something owed is sent to each owner with an email on file; one fully paid
    * by credit is kept, and not sent.
    */
-  async issueMonth(actor: DuesActor, input: { month: string; account?: string; lateCharges?: boolean; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[] }> {
+  async issueMonth(actor: DuesActor, input: { month: string; account?: string; lateCharges?: boolean; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean }> {
     await this.authorize(actor, 'invoice-issue');
     const month = this.month(input.month);
     let rows = (await this.prepareMonth(actor, month)).filter(r => !r.invoiced);
@@ -195,15 +197,17 @@ export default class DuesManager {
     await this.audit(actor, { action: 'invoice-issue', severity: 'high', resource: `invoices:${month}`, resourceType: 'dues-invoice',
       metadata: { month, count: pending.length, accounts: pending.map(p => p.row.accountId), lateCharges: input.lateCharges === true, email: input.email === true } });
     let emailed = 0;
+    // Nothing goes to owners while send-to-owners is off (D-035): the invoices are kept, not sent.
+    const held = input.email === true && !(this.options.sendToOwners?.() ?? false);
     const notEmailed: string[] = [];
     for (const p of pending) {
       const id = this.insertInvoice(actor, month, p.row, p.late, p.owners);
-      if (input.email && this.row(id).owed > 0) {
+      if (input.email && !held && this.row(id).owed > 0) {
         if (await this.sendInvoice(id, p.owners)) emailed++; else notEmailed.push(p.row.label);
       }
     }
     if (pending.length) await this.options.changed?.();
-    return { issued: pending.length, emailed, notEmailed };
+    return { issued: pending.length, emailed, notEmailed, held };
   }
 
   /** Void an invoice, with a reason; the month can then be invoiced again. */

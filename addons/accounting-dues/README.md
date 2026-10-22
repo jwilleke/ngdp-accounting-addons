@@ -56,6 +56,9 @@ A condominium, with the condo add-on enabled and 4100 renamed in the chart:
 - __Owners:__ every owner is named on the invoice, with their share when there are several. With
   email ticked, an invoice with money owed goes to each owner with an email; one paid in full by
   credit is kept and not sent.
+- __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-dues.send-to-owners` to
+  `true`. While it is off nothing is sent to owners, even with the email box ticked: a development or
+  copied site never mails real owners.
 
 Not yet: sending by each user's communication preference (ngdpbase #1969), PDF attachments
 (ngdpbase #1974), a scheduled send, and the owner's own profile panel.
