@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-21"
+last_updated: "2026-10-22"
 ---
 
 # TODO
@@ -65,8 +65,7 @@ last_updated: "2026-10-21"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-- [#35](https://github.com/jwilleke/ngdp-accounting-addons/pull/35) — chore(kit): sync to v1.14.0 *(PR · ready)* — no linked issue
-- [#32](https://github.com/jwilleke/ngdp-accounting-addons/pull/32) — chore(kit): sync to v1.14.0-0-g282c9b7 *(PR · ready)* — no linked issue
+*None.*
 
 <!-- KIT:END -->
 
