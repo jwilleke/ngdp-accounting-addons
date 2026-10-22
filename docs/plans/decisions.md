@@ -1307,3 +1307,21 @@ __Decision (operator, 2026-10-20):__
 
 __[docs/guides/donations-guide.md](../guides/donations-guide.md) is the source of truth for
 donations__ (operator): every change is made there first, and the code follows it.
+
+## D-037: People see their own money through one ledger door
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-22
+- __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
+  [D-035](#d-035-dues-and-assessments-flexible-accounts-and-charges),
+  [D-036](#d-036-donations-follow-the-donations-guide)
+
+__Context:__ A donor who signs in should see their own gifts and statements, and a unit owner their
+invoices and balance, on their own profile (ngdpbase's add-on profile hook, #534). The receipts are in
+the ledger, which only `ledger-read` (the treasurer) may read.
+
+__Decision (operator, 2026-10-22):__ `LedgerManager` gets one self-service door: the caller's own
+receipts and refunds, those whose payer is the caller's own ngdpbase person record, under one
+permission, `ledger-self`, granted to every signed-in person. The modules read through it:
+donations shows the gift lines, dues the payment lines for the units the person owns. It replaces
+the donations guide's separate `giving-self`.

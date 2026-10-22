@@ -285,7 +285,7 @@ Each add-on declares these in its `config/default-config.json`. Names are propos
 | Permission | Allows | Member | Donor | Board | Treasurer | Admin | High assurance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `dues-self` | View and pay own dues and invoices | yes | | yes | yes | yes | no |
-| `giving-self` | View own gifts and statements | yes | yes | yes | yes | yes | no |
+| `ledger-self` | View own receipts: gifts and statements, dues payments and invoices (D-037) | yes | yes | yes | yes | yes | no |
 | `event-register` | Register and pay for events | yes | yes | yes | yes | yes | no |
 | `reimbursement-request` (Phase 2) | Submit and track own requests | yes | | yes | yes | yes | no |
 | `ledger-summary-read` | Fund balances and monthly report, no donor names | | | yes | yes | yes | no |
@@ -304,7 +304,7 @@ Each add-on declares these in its `config/default-config.json`. Names are propos
 
 Notes:
 
-- A "donor" who never signs in has no role; their statement is emailed. `giving-self` applies only to donors with an account.
+- A "donor" who never signs in has no role; their statement is emailed. `ledger-self` applies only to people with an account.
 - Whether an admin who is not an officer should see donor-level detail is an open question. The table defaults to no.
 - The add-ons' policies may name roles on day one (as the calendar and journal add-ons do), but add-on code never tests a role name.
 

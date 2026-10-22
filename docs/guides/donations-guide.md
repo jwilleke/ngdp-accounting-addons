@@ -1,7 +1,7 @@
 ---
 name: Donations guide
 description: How the accounting add-on records gifts and produces giving statements, and what the IRS asks for
-dateModified: 2026-10-20
+dateModified: 2026-10-22
 category: guides
 relatedModules: [LedgerManager, ReceiptManager, PersonManager, ExportManager]
 ---
@@ -123,7 +123,9 @@ Large non-cash gifts (property over $5,000) involve extra IRS forms; they are no
 - The __treasurer__ records gifts (`ledger-record`) and sees donors (`ledger-read`).
 - The __board__ sees donation totals by fund without individual donors (`ledger-summary-read`),
   unless granted `ledger-read`.
-- A __donor who logs in__ sees their own gifts and statements (`giving-self`).
+- A __donor who logs in__ sees their own gifts and statements on their profile (`ledger-self`, the
+  accounting add-on's one door to a person's own receipts,
+  [D-037](../plans/decisions.md#d-037-people-see-their-own-money-through-one-ledger-door)).
 
 ## Still to decide
 
