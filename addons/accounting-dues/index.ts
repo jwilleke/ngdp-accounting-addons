@@ -80,6 +80,7 @@ const AccountingDuesAddon = {
     const dues = new DuesManager({
       host, db, ledger, accounts, categories, accountsManager: sourceName,
       changed: async () => { await cache?.bump('DuesManager'); },
+      sendToOwners: () => setting('send-to-owners', false) === true,
       label: () => {
         const l = (setting('label', {}) ?? {}) as Record<string, unknown>;
         return { singular: str(l.singular, 'Dues'), plural: str(l.plural, 'Dues') };

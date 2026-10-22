@@ -48,6 +48,7 @@ describe('dues', () => {
   let fundId: string;
   let today: string;
   let bumps: number;
+  let sending: boolean;
 
   beforeEach(async () => {
     ledgerDb = openTestLedgerDatabase();
@@ -56,13 +57,14 @@ describe('dues', () => {
     audit = [];
     sent = [];
     bumps = 0;
+    sending = true;
     today = '2026-09-01';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     dues = new DuesManager({
       host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
-      email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } })
+      email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } }), sendToOwners: () => sending
     });
     ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
     fundId = (await ledger.createFund(actor(), { name: 'Operating' })).id;
@@ -77,7 +79,7 @@ describe('dues', () => {
 
   test('each month is evaluated on its own; an account is invoiced once a month', async () => {
     expect((await dues.prepareMonth(actor(), '2026-09')).map(r => [r.label, r.owed, r.invoiced])).toEqual([['1', 41000, null], ['2', 30000, null]]);
-    expect(await dues.issueMonth(actor(), { month: '2026-09', email: true })).toEqual({ issued: 2, emailed: 2, notEmailed: [] });
+    expect(await dues.issueMonth(actor(), { month: '2026-09', email: true })).toEqual({ issued: 2, emailed: 2, notEmailed: [], held: false });
     expect(sent.map(s => s.to)).toEqual(['pat@example.org', 'jo@example.org']);
     const [two, one] = await dues.listInvoices(actor());
     expect([one!.number, two!.number]).toEqual(['I-0001', 'I-0002']);
@@ -103,7 +105,7 @@ describe('dues', () => {
     today = '2026-10-01';
     const oct = await dues.prepareMonth(actor(), '2026-10');
     expect(oct.map(r => [r.label, r.previous, r.owed])).toEqual([['1', 0, 41000], ['2', -60000, 0]]);
-    expect(await dues.issueMonth(actor(), { month: '2026-10', email: true })).toEqual({ issued: 2, emailed: 1, notEmailed: [] });
+    expect(await dues.issueMonth(actor(), { month: '2026-10', email: true })).toEqual({ issued: 2, emailed: 1, notEmailed: [], held: false });
     const p2 = (await dues.listInvoices(actor(), { accountId: 'P-2', month: '2026-10' }))[0]!;
     expect(p2).toMatchObject({ owed: 0, remaining: 0 });
     expect(p2.html).toContain('Paid in full');
@@ -133,6 +135,13 @@ describe('dues', () => {
     expect(dec.lateCharges.map(l => [l.ruleId, l.appliesToNumber, l.amount])).toEqual([
       ['late-60', 'I-0001', 5273], ['late-60', 'I-0003', 5273], ['late-10', 'I-0004', 1000]
     ]);
+  });
+
+  test('while send-to-owners is off, nothing is sent to owners, even with the email box ticked', async () => {
+    sending = false;
+    expect(await dues.issueMonth(actor(), { month: '2026-09', email: true })).toEqual({ issued: 2, emailed: 0, notEmailed: [], held: true });
+    expect(sent).toEqual([]);
+    expect((await dues.listInvoices(actor()))[0]!.emailedTo).toBeNull();
   });
 
   test('a void frees the month; a refunded payment counts no more', async () => {

@@ -24,7 +24,7 @@ export interface ReceiptManagerLike {
 
 /** The slice of DuesManager the forms call. */
 export interface DuesManagerLike {
-  issueMonth(actor: ApiContext, input: Record<string, unknown>): Promise<{ issued: number; emailed: number; notEmailed: string[] }>;
+  issueMonth(actor: ApiContext, input: Record<string, unknown>): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean }>;
   voidInvoice(actor: ApiContext, id: string, reason: string): Promise<{ id: string; number: string }>;
 }
 
@@ -119,7 +119,9 @@ export async function registerDuesForms(engine: Engine, host: AddonHost, account
       const ctx = host.ApiContext.from(req as never, engine as never);
       const d = submission.data;
       const result = await dues.issueMonth(ctx, { month: d.month, account: str(d.account), lateCharges: checked(d.lateCharges), email: checked(d.email) });
-      return { ok: true, id: `${result.issued} issued, ${result.emailed} emailed${result.notEmailed.length ? `; not emailed: ${result.notEmailed.join(', ')}` : ''}` };
+      const sent = result.held ? 'nothing sent: sending to owners is off on this site'
+        : `${result.emailed} emailed${result.notEmailed.length ? `; not emailed: ${result.notEmailed.join(', ')}` : ''}`;
+      return { ok: true, id: `${result.issued} issued, ${sent}` };
     } catch (err) {
       return refusal(err, fieldIn(ISSUE_FORM));
     }
