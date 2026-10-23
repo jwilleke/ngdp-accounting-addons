@@ -45,6 +45,7 @@ describe('giving statements', () => {
       { migrations: DONATIONS_MIGRATIONS as never, ledgerTable: DONATIONS_LEDGER_TABLE }, { slug: 'accounting-donations', defaults });
     sent = []; audit = [];
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide,
+      personOf: async (u) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[u] ?? null,
       categories: () => ({ '4200': 'Donations and gifts', '6100': { name: 'Bank Charges', type: 'expense' }, '8900': { name: 'Other Miscellaneous Income', type: 'other-income' } }),
       bouncedChecks: () => ({ bankChargesCategory: '6100', otherIncomeCategory: '8900', penalty: 0 }) });
     const door = { get: async (_ctx: unknown, id: string) => people.get(id) ?? null, list: async () => [...people.values()] };
@@ -52,6 +53,7 @@ describe('giving statements', () => {
       recordAudit: async (r) => { audit.push(r); }, contacts: () => ({ persons: door, organizations: door }) as never,
       wording: () => ({ organization: { name: 'Fairways Fund', taxId: '12-3456789', address: '1 Fairway Dr' }, intro: DEFAULT_WORDING.intro, noGoods: DEFAULT_WORDING.noGoods, goodsNote: DEFAULT_WORDING.goodsNote, taxIdNote: DEFAULT_WORDING.taxIdNote }),
       email: () => ({ sendTo: async (to: string, subject: string, _text: string, html?: string) => { sent.push({ to, subject, html }); } }),
+      personOf: async (u) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[u] ?? null,
       now: () => new Date('2027-01-15T12:00:00Z') });
     ledger.registerLineDetails('gift', giftValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
     fundId = (await ledger.createFund(actor(), { name: 'General', openingDate: '2026-01-01' })).id;
@@ -60,7 +62,7 @@ describe('giving statements', () => {
   afterEach(() => { ledgerDb.close(); ownDb.close(); });
 
   const gift = (donor: typeof jane, amount: number, date: string, extra: Record<string, unknown> = {}) => ledger.postReceipt(actor(), {
-    date, partyName: donor.name, paymentMethod: '20', memo: 'gift',
+    date, partyName: donor.name, partyPersonId: donor.id, paymentMethod: '20', memo: 'gift',
     lines: [{ amount, fundId, category: '4200', details: { gift: { donor, ...extra } } }]
   }, { provider: 'manual' });
 
@@ -114,5 +116,22 @@ describe('giving statements', () => {
     await ledger.makeDeposit(actor(), { accountId: 'checking', date: '2026-03-02', receiptIds: [a.id], total: 10_000 });
     await ledger.recordBounce(actor(), a.id, { date: '2026-03-10' });
     expect((await donations.yearOverview(actor(), 2026)).map(d => [d.giftCount, d.total, d.statement?.needsReissue])).toEqual([[0, 0, true]]);
+  });
+
+  test('a donor sees only their own giving and statements (D-037, ledger-self)', async () => {
+    await gift(jane, 10_000, '2026-03-01', { goodsValue: 4_000, goodsDescription: 'gala dinner' });
+    await gift(bo, 2_500, '2026-05-01');
+    await donations.issueStatements(actor(), { year: 2026 });
+    const self = (username: string, granted = ['ledger-self']): LedgerActor => ({
+      ipAddress: undefined, actingUsername: () => username, subject: { username, granted } as never,
+      enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
+    });
+    const mine = await donations.myGiving(self('jane'));
+    expect(mine.map(y => [y.year, y.giftCount, y.total, y.deductible, y.statements.length])).toEqual([[2026, 1, 10_000, 6_000, 1]]);
+    expect((await donations.myStatement(self('jane'), mine[0]!.statements[0]!.id)).donor.name).toBe('Jane Roe');
+    const bos = (await donations.listStatements(actor())).find(st => st.donor.id === bo.id)!;
+    await expect(donations.myStatement(self('jane'), bos.id)).rejects.toThrow('unknown statement');
+    await expect(donations.myGiving(self('jane', []))).rejects.toThrow('refused: ledger-self');
+    expect(await donations.myGiving(self('nobody'))).toEqual([]);
   });
 });
