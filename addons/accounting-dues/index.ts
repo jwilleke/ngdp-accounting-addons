@@ -7,7 +7,8 @@
  *
  * Configuration keys:
  *   ngdpbase.addons.accounting-dues.enabled           — true/false (defaults to false)
- *   ngdpbase.addons.accounting-dues.accounts-manager  — the manager holding the accounts billed (CondoUnitManager)
+ *   ngdpbase.addons.accounting-dues.accounts-manager  — the manager holding the accounts billed (AccommodationManager)
+ *   ngdpbase.addons.accounting-dues.owners-manager    — the manager holding each account's owners (ResidencyManager)
  *   ngdpbase.addons.accounting-dues.categories        — chart codes a payment may use; the first is what invoices charge
  *   ngdpbase.addons.accounting-dues.label             — { "singular": "Assessment", "plural": "Assessments" }
  *   ngdpbase.addons.accounting-dues.organization      — { "name", "address", "pay-to" } on every invoice
@@ -17,7 +18,7 @@
 import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { duesValidator } from './billing.js';
 import { registerDuesForms } from './forms.js';
-import DuesManager, { accountLabel, type AccountSource, type DuesDb, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
+import DuesManager, { accountLabel, type AccountSource, type DuesDb, type OwnerSource, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
 import { DUES_LEDGER_TABLE, DUES_MIGRATIONS } from './managers/migrations.js';
 import DuesPlugin from './plugins/DuesPlugin.js';
 import duesRoutes from './routes/api.js';
@@ -47,7 +48,7 @@ const AccountingDuesAddon = {
   description: 'Dues and assessments: monthly invoices, payments, credits and late charges',
   author: 'jwilleke',
   dependencies: ['accounting'],
-  optionalDependencies: ['forms', 'condo'],
+  optionalDependencies: ['forms', 'accommodation'],
 
   async register(engine: Engine, _config: Record<string, unknown>, host: AddonHost): Promise<void> {
     const ledger = engine.getManager<LedgerLike>('LedgerManager');
@@ -69,8 +70,10 @@ const AccountingDuesAddon = {
     const plugins = engine.getManager<{ formatters: { formatMoney(minor: number, currency: string): string } }>('PluginManager');
     const setting = (key: string, fallback: unknown) => config?.getProperty(`ngdpbase.addons.accounting-dues.${key}`, fallback);
     const str = (v: unknown, fallback = '') => (typeof v === 'string' && v !== '' ? v : fallback);
-    const sourceName = str(setting('accounts-manager', 'CondoUnitManager'), 'CondoUnitManager');
+    const sourceName = str(setting('accounts-manager', 'AccommodationManager'), 'AccommodationManager');
     const accounts = () => engine.getManager<AccountSource>(sourceName);
+    const ownersName = str(setting('owners-manager', 'ResidencyManager'), 'ResidencyManager');
+    const owners = () => engine.getManager<OwnerSource>(ownersName);
     const categories = () => {
       const value = setting('categories', []);
       return Array.isArray(value) ? value.filter((c): c is string => typeof c === 'string') : [];
@@ -78,7 +81,7 @@ const AccountingDuesAddon = {
     // The owner bumps (ngdpbase caching guide): pages that show invoices re-render after each write.
     const cache = engine.getManager<{ bump(topic: string): Promise<unknown> }>('CacheManager');
     const dues = new DuesManager({
-      host, db, ledger, accounts, categories, accountsManager: sourceName,
+      host, db, ledger, accounts, owners, categories, accountsManager: sourceName,
       changed: async () => { await cache?.bump('DuesManager'); },
       sendToOwners: () => setting('send-to-owners', false) === true,
       label: () => {
@@ -103,6 +106,7 @@ const AccountingDuesAddon = {
       return unit ? accountLabel(unit) : id;
     });
     if (!accounts()) host.logger.warn(`[accounting-dues] ${sourceName} is not running: there are no accounts to bill until it is`);
+    if (!owners()) host.logger.warn(`[accounting-dues] ${ownersName} is not running: no invoice can be issued until it is`);
     unavailable = null;
     host.logger.info('[accounting-dues] Invoices ready');
   },

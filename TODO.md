@@ -25,7 +25,7 @@ last_updated: "2026-10-22"
 - Running / in-flight: dev site pm2 `accounting` (ngdpbase v5.24.0) left running; no CI, no open PRs
 - Parked / half-done: none
 - Next steps:
-  - When condo commits ResidencyManager and billing parties (ngdpbase-addons #15, #14): switch accounting-dues to one invoice per billing party, owners on the due date; then the owner's dues card (#50)
+  - Condo is now the accommodation add-on (#57). Then switch accounting-dues to one invoice per billing party, owners on the due date; then the owner's dues card (#50)
   - When ngdpbase #1998 and #1999 ship: build the scheduled invoice run (#11)
   - When ngdpbase releases #1982, #1973 and #1980: PDF invoices and statements, ctx-first email, versioned forms, audience wording (#51)
 - Blockers / significant notes: pm2 name `ngdp-instance` is now the yourphr instance (restarted by mistake 2026-10-22); ours is `accounting`, started from the scratchpad wrapper `accounting.config.cjs`. Dev admin password in `private/admin-dev-password.txt`; admin holds treasurer on the dev site only
@@ -37,7 +37,7 @@ last_updated: "2026-10-22"
 
 <!-- Dependabot and scanner alerts land here first, ahead of other P0 work. -->
 
-*None.*
+- [#57](https://github.com/jwilleke/ngdp-accounting-addons/issues/57) — [BUG] accounting-dues still calls CondoUnitManager; condo is now the accommodation add-on
 
 ## 🟣 Epics
 
@@ -80,7 +80,7 @@ last_updated: "2026-10-22"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-*None.*
+- [#56](https://github.com/jwilleke/ngdp-accounting-addons/issues/56) — [FEATURE] accounting-dues: one invoice per billing party
 
 <!-- KIT:END -->
 

@@ -14,10 +14,10 @@
  *   compounded (operator, 2026-10-21).
  */
 
-/** What an account is charged and when it falls due (CondoUnitManager.assessment). */
+/** What an account is charged and when it falls due (AccommodationManager.assessment). */
 export interface Assessment { amount: number; period: 'monthly' | 'annual'; datedue: number | string }
 
-/** A late-charge rule (CondoUnitManager.lateCharges). */
+/** A late-charge rule (AccommodationManager.lateCharges). */
 export interface LateChargeRule { id: string; daysLate: number; amount: number | null; annualPercent: number | null; repeat: 'once' | 'monthly' }
 
 /** An issued invoice as billing reads it. */

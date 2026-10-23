@@ -5,8 +5,9 @@
  * naming the account; this manager reads those through LedgerManager and never
  * touches the accounting database.
  *
- * Accounts come from a manager named in configuration (CondoUnitManager for a
- * condominium): this one keeps no copy of them, only the money side.
+ * Accounts and their owners come from managers named in configuration (the
+ * accommodation add-on's AccommodationManager and ResidencyManager): this one
+ * keeps no copy of them, only the money side.
  *
  * Every write: ask the decision point for `invoice-issue`, write the audit
  * record and wait for it (on-failure: refuse), then change the rows.
@@ -31,16 +32,20 @@ export interface DuesDb {
   transaction<T>(fn: () => T): () => T;
 }
 
-/** An owner as billed (CondoUnitManager.owners): an ngdpbase user and the percent they pay. */
-export interface AccountOwner { username: string; name: string; email: string | null; share: number }
+/** An owner as billed (ResidencyManager.owners): an ngdpbase user. */
+export interface AccountOwner { username: string; name: string; email: string | null }
 
-/** The manager that holds the accounts billed (D-035); for a condominium, CondoUnitManager. */
+/** The manager that holds the accounts billed (D-035); for a condominium, AccommodationManager. */
 export interface AccountSource {
   list(): ({ id: string } & Record<string, unknown>)[];
   get(id: string): ({ id: string } & Record<string, unknown>) | undefined;
   assessment(id: string): Assessment | null;
-  owners(ctx: ActorContext, id: string): Promise<AccountOwner[]>;
   lateCharges?(): LateChargeRule[];
+}
+
+/** The manager that holds each account's owners on a date; for a condominium, ResidencyManager. */
+export interface OwnerSource {
+  owners(ctx: ActorContext, id: string, options?: { on?: string }): Promise<AccountOwner[]>;
 }
 
 /** The slice of the accounting add-on's LedgerManager this one calls. */
@@ -68,7 +73,7 @@ export interface InvoiceLine {
 
 export interface Invoice {
   id: string; number: string; accountId: string; accountLabel: string; month: string; date: string; dueDate: string;
-  total: number; previous: number; owed: number; owners: { username: string; name: string; share: number }[];
+  total: number; previous: number; owed: number; owners: { username: string; name: string }[];
   lines: InvoiceLine[]; html: string; sha256: string;
   status: 'issued' | 'voided'; voidReason: string | null; emailedTo: string | null; emailedAt: string | null;
   createdBy: string; createdAt: string;
@@ -97,6 +102,8 @@ export interface DuesOptions {
   ledger: LedgerLike;
   /** The account source; looked up when used, so it may arrive after this manager. */
   accounts: () => AccountSource | null | undefined;
+  /** The owner source; looked up when used, as the account source is. */
+  owners: () => OwnerSource | null | undefined;
   recordAudit: (record: Record<string, unknown>) => Promise<void>;
   decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Chart codes a payment may use; the first is the one invoices charge (configuration). */
@@ -186,13 +193,13 @@ export default class DuesManager {
       if (!row) throw new DuesError(409, `account: nothing to invoice for ${month}, or it is already invoiced`);
       rows = [row];
     }
-    const source = this.source();
+    const owners = this.ownerSource();
     const pending: { row: MonthRow; late: ProposedLateCharge[]; owners: AccountOwner[] }[] = [];
     for (const row of rows) {
       const late = input.lateCharges ? row.lateCharges : [];
       if (!row.charge && !late.length) continue;
-      // Owners are read as the treasurer (or a job), so the read is attributed (ngdpbase-addons#11).
-      pending.push({ row, late, owners: await source.owners(actor.subject as ActorContext, row.accountId) });
+      // Owners on the invoice's due date, read as the treasurer (or a job), so the read is attributed (ngdpbase-addons#11, #15).
+      pending.push({ row, late, owners: await owners.owners(actor.subject as ActorContext, row.accountId, { on: row.charge?.dueDate ?? `${month}-01` }) });
     }
     await this.audit(actor, { action: 'invoice-issue', severity: 'high', resource: `invoices:${month}`, resourceType: 'dues-invoice',
       metadata: { month, count: pending.length, accounts: pending.map(p => p.row.accountId), lateCharges: input.lateCharges === true, email: input.email === true } });
@@ -319,6 +326,12 @@ export default class DuesManager {
     return source;
   }
 
+  private ownerSource(): OwnerSource {
+    const source = this.options.owners();
+    if (!source) throw new DuesError(409, 'the owners to bill are not available on this site (ngdpbase.addons.accounting-dues.owners-manager)');
+    return source;
+  }
+
   private month(value: unknown): string {
     try { return billingMonth(value); } catch (err) { throw new DuesError(400, (err as Error).message); }
   }
@@ -379,7 +392,7 @@ export default class DuesManager {
     const id = this.newId();
     const date = this.stamp().slice(0, 10);
     const dueDate = row.charge?.dueDate ?? `${month}-01`;
-    const owned = owners.map(o => ({ username: o.username, name: o.name, share: o.share }));
+    const owned = owners.map(o => ({ username: o.username, name: o.name }));
     this.options.db.transaction(() => {
       const seq = this.options.db.prepare("SELECT next FROM accounting_dues_sequence WHERE name = 'invoice'").get() as { next: number };
       this.options.db.prepare("UPDATE accounting_dues_sequence SET next = next + 1 WHERE name = 'invoice'").run();
