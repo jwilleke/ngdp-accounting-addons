@@ -17,6 +17,20 @@ last_updated: "2026-10-22"
 > and `/wrap`.
 > See also: `ARCHITECTURE.md` for system context; `private/project_log.md` for session history.
 
+<!-- RESUME:START -->
+## ▶ Resume here — 2026-10-23
+
+- Last worked on: #50 donor half merged (#53, `ledger-self` + "Your giving" card); #11 decisions and `send-to-owners` switch merged (#52); issue review (closed #3, #4; opened #49, #50, #51)
+- Branch / state: main, clean, pushed
+- Running / in-flight: dev site pm2 `accounting` (ngdpbase v5.24.0) left running; no CI, no open PRs
+- Parked / half-done: none
+- Next steps:
+  - When condo commits ResidencyManager and billing parties (ngdpbase-addons #15, #14): switch accounting-dues to one invoice per billing party, owners on the due date; then the owner's dues card (#50)
+  - When ngdpbase #1998 and #1999 ship: build the scheduled invoice run (#11)
+  - When ngdpbase releases #1982, #1973 and #1980: PDF invoices and statements, ctx-first email, versioned forms, audience wording (#51)
+- Blockers / significant notes: pm2 name `ngdp-instance` is now the yourphr instance (restarted by mistake 2026-10-22); ours is `accounting`, started from the scratchpad wrapper `accounting.config.cjs`. Dev admin password in `private/admin-dev-password.txt`; admin holds treasurer on the dev site only
+<!-- RESUME:END -->
+
 <!-- KIT:START 7a6fe0a — managed by mjs-project-template; add your own sections below KIT:END -->
 
 ## 🔴 P0 — Security & Critical
