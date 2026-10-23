@@ -37,7 +37,7 @@ last_updated: "2026-10-22"
 
 <!-- Dependabot and scanner alerts land here first, ahead of other P0 work. -->
 
-- [#57](https://github.com/jwilleke/ngdp-accounting-addons/issues/57) — [BUG] accounting-dues still calls CondoUnitManager; condo is now the accommodation add-on
+*None.*
 
 ## 🟣 Epics
 
