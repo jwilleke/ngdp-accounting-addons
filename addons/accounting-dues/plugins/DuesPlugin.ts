@@ -1,7 +1,7 @@
 /**
  * DuesPlugin — dues drawn on a page for the person viewing it:
  *
- *   [{Dues view='prepare'}]                 this month: each account's charge, late charges, balance and amount owed
+ *   [{Dues view='prepare'}]                 this month: each billing party's charge, late charges, balance and amount owed
  *   [{Dues view='prepare' month='next'}]     current (the default), next, previous, or YYYY-MM
  *   [{Dues view='invoices' month='2026-10'}] invoices, newest first (blank month: all; voided='true' adds voided ones)
  *   [{Dues view='balances'}]                each account: invoiced, paid, balance or credit
@@ -35,10 +35,11 @@ export async function renderDuesView(f: PluginFormatters, dues: DuesManager, vie
     if (view === 'prepare') {
       const month = monthParam(params.month, today);
       const rows = await dues.prepareMonth(actor, month);
-      const totals = rows.filter(r => !r.invoiced);
+      const totals = rows.filter(r => !r.invoiced && !r.problem);
+      const who = (r: { label: string; partyName: string }) => `${escapeHtml(r.label)}${r.partyName ? `<br><small>${escapeHtml(r.partyName)}</small>` : ''}`;
       return `<p class="text-muted">${escapeHtml(month)}: ${totals.length} to invoice, ${money(totals.reduce((t, r) => t + r.owed, 0))} owed</p>`
         + formatAsTable(['Account', 'Charge', 'Due', 'Late charges', 'Brought forward', 'Amount owed', 'Invoice'],
-          rows.map(r => [escapeHtml(r.label), r.charge ? money(r.charge.amount) : '', escapeHtml(r.charge?.dueDate ?? ''),
+          rows.map(r => r.problem ? [who(r), '', '', '', '', '', `not billable: ${escapeHtml(r.problem)}`] : [who(r), r.charge ? money(r.charge.amount) : '', escapeHtml(r.charge?.dueDate ?? ''),
             r.lateCharges.map(l => `${money(l.amount)} on ${escapeHtml(l.appliesToNumber)}`).join('<br>'),
             balance(r.previous), `<strong>${money(r.owed)}</strong>`, r.invoiced ? escapeHtml(r.invoiced) : 'not yet']),
           { sortable: true, emptyMessage: 'Nothing is charged this month.' });
@@ -47,7 +48,7 @@ export async function renderDuesView(f: PluginFormatters, dues: DuesManager, vie
       const month = typeof params.month === 'string' && params.month !== '' ? params.month : undefined;
       const invoices = await dues.listInvoices(actor, { month, includeVoided: parseBoolParam(params.voided as string | undefined, false) });
       return formatAsTable(['Invoice', 'Account', 'Month', 'Due', 'Charged', 'Owed when issued', 'Left to pay', 'Status'],
-        invoices.map(i => [`<a href="/api/accounting-dues/invoices/${encodeURIComponent(i.id)}">${escapeHtml(i.number)}</a>`, escapeHtml(i.accountLabel),
+        invoices.map(i => [`<a href="/api/accounting-dues/invoices/${encodeURIComponent(i.id)}">${escapeHtml(i.number)}</a>`, `${escapeHtml(i.accountLabel)}${i.partyName ? `<br><small>${escapeHtml(i.partyName)}</small>` : ''}`,
           escapeHtml(i.month), escapeHtml(i.dueDate), money(i.total), money(i.owed), i.status === 'issued' ? money(i.remaining) : '',
           i.status === 'voided' ? `voided: ${escapeHtml(i.voidReason ?? '')}` : (i.emailedTo ? 'issued · emailed' : 'issued')]),
         { sortable: true, emptyMessage: 'No invoices.' });

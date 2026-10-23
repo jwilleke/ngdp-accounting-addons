@@ -1,7 +1,7 @@
 /**
  * An invoice's page (D-035), exactly as it is stored and sent: one account's
  * charges for a month, the balance brought forward (a credit when negative),
- * the amount owed, and the owners it is addressed to. Pure: DuesManager gathers the
+ * the amount owed, and the billing party it is addressed to. Pure: DuesManager gathers the
  * data and stores what this renders.
  */
 
@@ -16,14 +16,25 @@ export interface InvoiceContent {
   previous: number;
   total: number;
   owed: number;
-  owners: { name: string }[];
+  /** The billing party: its names, and where the invoice goes. */
+  billTo: { name: string; address: PostalAddress | null };
   /** The module's word for the charge, e.g. Assessment. */
   label: string;
 }
 
+/** schema.org PostalAddress, as the accommodation add-on keeps it. */
+export interface PostalAddress { streetAddress: string; addressLocality?: string; addressRegion?: string; postalCode?: string }
+
 export interface InvoiceWording { organization: { name: string; address: string; payTo: string } }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
+/** An address as lines under the name: street, then town, region and postal code. */
+function address(a: PostalAddress | null): string {
+  if (!a) return '';
+  const town = [[a.addressLocality, a.addressRegion].filter(Boolean).join(', '), a.postalCode].filter(Boolean).join(' ');
+  return [a.streetAddress, town].filter(Boolean).map(l => `<br>${esc(l)}`).join('');
+}
 
 export function renderInvoice(c: InvoiceContent, w: InvoiceWording, formatMoney: (minor: number) => string): string {
   const money = (m: number) => esc(formatMoney(m));
@@ -42,7 +53,7 @@ export function renderInvoice(c: InvoiceContent, w: InvoiceWording, formatMoney:
 </style></head><body>
 <h1>Invoice ${esc(c.number)}</h1>
 <p class="muted">${esc(w.organization.name)}${w.organization.address ? `<br>${esc(w.organization.address)}` : ''}</p>
-<p><strong>${esc(c.accountLabel)}</strong><br>${esc(c.owners.map(o => o.name).join(', '))}</p>
+<p><strong>${esc(c.accountLabel)}</strong><br>${esc(c.billTo.name)}${address(c.billTo.address)}</p>
 <p>${esc(c.label)} for ${esc(c.month)} · issued ${esc(c.date)} · due ${esc(c.dueDate)}</p>
 <table><tbody>${brought}${rows}</tbody>
 <tfoot><tr><td>Amount owed</td><td class="amount">${money(c.owed)}</td></tr></tfoot></table>

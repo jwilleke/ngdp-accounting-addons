@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildAddonHost, openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
 import { openTestLedgerDatabase, testLedgerParts } from '../../accounting/__tests__/host.js';
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting/managers/LedgerManager.js';
-import DuesManager, { type AccountSource, type DuesDb, type OwnerSource } from '../managers/DuesManager.js';
+import DuesManager, { type AccountSource, type BillingParty, type BillingSource, type DuesDb } from '../managers/DuesManager.js';
 import { DUES_LEDGER_TABLE, DUES_MIGRATIONS } from '../managers/migrations.js';
 import { duesValidator } from '../billing.js';
 
@@ -35,14 +35,26 @@ const units: AccountSource = {
   ]
 };
 
-/** Their owners, as ResidencyManager gives them; the dates asked for are kept. */
-const ownersAsked: (string | undefined)[] = [];
-const residents: OwnerSource = {
-  owners: async (_ctx, id, options) => {
-    ownersAsked.push(options?.on);
-    return id === 'P-1'
-      ? [{ username: 'pat', name: 'Pat Lee', email: 'pat@example.org' }, { username: 'sam', name: 'Sam Lee', email: null }]
-      : [{ username: 'jo', name: 'Jo Park', email: 'jo@example.org' }];
+const PAT = { username: 'pat', name: 'Pat Lee', email: 'pat@example.org' };
+const SAM = { username: 'sam', name: 'Sam Lee', email: null };
+const JO = { username: 'jo', name: 'Jo Park', email: 'jo@example.org' };
+const at = (streetAddress: string) => ({ streetAddress, addressLocality: 'Mount Vernon', addressRegion: 'OH', postalCode: '43050' });
+
+/**
+ * Their billing parties, as ResidencyManager gives them: P-1's joint owners on one invoice, unless a
+ * test splits them 60/40 at two addresses, or makes the unit's billing refused. The dates asked are kept.
+ */
+const billingAsked: (string | undefined)[] = [];
+let p1: 'joint' | 'split' | 'refused' = 'joint';
+const residents: BillingSource = {
+  billing: async (_ctx, id, options) => {
+    billingAsked.push(options?.on);
+    if (id === 'P-2') return [{ to: [JO], name: 'Jo Park', address: at('2 Fairway Dr'), share: 100 }];
+    if (p1 === 'refused') throw new Error('unit P-1: billing[0] names kim, who is not a current owner');
+    const parties: BillingParty[] = p1 === 'joint'
+      ? [{ to: [PAT, SAM], name: 'Pat Lee and Sam Lee', address: at('1 Fairway Dr'), share: 100 }]
+      : [{ to: [PAT], name: 'Pat Lee', address: at('1 Fairway Dr'), share: 60 }, { to: [SAM], name: 'Sam Lee', address: at('9 Elm St'), share: 40 }];
+    return parties;
   }
 };
 
@@ -66,16 +78,17 @@ describe('dues', () => {
     sent = [];
     bumps = 0;
     sending = true;
-    ownersAsked.length = 0;
+    billingAsked.length = 0;
+    p1 = 'joint';
     today = '2026-09-01';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     dues = new DuesManager({
-      host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, owners: () => residents, categories: () => ['4100'],
+      host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, billing: () => residents, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
       email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } }), sendToOwners: () => sending
     });
-    ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
+    ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id), partiesOf: (id) => dues.partiesOf(id) }));
     fundId = (await ledger.createFund(actor(), { name: 'Operating' })).id;
   });
 
@@ -94,9 +107,10 @@ describe('dues', () => {
     expect([one!.number, two!.number]).toEqual(['I-0001', 'I-0002']);
     expect(one).toMatchObject({ accountId: 'P-1', month: '2026-09', dueDate: '2026-09-01', total: 41000, owed: 41000, remaining: 41000, emailedTo: 'pat@example.org' });
     expect(one!.owners).toEqual([{ username: 'pat', name: 'Pat Lee' }, { username: 'sam', name: 'Sam Lee' }]);
-    expect(one!.html).toContain('Pat Lee, Sam Lee');
-    // Owners are those on the invoice's due date.
-    expect(ownersAsked).toEqual(['2026-09-01', '2026-09-01']);
+    expect(one).toMatchObject({ party: 'pat,sam', partyName: 'Pat Lee and Sam Lee', address: at('1 Fairway Dr') });
+    expect(one!.html).toContain('Pat Lee and Sam Lee<br>1 Fairway Dr<br>Mount Vernon, OH 43050');
+    // The parties are those on the charge's due date.
+    expect(new Set(billingAsked)).toEqual(new Set(['2026-09-01']));
     expect(audit.at(-1)).toMatchObject({ action: 'invoice-issue', resource: 'invoices:2026-09' });
     expect(bumps).toBe(1);
     // Once invoiced, the month shows the invoice's own figures.
@@ -175,7 +189,38 @@ describe('dues', () => {
     await expect(ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'x', paymentMethod: '20', memo: 'x',
       lines: [{ amount: 100, fundId, category: '4200', details: { dues: { account: 'P-1' } } }] }, { provider: 'manual' })).rejects.toThrow('not a dues category');
     expect((await dues.toFormOptions({ list: 'open-invoices' }, { username: 'tess', granted: ALL })).map(o => o.label))
-      .toEqual(['I-0002 · 2 · 2026-09 · $300.00 left', 'I-0001 · 1 · 2026-09 · $410.00 left']);
+      .toEqual(['I-0002 · 2 · Jo Park · 2026-09 · $300.00 left', 'I-0001 · 1 · Pat Lee and Sam Lee · 2026-09 · $410.00 left']);
     expect(await dues.toFormOptions({ list: 'open-invoices' }, { username: 'x', granted: [] })).toEqual([]);
+  });
+
+  test('one invoice per billing party, each with its own balance (D-038)', async () => {
+    p1 = 'split';
+    expect((await dues.prepareMonth(actor(), '2026-09')).filter(r => r.accountId === 'P-1').map(r => [r.partyName, r.charge?.amount, r.owed]))
+      .toEqual([['Pat Lee', 24600, 24600], ['Sam Lee', 16400, 16400]]);
+    expect(await dues.issueMonth(actor(), { month: '2026-09', account: 'P-1', email: true })).toEqual({ issued: 2, emailed: 1, notEmailed: ['1 · Sam Lee'], held: false });
+    const [pat, sam] = (await dues.listInvoices(actor(), { accountId: 'P-1' })).sort((a, b) => a.number.localeCompare(b.number));
+    expect([pat!.party, pat!.total, sam!.party, sam!.total]).toEqual(['pat', 24600, 'sam', 16400]);
+    expect(sam!.html).toContain('Sam Lee<br>9 Elm St');
+    // A payment names its party: on an account with two, one naming neither is refused.
+    await expect(pay('P-1', 24600, '2026-09-03')).rejects.toThrow('this account bills more than one party');
+    await expect(ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'x', paymentMethod: '20', memo: 'x',
+      lines: [{ amount: 100, fundId, category: '4100', details: { dues: { account: 'P-1', party: 'kim' } } }] }, { provider: 'manual' })).rejects.toThrow('not a party billed on this account');
+    await ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'Pat Lee', paymentMethod: '20', memo: 'assessment',
+      lines: [{ amount: 30000, fundId, category: '4100', details: { dues: { account: 'P-1', party: 'pat' } } }] }, { provider: 'manual' });
+    // Pat's payment settles only Pat's invoice; what is over is Pat's credit, not Sam's.
+    today = '2026-10-01';
+    expect((await dues.prepareMonth(actor(), '2026-10')).filter(r => r.accountId === 'P-1').map(r => [r.partyName, r.previous, r.owed, r.lateCharges.length]))
+      .toEqual([['Pat Lee', -5400, 19200, 0], ['Sam Lee', 16400, 33800, 1]]);
+    expect((await dues.balances(actor())).find(b => b.accountId === 'P-1')!.balance).toBe(24600 + 16400 - 30000);
+    expect((await dues.toFormOptions({ list: 'parties' }, { username: 'tess', granted: ALL })).map(o => [o.value, o.label]))
+      .toEqual([['pat', '1 · Pat Lee'], ['sam', '1 · Sam Lee']]);
+  });
+
+  test('an account whose billing parties are refused is shown with the reason, and not billed', async () => {
+    p1 = 'refused';
+    const rows = await dues.prepareMonth(actor(), '2026-09');
+    expect(rows.find(r => r.accountId === 'P-1')).toMatchObject({ problem: 'unit P-1: billing[0] names kim, who is not a current owner', invoiced: null });
+    expect((await dues.issueMonth(actor(), { month: '2026-09' })).issued).toBe(1);
+    await expect(dues.issueMonth(actor(), { month: '2026-09', account: 'P-1' })).rejects.toThrow('nothing to invoice');
   });
 });

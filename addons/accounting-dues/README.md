@@ -1,8 +1,8 @@
 # Accounting dues
 
 Dues and assessments for the [accounting](../accounting/README.md) add-on of
-[ngdpbase](https://github.com/jwilleke/ngdpbase): one invoice per account each month, payments as
-receipts, money paid ahead kept as credit, and late charges proposed for the treasurer to confirm.
+[ngdpbase](https://github.com/jwilleke/ngdpbase): one invoice per billing party each month, payments
+as receipts, money paid ahead kept as credit, and late charges proposed for the treasurer to confirm.
 The Fairways (a condominium) is the reference site.
 
 - __Slug:__ `accounting-dues`, equal to the `name` exported from `index.ts`.
@@ -12,12 +12,12 @@ The Fairways (a condominium) is the reference site.
   accommodation add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)):
   `AccommodationManager` (`accounts-manager`) for `list()`, `get(id)`, `assessment(id)` (amount,
   monthly or annual, due day, from the accommodation's category) and `lateCharges()`; and
-  `ResidencyManager` (`owners-manager`) for `owners(ctx, id, { on })`, the ngdpbase users who own it
-  on the invoice's due date.
+  `ResidencyManager` (`billing-manager`) for `billing(ctx, id, { on })`, the unit's billing parties
+  on the charge's due date: who is billed together, at which address, for what percent.
 - __Data:__ invoices are in this add-on's own database, declared as
   `ngdpbase.addons.accounting-dues.database`, outside the ledger, which holds only money that moved.
   A payment is a receipt made through the accounting add-on's `ReceiptManager`, whose line carries
-  `dues` details (`{ account, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The
+  `dues` details (`{ account, party, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The
   accounting database is never touched.
 - __Permissions:__ its own `invoice-issue` (issue, void and email invoices), which the add-on's
   policy grants the treasurer role; recording a payment is accounting's `ledger-record`.
@@ -46,18 +46,27 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
 
 ## How billing works
 
-- __Each month is evaluated on its own.__ Prepare This Month's Invoices shows each account's charge,
-  the late charges due on earlier invoices, the balance brought forward and the amount owed. The
-  treasurer then issues: one invoice per account a month, I-0001 onwards, stored exactly as issued
+- __One invoice per billing party__
+  ([D-038](../../docs/plans/decisions.md#d-038-one-invoice-per-billing-party-each-with-its-own-balance)).
+  Dues bills exactly what the unit's billing array says
+  ([D-040](../../docs/plans/decisions.md#d-040-dues-bills-exactly-as-the-billing-array-says)): each
+  party's percent of the charge, to its names and address. Joint owners at one address are one party
+  and get one invoice for the total. A unit whose billing array is refused (someone named who is not
+  an owner, shares not adding up to 100, no owner or no address) shows as not billable, with the
+  reason, and nothing is issued for it.
+- __Each month is evaluated on its own.__ Prepare This Month's Invoices shows each party's charge,
+  the late charges due on its earlier invoices, its balance brought forward and the amount owed. The
+  treasurer then issues: one invoice per party a month, I-0001 onwards, stored exactly as issued
   with its SHA-256. A mistake is voided, with a reason, and the month issued again.
-- __Payments__ settle the oldest invoice first, or the one the payment names first. What is left is
-  the account's credit. Refunds lower a payment; a bounced check does not count.
+- __Each party has its own balance.__ A payment settles only its party's invoices: the oldest first,
+  or the one it names first. What is left is that party's credit. A payment names its invoice or its
+  party; on an account with one party it may name neither. An account's balance is the sum of its
+  parties'. Refunds lower a payment; a bounced check does not count.
 - __Late charges__ come from the account source's rules. A rule applies once an invoice is more than
   its days past due and still unpaid: once per invoice, or each month. Interest is simple, on what is
   still owed, at the annual rate ÷ 12. They are added only when the treasurer ticks the box.
-- __Owners:__ every owner on the invoice's due date is named on the invoice. With
-  email ticked, an invoice with money owed goes to each owner with an email; one paid in full by
-  credit is kept and not sent.
+- __Email:__ with email ticked, an invoice with money owed goes to each person on its party with an
+  email; one paid in full by credit is kept and not sent.
 - __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-dues.send-to-owners` to
   `true`. While it is off nothing is sent to owners, even with the email box ticked: a development or
   copied site never mails real owners.

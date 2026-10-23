@@ -85,4 +85,37 @@ const INVOICES: DuesMigration = {
   }
 };
 
-export const DUES_MIGRATIONS: DuesMigration[] = [INVOICES];
+const BILLING_PARTIES: DuesMigration = {
+  id: '20261023120000',
+  description: 'one invoice per billing party, each party with its own balance (D-038, D-040)',
+  up: (db) => {
+    db.exec(`
+      -- The party billed: its people's ngdpbase usernames, sorted and joined with commas; its names
+      -- as billed; and the address the invoice went to (schema.org PostalAddress, JSON).
+      ALTER TABLE accounting_dues_invoices ADD COLUMN party TEXT NOT NULL DEFAULT '';
+      ALTER TABLE accounting_dues_invoices ADD COLUMN party_name TEXT NOT NULL DEFAULT '';
+      ALTER TABLE accounting_dues_invoices ADD COLUMN address TEXT;
+      -- Invoices issued before parties: the party is every owner the invoice named.
+      UPDATE accounting_dues_invoices SET
+        party = COALESCE((SELECT group_concat(u, ',') FROM (SELECT json_extract(value, '$.username') AS u FROM json_each(owners) ORDER BY u)), ''),
+        party_name = COALESCE((SELECT group_concat(n, ', ') FROM (SELECT json_extract(value, '$.name') AS n FROM json_each(owners))), '');
+
+      DROP INDEX accounting_dues_invoices_month;
+      CREATE UNIQUE INDEX accounting_dues_invoices_month ON accounting_dues_invoices (account_id, party, month) WHERE status = 'issued';
+      DROP TRIGGER accounting_dues_invoices_fixed;
+      CREATE TRIGGER accounting_dues_invoices_fixed BEFORE UPDATE ON accounting_dues_invoices
+      WHEN NEW.id IS NOT OLD.id OR NEW.number IS NOT OLD.number OR NEW.account_id IS NOT OLD.account_id
+        OR NEW.account_label IS NOT OLD.account_label OR NEW.month IS NOT OLD.month OR NEW.date IS NOT OLD.date
+        OR NEW.due_date IS NOT OLD.due_date OR NEW.total IS NOT OLD.total OR NEW.previous IS NOT OLD.previous
+        OR NEW.owed IS NOT OLD.owed OR NEW.owners IS NOT OLD.owners OR NEW.html IS NOT OLD.html OR NEW.sha256 IS NOT OLD.sha256
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NEW.party IS NOT OLD.party OR NEW.party_name IS NOT OLD.party_name OR NEW.address IS NOT OLD.address
+        OR (NEW.status IS NOT OLD.status AND NOT (OLD.status = 'issued' AND NEW.status = 'voided'
+              AND NEW.void_reason IS NOT NULL AND NEW.void_reason <> ''))
+        OR (NEW.emailed_at IS NOT OLD.emailed_at AND OLD.emailed_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'dues: an issued invoice never changes; void it and issue it again'); END;
+    `);
+  }
+};
+
+export const DUES_MIGRATIONS: DuesMigration[] = [INVOICES, BILLING_PARTIES];
