@@ -1375,3 +1375,19 @@ stands.
 - A party's invoice shows each member's own balance brought forward (Jim $100, Molly $0).
 - A payment names the person who paid, and settles that person's balance.
 - The unit's balance is the sum of the balances its owners were billed for it.
+
+## D-040: Dues bills exactly as the billing array says
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-23
+- __Links:__ [#56](https://github.com/jwilleke/ngdp-accounting-addons/issues/56),
+  [D-039](#d-039-a-balance-belongs-to-the-person-billed),
+  [ngdpbase-addons#14](https://github.com/jwilleke/ngdpbase-addons/issues/14)
+
+__Context:__ Who sets a unit's billing parties and their percentages came up while working out how a
+joint party's charge is split between its members.
+
+__Decision (operator, 2026-10-23):__ from accounting's side, the billing array is how things are
+billed. Dues reads it through `ResidencyManager.billing(ctx, id, { on })` and bills exactly what it
+says: it never works out, adjusts or second-guesses a party or a percentage. Setting the array is not
+accounting's concern; for The Fairways, the Board of Directors approves it.
