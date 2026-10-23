@@ -1328,7 +1328,7 @@ the donations guide's separate `giving-self`.
 
 ## D-038: One invoice per billing party, each with its own balance
 
-- __Status:__ Accepted
+- __Status:__ Accepted; its balance rule superseded by [D-039](#d-039-a-balance-belongs-to-the-person-billed)
 - __Date:__ 2026-10-23
 - __Links:__ [#56](https://github.com/jwilleke/ngdp-accounting-addons/issues/56),
   [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
@@ -1353,3 +1353,25 @@ its own balance:
 - Each person on a party can see that party's invoices and balance on their own profile (#50).
 
 A unit with one party at 100% works exactly as before.
+
+## D-039: A balance belongs to the person billed
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-23
+- __Links:__ [#56](https://github.com/jwilleke/ngdp-accounting-addons/issues/56),
+  [D-038](#d-038-one-invoice-per-billing-party-each-with-its-own-balance)
+
+__Context:__ D-038 gave each billing party its own balance. A party changes when a unit is sold or
+an owner is added, and the operator's rule is that debts follow people, not parties.
+
+__Decision (operator, 2026-10-23):__ supersedes D-038's balance rule; one invoice per billing party
+stands.
+
+- Each invoice is billed to the owners on its billing date. For The Fairways that is the 1st of the
+  month: whoever owns the unit on the 1st owes that month's charge.
+- A balance belongs to the person. An owner keeps owing their past balance, and their part of every
+  later invoice, whatever party they are on. A new owner starts at $0 and never takes on a seller's
+  balance.
+- A party's invoice shows each member's own balance brought forward (Jim $100, Molly $0).
+- A payment names the person who paid, and settles that person's balance.
+- The unit's balance is the sum of the balances its owners were billed for it.
