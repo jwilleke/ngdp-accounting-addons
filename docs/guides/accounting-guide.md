@@ -193,5 +193,5 @@ older one.
 - No events module yet. Donations are the `accounting-donations` add-on
   ([Donations guide](donations-guide.md)); dues and assessments are the `accounting-dues` add-on
   ([its README](../../addons/accounting-dues/README.md)), whose accounts come from another add-on,
-  such as condo's units.
+  such as the accommodation add-on's units.
 - Changing the database key, or encrypting a ledger that was started without one, is not built (#14).

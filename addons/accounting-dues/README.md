@@ -8,10 +8,12 @@ The Fairways (a condominium) is the reference site.
 - __Slug:__ `accounting-dues`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the screens.
 - __Requires:__ ngdpbase 5.22.0 or later.
-- __Accounts:__ read from a manager named in configuration, and never copied. A condominium uses the
-  condo add-on's `CondoUnitManager` ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)):
-  `list()`, `get(id)`, `assessment(id)` (amount, monthly or annual, due day, from the unit type),
-  `owners(ctx, id)` (ngdpbase users and their shares) and `lateCharges()`.
+- __Accounts:__ read from managers named in configuration, and never copied. A condominium uses the
+  accommodation add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)):
+  `AccommodationManager` (`accounts-manager`) for `list()`, `get(id)`, `assessment(id)` (amount,
+  monthly or annual, due day, from the accommodation's category) and `lateCharges()`; and
+  `ResidencyManager` (`owners-manager`) for `owners(ctx, id, { on })`, the ngdpbase users who own it
+  on the invoice's due date.
 - __Data:__ invoices are in this add-on's own database, declared as
   `ngdpbase.addons.accounting-dues.database`, outside the ledger, which holds only money that moved.
   A payment is a receipt made through the accounting add-on's `ReceiptManager`, whose line carries
@@ -24,7 +26,7 @@ Why: [D-035](../../docs/plans/decisions.md#d-035-dues-and-assessments-flexible-a
 
 ## Turn it on
 
-A condominium, with the condo add-on enabled and 4100 renamed in the chart:
+A condominium, with the accommodation add-on enabled and 4100 renamed in the chart:
 
 ```json
 {
@@ -53,7 +55,7 @@ A condominium, with the condo add-on enabled and 4100 renamed in the chart:
 - __Late charges__ come from the account source's rules. A rule applies once an invoice is more than
   its days past due and still unpaid: once per invoice, or each month. Interest is simple, on what is
   still owed, at the annual rate ÷ 12. They are added only when the treasurer ticks the box.
-- __Owners:__ every owner is named on the invoice, with their share when there are several. With
+- __Owners:__ every owner on the invoice's due date is named on the invoice. With
   email ticked, an invoice with money owed goes to each owner with an email; one paid in full by
   credit is kept and not sent.
 - __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-dues.send-to-owners` to

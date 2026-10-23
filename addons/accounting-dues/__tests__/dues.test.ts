@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildAddonHost, openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
 import { openTestLedgerDatabase, testLedgerParts } from '../../accounting/__tests__/host.js';
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting/managers/LedgerManager.js';
-import DuesManager, { type AccountSource, type DuesDb } from '../managers/DuesManager.js';
+import DuesManager, { type AccountSource, type DuesDb, type OwnerSource } from '../managers/DuesManager.js';
 import { DUES_LEDGER_TABLE, DUES_MIGRATIONS } from '../managers/migrations.js';
 import { duesValidator } from '../billing.js';
 
@@ -24,18 +24,26 @@ const actor = (granted: string[] = ALL): LedgerActor => ({
   enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
 });
 
-/** Two units, as CondoUnitManager gives them: one with two owners at 60/40, one prepaying. */
+/** Two units, as AccommodationManager gives them: one with two owners, one prepaying. */
 const units: AccountSource = {
   list: () => [{ id: 'P-1', unitNumber: '1' }, { id: 'P-2', unitNumber: '2' }],
   get: (id) => units.list().find(u => u.id === id),
   assessment: (id) => (id === 'P-1' ? { amount: 41000, period: 'monthly', datedue: 1 } : { amount: 30000, period: 'monthly', datedue: 1 }),
-  owners: async (_ctx, id) => (id === 'P-1'
-    ? [{ username: 'pat', name: 'Pat Lee', email: 'pat@example.org', share: 60 }, { username: 'sam', name: 'Sam Lee', email: null, share: 40 }]
-    : [{ username: 'jo', name: 'Jo Park', email: 'jo@example.org', share: 100 }]),
   lateCharges: () => [
     { id: 'late-10', daysLate: 10, amount: 1000, annualPercent: null, repeat: 'once' },
     { id: 'late-60', daysLate: 60, amount: 5000, annualPercent: 8, repeat: 'monthly' }
   ]
+};
+
+/** Their owners, as ResidencyManager gives them; the dates asked for are kept. */
+const ownersAsked: (string | undefined)[] = [];
+const residents: OwnerSource = {
+  owners: async (_ctx, id, options) => {
+    ownersAsked.push(options?.on);
+    return id === 'P-1'
+      ? [{ username: 'pat', name: 'Pat Lee', email: 'pat@example.org' }, { username: 'sam', name: 'Sam Lee', email: null }]
+      : [{ username: 'jo', name: 'Jo Park', email: 'jo@example.org' }];
+  }
 };
 
 describe('dues', () => {
@@ -58,10 +66,11 @@ describe('dues', () => {
     sent = [];
     bumps = 0;
     sending = true;
+    ownersAsked.length = 0;
     today = '2026-09-01';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     dues = new DuesManager({
-      host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, categories: () => ['4100'],
+      host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, owners: () => residents, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
       email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } }), sendToOwners: () => sending
@@ -84,8 +93,10 @@ describe('dues', () => {
     const [two, one] = await dues.listInvoices(actor());
     expect([one!.number, two!.number]).toEqual(['I-0001', 'I-0002']);
     expect(one).toMatchObject({ accountId: 'P-1', month: '2026-09', dueDate: '2026-09-01', total: 41000, owed: 41000, remaining: 41000, emailedTo: 'pat@example.org' });
-    expect(one!.owners).toEqual([{ username: 'pat', name: 'Pat Lee', share: 60 }, { username: 'sam', name: 'Sam Lee', share: 40 }]);
-    expect(one!.html).toContain("Owners' shares");
+    expect(one!.owners).toEqual([{ username: 'pat', name: 'Pat Lee' }, { username: 'sam', name: 'Sam Lee' }]);
+    expect(one!.html).toContain('Pat Lee, Sam Lee');
+    // Owners are those on the invoice's due date.
+    expect(ownersAsked).toEqual(['2026-09-01', '2026-09-01']);
     expect(audit.at(-1)).toMatchObject({ action: 'invoice-issue', resource: 'invoices:2026-09' });
     expect(bumps).toBe(1);
     // Once invoiced, the month shows the invoice's own figures.
