@@ -1391,3 +1391,21 @@ __Decision (operator, 2026-10-23):__ from accounting's side, the billing array i
 billed. Dues reads it through `ResidencyManager.billing(ctx, id, { on })` and bills exactly what it
 says: it never works out, adjusts or second-guesses a party or a percentage. Setting the array is not
 accounting's concern; for The Fairways, the Board of Directors approves it.
+
+## D-041: Accommodation owns the owner and occupant roles
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-23
+- __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
+  [D-037](#d-037-people-see-their-own-money-through-one-ledger-door),
+  [ngdpbase-addons#23](https://github.com/jwilleke/ngdpbase-addons/issues/23)
+
+__Context:__ The owner's dues card was going to rest on core's `vault-owner` role, which every
+account holds because of its private vault and which has nothing to do with owning a unit. The
+accommodation add-on now declares `owner` and `occupant` roles and keeps them in step with the dated
+ownership and occupancy entries.
+
+__Decision (operator, 2026-10-23):__ the accommodation add-on is the owner of the roles for owners
+and occupants. Accounting never decides who is an owner: what dues shows an owner rests on
+accommodation's `owner` role, not on `vault-owner`. The donations card is unchanged: any signed-in
+donor sees their own giving under `ledger-self` (D-037).
