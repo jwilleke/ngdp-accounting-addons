@@ -80,7 +80,7 @@ last_updated: "2026-10-22"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-- [#56](https://github.com/jwilleke/ngdp-accounting-addons/issues/56) — [FEATURE] accounting-dues: one invoice per billing party
+*None.*
 
 <!-- KIT:END -->
 
