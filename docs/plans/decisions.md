@@ -1325,3 +1325,31 @@ receipts and refunds, those whose payer is the caller's own ngdpbase person reco
 permission, `ledger-self`, granted to every signed-in person. The modules read through it:
 donations shows the gift lines, dues the payment lines for the units the person owns. It replaces
 the donations guide's separate `giving-self`.
+
+## D-038: One invoice per billing party, each with its own balance
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-23
+- __Links:__ [#56](https://github.com/jwilleke/ngdp-accounting-addons/issues/56),
+  [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
+  [D-035](#d-035-dues-and-assessments-flexible-accounts-and-charges),
+  [D-037](#d-037-people-see-their-own-money-through-one-ledger-door),
+  [ngdpbase-addons#14](https://github.com/jwilleke/ngdpbase-addons/issues/14)
+
+__Context:__ The accommodation add-on keeps a unit's billing parties: who is billed together, at
+which address, for what share (`ResidencyManager.billing(ctx, id, { on })`). Joint owners at one
+address get one invoice; owners at different addresses one each. With one balance per unit, settled
+oldest invoice first, one party's payment would pay off another party's invoice, and the late charge
+would land on whoever had paid.
+
+__Decision (operator, 2026-10-23):__ dues issues one invoice per billing party, and each party has
+its own balance:
+
+- A party's invoice shows that party's share of the month's charge, and only that party's balance or
+  credit brought forward.
+- A payment settles only its party's invoices; the payment line names the party.
+- Late charges follow each party's own unpaid invoices.
+- The unit's balance is the sum of its parties' balances.
+- Each person on a party can see that party's invoices and balance on their own profile (#50).
+
+A unit with one party at 100% works exactly as before.
