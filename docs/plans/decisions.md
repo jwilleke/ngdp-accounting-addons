@@ -1409,3 +1409,16 @@ __Decision (operator, 2026-10-23):__ the accommodation add-on is the owner of th
 and occupants. Accounting never decides who is an owner: what dues shows an owner rests on
 accommodation's `owner` role, not on `vault-owner`. The donations card is unchanged: any signed-in
 donor sees their own giving under `ledger-self` (D-037).
+
+## D-042: One term: donation
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-23
+- __Links:__ [D-036](#d-036-donations-follow-the-donations-guide)
+
+__Context:__ The donations add-on calls one donation a "gift" in its code, screens and docs: the
+`gift` line details, gift forms, "Your giving". Two words for one thing.
+
+__Decision (operator, 2026-10-23):__ use one term, __donation__, everywhere: screens, guides, code
+and stored names. "Gift" goes. Renaming what is already stored (the `gift` line details on posted
+receipts) needs a migration, not a rewrite of history.
