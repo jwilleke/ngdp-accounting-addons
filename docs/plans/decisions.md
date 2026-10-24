@@ -1394,7 +1394,7 @@ accounting's concern; for The Fairways, the Board of Directors approves it.
 
 ## D-041: Accommodation owns the owner and occupant roles
 
-- __Status:__ Accepted
+- __Status:__ Accepted; what the dues card rests on corrected by [D-045](#d-045-the-dues-card-shows-whoever-was-billed)
 - __Date:__ 2026-10-23
 - __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
   [D-037](#d-037-people-see-their-own-money-through-one-ledger-door),
@@ -1454,3 +1454,20 @@ __Decision (operator, 2026-10-24):__ an owner sees their bills in one place: the
 adds to their profile, with each billing party they are on, its invoices, what is paid and left, and
 the balance. The accommodation add-on's resident page links to that card rather than showing a
 balance of its own, so the money appears in one place only.
+
+## D-045: The dues card shows whoever was billed
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-24
+- __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
+  [D-041](#d-041-accommodation-owns-the-owner-and-occupant-roles),
+  [D-043](#d-043-every-signed-in-user-holds-ledger-self),
+  [D-044](#d-044-an-owners-bills-are-on-their-profile-in-accountings-card)
+
+__Context:__ When someone sells, the accommodation add-on takes away their `owner` role, but they may
+still owe money on bills they were sent.
+
+__Decision (operator, 2026-10-24):__ a person who was billed keeps seeing those bills, owner or not.
+The dues card shows the invoices of every billing party the person was on, under `ledger-self`
+(D-043); it does not depend on accommodation's `owner` role. This corrects D-041's line that what dues
+shows an owner rests on that role; accommodation still owns the roles.
