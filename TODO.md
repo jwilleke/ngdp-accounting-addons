@@ -23,8 +23,7 @@ last_updated: "2026-10-24"
 
 <!-- Dependabot and scanner alerts land here first, ahead of other P0 work. -->
 
-- [#62](https://github.com/jwilleke/ngdp-accounting-addons/issues/62) — [security] multer — Denial of Service via a pending asynchronous fileFilter after request teardown
-- [#61](https://github.com/jwilleke/ngdp-accounting-addons/issues/61) — [security] body-parser — Denial of Service via trailing bytes after a compressed request body
+*None.*
 
 ## 🟣 Epics
 
