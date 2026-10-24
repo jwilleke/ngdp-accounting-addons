@@ -93,7 +93,28 @@ payments, donations, fund tracking, event fees and treasurer reports. The base `
 - What and why: [README.md](README.md)
 - Goals, personas, modules, ledger model, roles, open questions: [docs/requirements.md](docs/requirements.md)
 - Decisions log (record every confirmed decision here): [docs/plans/decisions.md](docs/plans/decisions.md)
-- Add-on contract (`AddonModule`, `register(engine, config)`): ngdpbase `docs/guides/addons-developer-guide.md`
+
+## Platform guides
+
+How to change an add-on is the guides in the platform checkout, the sibling
+`../ngdpbase/docs/guides/`. On this machine that directory is
+`/Volumes/hd2A/workspaces/github/ngdpbase/docs/guides/`. Open those files. Do not
+copy them into this repo.
+
+`../ngdpbase-accounting`, the local run checkout named below, has its own
+`docs/guides`. That copy lags the platform. Read the rules from `../ngdpbase`,
+not from the run checkout. If the platform checkout is not on the machine, open
+the [guide index](https://github.com/jwilleke/ngdpbase/blob/master/docs/guides/README.md)
+on GitHub.
+
+Read the file the change touches, then follow that file.
+
+- Any add-on change: `addons-developer-guide.md`, including its standing rules and the section for what you are adding.
+- A route, manager method, job, permission, policy, or audit event: also `security-developer-guide.md` and `audit-developer-guide.md`. Run each guide's "How you know you are done" list.
+- Where pages, files, a database, or `dataPath` go: `storage-developer-guide.md`.
+- A configuration key: `configuration-developer-guide.md`.
+- A plugin whose output is on a page: `caching-developer-guide.md`.
+- Backup of add-on data: `backup-restore-guide.md`.
 
 ## Security and secrets
 
@@ -101,7 +122,7 @@ payments, donations, fund tracking, event fees and treasurer reports. The base `
   them; the add-on keeps only the provider's ids.
 - __The organization's own bank account numbers are stored as secrets__
   ([D-031](docs/plans/decisions.md#d-031-bank-accounts-cash-on-hand-and-deposits)): a `$VAR`
-  reference in config, named in `ngdpbase.config.secret-keys`, never a literal. Only `fund-manage`
+  reference in config, named in `ngdpbase.config.sensitive-values`, never a literal. Only `fund-manage`
   holders see the full number; it never goes into logs, audit events, exports or pages.
 - Provider keys are environment variables, never literals
   ([D-008](docs/plans/decisions.md#d-008-where-secret-values-live)).
@@ -117,8 +138,9 @@ Add-ons live under `addons/<slug>/` and load into a local ngdpbase as a drop-in.
   server runs as; required by ngdpbase), the admin password and `NGDPBASE_DATABASE_KEY`. Its pm2 app is
   `ngdp-instance`. Its `data/config/app-custom-config.json` sets the base URL, turns the
   database on (`sqlite`), adds this repository's `addons/` to `addons-path`, and enables the add-ons.
-  Never use the operator's main ngdpbase checkout or its instances, and never run a pm2 command on
-  `all`: the operator runs several instances under pm2 on this machine.
+  Read the guides from the main checkout, as [Platform guides](#platform-guides) says. Do not start,
+  configure, or restart it, and never run a pm2 command on `all`: the operator runs several
+  instances under pm2 on this machine.
 - __Host imports:__ add-on code imports host code as `../../dist/src/...`. A git-ignored `dist` link
   at this repository's root points at `../ngdpbase-accounting/dist`, so those paths resolve here.
 - __Build an add-on:__ `cd addons/<slug> && npm install && npm run build` (compiles `.ts` to `.js`
