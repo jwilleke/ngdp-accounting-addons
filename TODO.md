@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-22"
+last_updated: "2026-10-24"
 ---
 
 # TODO
@@ -17,27 +17,14 @@ last_updated: "2026-10-22"
 > and `/wrap`.
 > See also: `ARCHITECTURE.md` for system context; `private/project_log.md` for session history.
 
-<!-- RESUME:START -->
-## ▶ Resume here — 2026-10-23
-
-- Last worked on: #50 donor half merged (#53, `ledger-self` + "Your giving" card); #11 decisions and `send-to-owners` switch merged (#52); issue review (closed #3, #4; opened #49, #50, #51)
-- Branch / state: main, clean, pushed
-- Running / in-flight: dev site pm2 `accounting` (ngdpbase v5.24.0) left running; no CI, no open PRs
-- Parked / half-done: none
-- Next steps:
-  - Condo is now the accommodation add-on (#57). Then switch accounting-dues to one invoice per billing party, owners on the due date; then the owner's dues card (#50)
-  - When ngdpbase #1998 and #1999 ship: build the scheduled invoice run (#11)
-  - When ngdpbase releases #1982, #1973 and #1980: PDF invoices and statements, ctx-first email, versioned forms, audience wording (#51)
-- Blockers / significant notes: pm2 name `ngdp-instance` is now the yourphr instance (restarted by mistake 2026-10-22); ours is `accounting`, started from the scratchpad wrapper `accounting.config.cjs`. Dev admin password in `private/admin-dev-password.txt`; admin holds treasurer on the dev site only
-<!-- RESUME:END -->
-
 <!-- KIT:START 7a6fe0a — managed by mjs-project-template; add your own sections below KIT:END -->
 
 ## 🔴 P0 — Security & Critical
 
 <!-- Dependabot and scanner alerts land here first, ahead of other P0 work. -->
 
-*None.*
+- [#62](https://github.com/jwilleke/ngdp-accounting-addons/issues/62) — [security] multer — Denial of Service via a pending asynchronous fileFilter after request teardown
+- [#61](https://github.com/jwilleke/ngdp-accounting-addons/issues/61) — [security] body-parser — Denial of Service via trailing bytes after a compressed request body
 
 ## 🟣 Epics
 
@@ -62,8 +49,7 @@ last_updated: "2026-10-22"
 
 ## 🔵 In review
 
-<!-- Issues labeled `in-review` — shipped and pushed, awaiting the operator's decision to close. -->
-<!-- This band outranks an issue's priority, so finished work surfaces as "ready for your call". -->
+<!-- Work complete and pushed, awaiting the operator's decision to close. -->
 
 *None.*
 
