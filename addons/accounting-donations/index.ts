@@ -127,6 +127,8 @@ const AccountingDonationsAddon = {
    */
   async profileSection(user: { username: string; roles?: string[] }): Promise<{ title: string; html: string } | null> {
     if (!profile) return null;
+    // A subject built from parts until core's profile hook passes the caller's own context
+    // (profileSection(user, ctx), ngdpbase #2018); then hand that ctx to the doors instead.
     const actor = {
       ipAddress: undefined, actingUsername: () => user.username,
       subject: { username: user.username, roles: user.roles ?? [], isAuthenticated: true } as never,

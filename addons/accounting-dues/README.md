@@ -70,9 +70,16 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
 - __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-dues.send-to-owners` to
   `true`. While it is off nothing is sent to owners, even with the email box ticked: a development or
   copied site never mails real owners.
+- __Your own bills:__ everyone who was billed sees, on their own profile, each billing party they
+  were on: its invoices, what is paid and left to pay, and its balance. Everyone on a party sees the
+  same, whoever paid; nobody sees another party's. A seller keeps seeing what they were billed;
+  someone never billed sees no card
+  ([D-044](../../docs/plans/decisions.md#d-044-an-owners-bills-are-on-their-profile-in-accountings-card),
+  [D-045](../../docs/plans/decisions.md#d-045-the-dues-card-shows-whoever-was-billed)). It needs
+  `ledger-self`, which every account holds.
 
 Not yet: sending by each user's communication preference (ngdpbase #1969), PDF attachments
-(ngdpbase #1974), a scheduled send, and the owner's own profile panel.
+(ngdpbase #1974), and a scheduled send.
 
 ## Develop
 
