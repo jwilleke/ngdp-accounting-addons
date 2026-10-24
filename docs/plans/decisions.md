@@ -1441,3 +1441,16 @@ __Decision (operator, 2026-10-24):__ `ledger-self` is granted to every signed-in
 subject `authenticated`), not to a list of roles, and never through `vault-owner`. It opens only a
 person's own records, so someone with none sees nothing: each card hides itself when empty. The
 build checks that ngdpbase's decision point honours the `authenticated` subject.
+
+## D-044: An owner's bills are on their profile, in accounting's card
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-24
+- __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
+  [D-043](#d-043-every-signed-in-user-holds-ledger-self),
+  [ngdpbase-addons#16](https://github.com/jwilleke/ngdpbase-addons/issues/16)
+
+__Decision (operator, 2026-10-24):__ an owner sees their bills in one place: the dues card accounting
+adds to their profile, with each billing party they are on, its invoices, what is paid and left, and
+the balance. The accommodation add-on's resident page links to that card rather than showing a
+balance of its own, so the money appears in one place only.
