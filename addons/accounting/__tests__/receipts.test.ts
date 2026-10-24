@@ -309,7 +309,7 @@ describe('own receipts (D-037)', () => {
     const provider = openTestLedgerDatabase();
     const people: Record<string, string> = { 'treasurer-tess': 'urn:uuid:tess', pat: 'urn:uuid:pat' };
     const ledger = new LedgerManager({ ...testLedgerParts, db: provider.handle as LedgerDb, decide, currency: 'USD', recordAudit: () => Promise.resolve(),
-      personOf: async (username) => people[username] ?? null });
+      personOf: async (a) => people[a.actingUsername()] ?? null });
     const person = (username: string, granted: string[]): LedgerActor => ({
       ipAddress: undefined, subject: { username, roles: ['reader'], isAuthenticated: true, granted } as never,
       actingUsername: () => username, enforceDeny: (permission: string) => Promise.reject(new Refused(permission))

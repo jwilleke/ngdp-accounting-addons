@@ -111,8 +111,8 @@ export interface DonationOptions {
   wording?: () => StatementWording;
   /** ngdpbase's EmailManager, to send statements. */
   email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
-  /** The ngdpbase person a username is, as its `@id` (PersonManager.getByUserIdentifier), for a donor's own view (D-037). */
-  personOf?: (username: string) => Promise<string | null>;
+  /** The caller's own ngdpbase person, as its `@id`, for a donor's own view (D-037); read as the caller (PersonManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage). */
+  personOf?: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;
   now?: () => Date;
   newId?: () => string;
 }
@@ -349,7 +349,7 @@ export default class DonationManager {
    */
   async myGiving(actor: DonationsActor): Promise<{ year: number; giftCount: number; total: number; deductible: number; statements: { id: string; issuedAt: string }[] }[]> {
     await this.authorize(actor, 'ledger-self');
-    const personId = await this.options.personOf?.(actor.actingUsername());
+    const personId = await this.options.personOf?.(actor);
     if (!personId) return [];
     const receipts = await this.options.ledger.ownDocuments(actor, 'receipt');
     const refunds = await this.options.ledger.ownDocuments(actor, 'refund');
@@ -366,7 +366,7 @@ export default class DonationManager {
   /** One of the signed-in donor's own issued statements, exactly as stored; another donor's is not found. Needs ledger-self. */
   async myStatement(actor: DonationsActor, statementId: string): Promise<IssuedStatement> {
     await this.authorize(actor, 'ledger-self');
-    const personId = await this.options.personOf?.(actor.actingUsername());
+    const personId = await this.options.personOf?.(actor);
     const row = this.options.db.prepare('SELECT donor_id FROM accounting_donations_statements WHERE id = ?').get(statementId) as { donor_id: string } | undefined;
     if (!personId || !row || row.donor_id !== personId) throw new DonationError(404, 'statementId: unknown statement');
     return this.getStatementRow(statementId);

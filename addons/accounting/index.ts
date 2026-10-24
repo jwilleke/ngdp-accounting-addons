@@ -21,7 +21,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json (#927).
  */
-import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
@@ -116,8 +116,11 @@ const AccountingAddon = {
     const toCsv: ExportManagerLike['toCsv'] = (headers, rows) => managerOf<ExportManagerLike>('ExportManager').toCsv(headers, rows);
 
     // A person's own receipts (D-037): core's person for a username, read when asked.
-    const personOf = async (username: string): Promise<string | null> =>
-      (await engine.getManager<{ getByUserIdentifier(u: string): Promise<{ '@id': string } | null> }>('PersonManager')?.getByUserIdentifier(username))?.['@id'] ?? null;
+    const personOf = async (actor: { readonly subject: ActorContext | null; actingUsername(): string }): Promise<string | null> => {
+      if (!actor.subject) return null;
+      const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('PersonManager');
+      return (await persons?.getByUserIdentifier(actor.subject, actor.actingUsername()))?.['@id'] ?? null;
+    };
     const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv, personOf });
     engine.registerManager('LedgerManager', ledger);
     // Say once, at startup, what the account configuration gets wrong; history is never lost (D-031).
