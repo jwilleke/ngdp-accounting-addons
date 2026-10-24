@@ -65,7 +65,7 @@ last_updated: "2026-10-24"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-*None.*
+- [#64](https://github.com/jwilleke/ngdp-accounting-addons/issues/64) — [FEATURE] One term: rename gift to donation everywhere (D-042)
 
 <!-- KIT:END -->
 
