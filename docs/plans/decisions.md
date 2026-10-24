@@ -1422,3 +1422,22 @@ __Context:__ The donations add-on calls one donation a "gift" in its code, scree
 __Decision (operator, 2026-10-23):__ use one term, __donation__, everywhere: screens, guides, code
 and stored names. "Gift" goes. Renaming what is already stored (the `gift` line details on posted
 receipts) needs a migration, not a rewrite of history.
+
+## D-043: Every signed-in user holds ledger-self
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-24
+- __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
+  [D-037](#d-037-people-see-their-own-money-through-one-ledger-door),
+  [D-041](#d-041-accommodation-owns-the-owner-and-occupant-roles)
+
+__Context:__ `ledger-self` (D-037) lets a person see their own money: their own receipts, their
+donations and statements, their party's invoices. Accounting's policy grants it to core's roles,
+`vault-owner` among them, and `vault-owner` is the only role an owner or donor with no site role
+has. `vault-owner` exists for a person's private vault and has nothing to do with accounting; the
+operator's rule is that accounting does not use it.
+
+__Decision (operator, 2026-10-24):__ `ledger-self` is granted to every signed-in user (the policy
+subject `authenticated`), not to a list of roles, and never through `vault-owner`. It opens only a
+person's own records, so someone with none sees nothing: each card hides itself when empty. The
+build checks that ngdpbase's decision point honours the `authenticated` subject.
