@@ -1425,7 +1425,7 @@ receipts) needs a migration, not a rewrite of history.
 
 ## D-043: Every signed-in user holds ledger-self
 
-- __Status:__ Accepted
+- __Status:__ Accepted; how it is granted superseded by [ngdpbase#1539](https://github.com/jwilleke/ngdpbase/issues/1539#issuecomment-6382833733) (2026-10-24, below)
 - __Date:__ 2026-10-24
 - __Links:__ [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50),
   [D-037](#d-037-people-see-their-own-money-through-one-ledger-door),
@@ -1441,6 +1441,12 @@ __Decision (operator, 2026-10-24):__ `ledger-self` is granted to every signed-in
 subject `authenticated`), not to a list of roles, and never through `vault-owner`. It opens only a
 person's own records, so someone with none sees nothing: each card hides itself when empty. The
 build checks that ngdpbase's decision point honours the `authenticated` subject.
+
+__Superseded in part (operator, 2026-10-24, [ngdpbase#1539](https://github.com/jwilleke/ngdpbase/issues/1539#issuecomment-6382833733)):__
+the decision point honours only role subjects, so `authenticated` grants nothing. `vault-owner` stays
+the role core gives every account, and it is the one way to give every user a permission: an add-on
+names it in its own policy. `accounting-self-service` grants `ledger-self` to `vault-owner` alone.
+Every signed-in user still holds `ledger-self`; only how it reaches them changed.
 
 ## D-044: An owner's bills are on their profile, in accounting's card
 

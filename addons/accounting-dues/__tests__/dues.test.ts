@@ -82,13 +82,14 @@ describe('dues', () => {
     p1 = 'joint';
     today = '2026-09-01';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
+    let duesLines: { lines(): { amount: number; details: Record<string, unknown> }[] } | null = null;
     dues = new DuesManager({
-      host, db: ownDb, ledger: ledger as never, decide, accounts: () => units, billing: () => residents, categories: () => ['4100'],
+      host, db: ownDb, ledger: ledger as never, decide, payments: () => duesLines?.lines() ?? [], accounts: () => units, billing: () => residents, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
       email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } }), sendToOwners: () => sending
     });
-    ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id), partiesOf: (id) => dues.partiesOf(id) }));
+    duesLines = ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id), partiesOf: (id) => dues.partiesOf(id) }));
     fundId = (await ledger.createFund(actor(), { name: 'Operating' })).id;
   });
 
@@ -222,5 +223,24 @@ describe('dues', () => {
     expect(rows.find(r => r.accountId === 'P-1')).toMatchObject({ problem: 'unit P-1: billing[0] names kim, who is not a current owner', invoiced: null });
     expect((await dues.issueMonth(actor(), { month: '2026-09' })).issued).toBe(1);
     await expect(dues.issueMonth(actor(), { month: '2026-09', account: 'P-1' })).rejects.toThrow('nothing to invoice');
+  });
+
+  test("an owner sees their own party's invoices, paid and left, whoever paid; nobody else's (D-037, D-038)", async () => {
+    p1 = 'split';
+    await dues.issueMonth(actor(), { month: '2026-09' });
+    // Someone pays Pat's bill: the receipt names the party, not Pat as payer.
+    await ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'Lee Lee', paymentMethod: '20', memo: 'assessment',
+      lines: [{ amount: 10000, fundId, category: '4100', details: { dues: { account: 'P-1', party: 'pat' } } }] }, { provider: 'manual' });
+    const owner = (username: string, granted = ['ledger-self']) => ({ ...actor(granted), actingUsername: () => username, subject: { username, granted } as never });
+    const [mine] = await dues.myDues(owner('pat'));
+    expect(mine).toMatchObject({ accountId: 'P-1', partyName: 'Pat Lee', balance: 24600 - 10000 });
+    expect(mine!.invoices.map(i => [i.total, i.paid, i.remaining])).toEqual([[24600, 10000, 14600]]);
+    expect((await dues.myDues(owner('sam')))[0]!.invoices.map(i => i.remaining)).toEqual([16400]);
+    expect(await dues.myDues(owner('kim'))).toEqual([]);
+    expect((await dues.myInvoice(owner('pat'), mine!.invoices[0]!.id)).number).toBe(mine!.invoices[0]!.number);
+    await expect(dues.myInvoice(owner('sam'), mine!.invoices[0]!.id)).rejects.toThrow('unknown invoice');
+    await expect(dues.myDues(owner('pat', []))).rejects.toThrow('refused: ledger-self');
+    // ledger-self opens nothing of the treasurer's.
+    await expect(dues.listInvoices(owner('pat'))).rejects.toThrow('refused: ledger-read');
   });
 });

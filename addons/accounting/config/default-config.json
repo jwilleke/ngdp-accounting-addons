@@ -130,18 +130,11 @@
     {
       "id": "accounting-self-service",
       "name": "Everyone signed in sees their own receipts",
-      "description": "Every signed-in person sees the receipts whose payer is their own person record, and nothing else (D-037): the roles core's self-service policies name, and the treasurer.",
+      "description": "Every signed-in person sees their own money and nothing else (D-037, D-043): receipts they paid, their donations, their billing party's invoices. Granted to vault-owner, the role core gives every account (ngdpbase.user.account-roles), which is how an add-on gives every user a permission (ngdpbase #1539).",
       "priority": 90,
       "effect": "allow",
       "subjects": [
-        { "type": "role", "value": "admin" },
-        { "type": "role", "value": "demo-admin" },
-        { "type": "role", "value": "user-admin" },
-        { "type": "role", "value": "editor" },
-        { "type": "role", "value": "contributor" },
-        { "type": "role", "value": "reader" },
-        { "type": "role", "value": "vault-owner" },
-        { "type": "role", "value": "treasurer" }
+        { "type": "role", "value": "vault-owner" }
       ],
       "resources": [
         { "type": "page", "pattern": "*" }

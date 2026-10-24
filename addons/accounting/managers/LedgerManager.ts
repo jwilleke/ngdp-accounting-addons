@@ -254,6 +254,16 @@ export interface LineDetailsKind {
   validate(data: unknown, line: { amount: number; category: string; fundId: string }): Record<string, unknown>;
 }
 
+/**
+ * What a module reads of its own line details, handed to it when it registers
+ * the kind and to no one else: every posted receipt line carrying the kind,
+ * bounced checks left out, net of refunds. accounting-dues works out which of
+ * its invoices are paid from it.
+ */
+export interface LineDetailsReader {
+  lines(): { lineId: string; receiptId: string; date: string; amount: number; details: Record<string, unknown> }[];
+}
+
 /** Notes a module adds to a receipt slip, e.g. a gift's quid pro quo disclosure: plain text, one per paragraph. */
 export type SlipNotes = (receipt: Receipt) => string[];
 
@@ -1134,11 +1144,13 @@ export default class LedgerManager {
   /**
    * Let a module add details of its own to receipt lines (accounting-donations:
    * `gift`). Called from the module's register(); a kind is registered once.
+   * Returns the module's reader of its own lines (LineDetailsReader).
    */
-  registerLineDetails(kind: string, definition: LineDetailsKind): void {
+  registerLineDetails(kind: string, definition: LineDetailsKind): LineDetailsReader {
     if (!DETAIL_KIND.test(kind)) throw new Error(`accounting: line details kind '${kind}' must be lowercase letters, digits and dashes`);
     if (this.lineKinds.has(kind)) throw new Error(`accounting: line details kind '${kind}' is already registered`);
     this.lineKinds.set(kind, definition);
+    return { lines: () => this.linesOfKind(kind) };
   }
 
   /** Let a module add notes to receipt slips (accounting-donations: the quid pro quo disclosure). */
@@ -2356,6 +2368,25 @@ export default class LedgerManager {
   }
 
   /** Receipts or refunds, newest first. */
+  /** Posted receipt lines carrying a kind of details, bounced checks left out, net of refunds. */
+  private linesOfKind(kind: string): ReturnType<LineDetailsReader['lines']> {
+    const refunded = new Map<string, number>();
+    for (const r of this.documents('refund')) for (const l of r.lines) {
+      if (l.status === 'posted' && l.receiptLineId) refunded.set(l.receiptLineId, (refunded.get(l.receiptLineId) ?? 0) + l.amount);
+    }
+    const out: ReturnType<LineDetailsReader['lines']> = [];
+    for (const r of this.documents('receipt') as Receipt[]) {
+      if (r.bounced) continue;
+      for (const l of r.lines) {
+        const details = l.details[kind];
+        if (l.status !== 'posted' || !details) continue;
+        const amount = l.amount - (refunded.get(l.id) ?? 0);
+        if (amount > 0) out.push({ lineId: l.id, receiptId: r.id, date: r.date, amount, details });
+      }
+    }
+    return out;
+  }
+
   private documents(kind: 'receipt' | 'refund', { includeVoided = false } = {}): (Receipt | Refund)[] {
     return (this.db.prepare(`SELECT id FROM accounting_documents WHERE kind = ? ${includeVoided ? '' : "AND status = 'posted'"}
       ORDER BY date DESC, created_at DESC`).all(kind) as { id: string }[]).map(r => this.document(r.id));
