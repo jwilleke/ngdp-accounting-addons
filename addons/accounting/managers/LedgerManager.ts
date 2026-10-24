@@ -535,10 +535,11 @@ export interface LedgerOptions {
    */
   dataChanged?: () => Promise<void> | void;
   /**
-   * The ngdpbase person a username is, as its `@id` (PersonManager.getByUserIdentifier), for the
-   * caller's own receipts (D-037). Without it a person has no receipts of their own.
+   * The caller's own ngdpbase person, as its `@id`, for the caller's own receipts (D-037); read as
+   * the caller (PersonManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage).
+   * Without it a person has no receipts of their own.
    */
-  personOf?: (username: string) => Promise<string | null>;
+  personOf?: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;
 }
 
 /**
@@ -778,7 +779,7 @@ export default class LedgerManager {
   private readonly formatMoney: LedgerOptions['formatMoney'];
   private readonly toCsv: LedgerOptions['toCsv'];
   private readonly dataChanged: () => Promise<void> | void;
-  private readonly personOf: (username: string) => Promise<string | null>;
+  private readonly personOf: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;
 
   constructor(options: LedgerOptions) {
     if (!CURRENCY.test(options.currency)) throw new Error(`accounting: currency '${options.currency}' is not an ISO 4217 code`);
@@ -1940,7 +1941,7 @@ export default class LedgerManager {
    */
   async ownDocuments(actor: LedgerActor, kind: 'receipt' | 'refund', filter: { includeVoided?: boolean } = {}): Promise<(Receipt | Refund)[]> {
     await this.authorize(actor, 'ledger-self');
-    const personId = await this.personOf(actor.actingUsername());
+    const personId = await this.personOf(actor);
     if (!personId) return [];
     const own = this.documents('receipt', filter).filter(d => d.partyPersonId === personId);
     if (kind === 'receipt') return own;

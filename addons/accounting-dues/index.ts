@@ -15,7 +15,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
-import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { duesValidator } from './billing.js';
 import { registerDuesForms } from './forms.js';
 import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
@@ -125,13 +125,11 @@ const AccountingDuesAddon = {
    * billing party they are on, its invoices, what is paid and left, and the
    * balance. Nothing for someone who is billed nothing.
    */
-  async profileSection(user: { username: string; roles?: string[] }): Promise<{ title: string; html: string } | null> {
+  async profileSection(user: { username: string }, ctx: ActorContext): Promise<{ title: string; html: string } | null> {
     if (!profile) return null;
-    // A subject built from parts until core's profile hook passes the caller's own context
-    // (profileSection(user, ctx), ngdpbase #2018); then hand that ctx to the doors instead.
+    // The signed-in user's own context, as core's profile hook hands it (ngdpbase #2018).
     const actor = {
-      ipAddress: undefined, actingUsername: () => user.username,
-      subject: { username: user.username, roles: user.roles ?? [], isAuthenticated: true } as never,
+      ipAddress: undefined, actingUsername: () => user.username, subject: ctx,
       enforceDeny: async (permission: string): Promise<never> => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
     };
     let parties;
