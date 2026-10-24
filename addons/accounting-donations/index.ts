@@ -13,7 +13,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
-import type { AddonHost, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { DEFAULT_QUID_PRO_QUO, giftSlipNotes, giftValidator, type GiftSettings, type ReceiptLike } from './gift.js';
 import { registerGiftForms } from './forms.js';
 import DonationManager, { type Contacts, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
@@ -99,8 +99,11 @@ const AccountingDonationsAddon = {
         };
       },
       email: () => engine.getManager<{ sendTo(to: string, subject: string, text: string, html?: string): Promise<void> }>('EmailManager'),
-      personOf: async (username) =>
-        (await engine.getManager<{ getByUserIdentifier(u: string): Promise<{ '@id': string } | null> }>('PersonManager')?.getByUserIdentifier(username))?.['@id'] ?? null,
+      personOf: async (actor) => {
+        if (!actor.subject) return null;
+        const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('PersonManager');
+        return (await persons?.getByUserIdentifier(actor.subject, actor.actingUsername()))?.['@id'] ?? null;
+      },
       contacts: () => ({
         persons: engine.getManager<NonNullable<Contacts['persons']>>('PersonManager'),
         organizations: engine.getManager<NonNullable<Contacts['organizations']>>('OrganizationManager')
@@ -125,13 +128,11 @@ const AccountingDonationsAddon = {
    * The signed-in donor's own giving on their profile (D-037): each year's gifts and
    * statements. Nothing for someone with no gifts, or without ledger-self.
    */
-  async profileSection(user: { username: string; roles?: string[] }): Promise<{ title: string; html: string } | null> {
+  async profileSection(user: { username: string }, ctx: ActorContext): Promise<{ title: string; html: string } | null> {
     if (!profile) return null;
-    // A subject built from parts until core's profile hook passes the caller's own context
-    // (profileSection(user, ctx), ngdpbase #2018); then hand that ctx to the doors instead.
+    // The signed-in user's own context, as core's profile hook hands it (ngdpbase #2018).
     const actor = {
-      ipAddress: undefined, actingUsername: () => user.username,
-      subject: { username: user.username, roles: user.roles ?? [], isAuthenticated: true } as never,
+      ipAddress: undefined, actingUsername: () => user.username, subject: ctx,
       enforceDeny: async (permission: string): Promise<never> => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
     };
     let years;

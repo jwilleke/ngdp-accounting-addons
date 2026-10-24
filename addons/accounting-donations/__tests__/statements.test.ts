@@ -45,7 +45,7 @@ describe('giving statements', () => {
       { migrations: DONATIONS_MIGRATIONS as never, ledgerTable: DONATIONS_LEDGER_TABLE }, { slug: 'accounting-donations', defaults });
     sent = []; audit = [];
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide,
-      personOf: async (u) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[u] ?? null,
+      personOf: async (a) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[a.actingUsername()] ?? null,
       categories: () => ({ '4200': 'Donations and gifts', '6100': { name: 'Bank Charges', type: 'expense' }, '8900': { name: 'Other Miscellaneous Income', type: 'other-income' } }),
       bouncedChecks: () => ({ bankChargesCategory: '6100', otherIncomeCategory: '8900', penalty: 0 }) });
     const door = { get: async (_ctx: unknown, id: string) => people.get(id) ?? null, list: async () => [...people.values()] };
@@ -53,7 +53,7 @@ describe('giving statements', () => {
       recordAudit: async (r) => { audit.push(r); }, contacts: () => ({ persons: door, organizations: door }) as never,
       wording: () => ({ organization: { name: 'Fairways Fund', taxId: '12-3456789', address: '1 Fairway Dr' }, intro: DEFAULT_WORDING.intro, noGoods: DEFAULT_WORDING.noGoods, goodsNote: DEFAULT_WORDING.goodsNote, taxIdNote: DEFAULT_WORDING.taxIdNote }),
       email: () => ({ sendTo: async (to: string, subject: string, _text: string, html?: string) => { sent.push({ to, subject, html }); } }),
-      personOf: async (u) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[u] ?? null,
+      personOf: async (a) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[a.actingUsername()] ?? null,
       now: () => new Date('2027-01-15T12:00:00Z') });
     ledger.registerLineDetails('gift', giftValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
     fundId = (await ledger.createFund(actor(), { name: 'General', openingDate: '2026-01-01' })).id;
