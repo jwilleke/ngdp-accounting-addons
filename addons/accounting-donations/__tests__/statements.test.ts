@@ -17,7 +17,7 @@ import { giftValidator } from '../gift.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 const host = buildAddonHost('accounting-donations', defaults);
-const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'receipt-refund', 'fund-manage', 'donation-record', 'statement-issue', 'contact-read', 'contact-manage'];
+const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'ledger-adjust', 'receipt-refund', 'fund-manage', 'donation-record', 'statement-issue', 'identity-read', 'identity-manage'];
 const decide = async (subject: unknown, { action }: { action: string }) =>
   ({ permit: Boolean((subject as { granted?: string[] } | null)?.granted?.includes(action)), applicable: true, reason: 'test' });
 const actor = (granted: string[] = ALL): LedgerActor => ({

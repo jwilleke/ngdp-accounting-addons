@@ -7,7 +7,7 @@ monthly summary and a CSV export.
 - __Slug:__ `accounting`. It is the registry key and the config key, and equals the `name` exported
   from `index.ts`.
 - __Type:__ `additive`.
-- __Requires:__ ngdpbase 5.28.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on
+- __Requires:__ ngdpbase 5.30.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on
   for the screens (`optionalDependencies: ['forms']`).
 
 Turning it on for a site: [docs/guides/accounting-guide.md](../../docs/guides/accounting-guide.md).

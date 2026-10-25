@@ -61,8 +61,8 @@
       "actions": [
         "donation-record",
         "statement-issue",
-        "contact-read",
-        "contact-manage"
+        "identity-read",
+        "identity-manage"
       ]
     }
   ],

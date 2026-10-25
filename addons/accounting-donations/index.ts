@@ -102,11 +102,11 @@ const AccountingDonationsAddon = {
       pdf: () => engine.getManager<NonNullable<ReturnType<NonNullable<DonationOptions['pdf']>>>>('ExportManager'),
       personOf: async (actor) => {
         if (!actor.subject) return null;
-        const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('PersonManager');
+        const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('IdentityManager');
         return (await persons?.getByUserIdentifier(actor.subject, actor.actingUsername()))?.['@id'] ?? null;
       },
       contacts: () => ({
-        persons: engine.getManager<NonNullable<Contacts['persons']>>('PersonManager'),
+        persons: engine.getManager<NonNullable<Contacts['persons']>>('IdentityManager'),
         organizations: engine.getManager<NonNullable<Contacts['organizations']>>('OrganizationManager')
       }),
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },

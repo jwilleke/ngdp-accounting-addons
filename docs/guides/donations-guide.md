@@ -3,7 +3,7 @@ name: Donations guide
 description: How the accounting add-on records gifts and produces giving statements, and what the IRS asks for
 dateModified: 2026-10-22
 category: guides
-relatedModules: [LedgerManager, ReceiptManager, PersonManager, ExportManager]
+relatedModules: [LedgerManager, ReceiptManager, IdentityManager, ExportManager]
 ---
 
 # Donations guide
@@ -73,7 +73,7 @@ from the site's contacts, or created on the spot as a __new donor__ from the rec
 name an organization (Acme Corp), or a person on behalf of one (Jane, for Acme), through the
 person's affiliation. A donor may never log in; if they sign up later, ngdpbase links their account
 to the existing person by matching email, confirmed by them, or an administrator links it by hand.
-Finding and creating donors use ngdpbase's contact doors, under the `contact-manage` permission,
+Finding and creating donors use ngdpbase's contact doors, under the `identity-manage` permission,
 audited. The person
 record holds the donor's name, postal address and email, once; an address change is made in one
 place. A person may never log in; everyone who logs in already has a person record.

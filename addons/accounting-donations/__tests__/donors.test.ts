@@ -27,14 +27,14 @@ function fakeContacts() {
   const may = (ctx: unknown, perm: string) => { if (!(ctx as { granted?: string[] } | null)?.granted?.includes(perm)) throw new ContactRefusedError(perm); };
   let n = 0;
   const door = (store: Map<string, Record<string, unknown>>) => ({
-    list: async (ctx: unknown) => { may(ctx, 'contact-read'); return [...store.values()]; },
-    get: async (ctx: unknown, id: string) => { may(ctx, 'contact-read'); return store.get(id) ?? null; },
-    create: async (ctx: unknown, input: Record<string, unknown>) => { may(ctx, 'contact-manage'); const rec = { ...input, '@id': `urn:uuid:${++n}` }; store.set(rec['@id'], rec); return rec; }
+    list: async (ctx: unknown) => { may(ctx, 'identity-read'); return [...store.values()]; },
+    get: async (ctx: unknown, id: string) => { may(ctx, 'identity-read'); return store.get(id) ?? null; },
+    create: async (ctx: unknown, input: Record<string, unknown>) => { may(ctx, 'identity-manage'); const rec = { ...input, '@id': `urn:uuid:${++n}` }; store.set(rec['@id'], rec); return rec; }
   });
   return { persons: door(people), organizations: door(orgs), people, orgs };
 }
 
-const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'fund-manage', 'donation-record', 'contact-read', 'contact-manage'];
+const ALL = ['ledger-summary-read', 'ledger-read', 'ledger-record', 'fund-manage', 'donation-record', 'identity-read', 'identity-manage'];
 const decide = async (subject: unknown, { action }: { action: string }) =>
   ({ permit: Boolean((subject as { granted?: string[] } | null)?.granted?.includes(action)), applicable: true, reason: 'test' });
 const actor = (granted: string[] = ALL): LedgerActor => ({
@@ -70,7 +70,7 @@ describe('donors', () => {
     expect(jane).toMatchObject({ type: 'person', name: 'Jane Roe' });
     expect(contacts.people.get(jane.id)).toMatchObject({ affiliation: [{ organization: acme.id, role: 'Treasurer' }],
       address: { '@type': 'PostalAddress', streetAddress: '1 Main St', postalCode: '43215' } });
-    await expect(donations.addDonor(actor(['contact-read']), { type: 'organization', name: 'X' })).rejects.toMatchObject({ name: 'ContactRefusedError', permission: 'contact-manage' });
+    await expect(donations.addDonor(actor(['identity-read']), { type: 'organization', name: 'X' })).rejects.toMatchObject({ name: 'ContactRefusedError', permission: 'identity-manage' });
     await expect(donations.addDonor(actor(), { type: 'person', givenName: 'Only' })).rejects.toThrow('familyName is required');
   });
 
