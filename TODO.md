@@ -39,7 +39,6 @@ last_updated: "2026-10-24"
 ## 🟡 P2
 
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
-- [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
 
 ## 🔵 In review
 
