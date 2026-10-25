@@ -93,12 +93,7 @@ export function lateChargesDue(invoices: Billed[], paid: Map<string, number>, ru
   return out;
 }
 
-/** A billing party's key: its people's usernames, sorted, joined with commas. */
-export function partyKey(usernames: string[]): string {
-  return [...usernames].sort().join(',');
-}
-
-/** An amount split between parties by their percent, in cents; the rounding remainder goes to the first parties. */
+/** An amount split by percent (billing entries' shares), in cents; the rounding remainder goes to the first. */
 export function splitByShare(amount: number, parties: { share: number }[]): number[] {
   const raw = parties.map(p => Math.floor(amount * p.share / 100));
   let rest = amount - raw.reduce((t, x) => t + x, 0);
@@ -106,40 +101,29 @@ export function splitByShare(amount: number, parties: { share: number }[]): numb
   return raw;
 }
 
-/** What is stored on a payment line: the account it pays, the party whose balance it settles, and the invoice it names, if any. */
-export interface DuesDetails { account: string; party: string | null; invoiceId: string | null }
+/** What is stored on a payment line: the unit it pays (D-047: one balance per unit), and the invoice it names, if any. */
+export interface DuesDetails { account: string; invoiceId: string | null }
 
 /** The `dues` kind of receipt-line details: checks what a caller sends and returns what is stored. */
 export function duesValidator(settings: {
   categories: () => string[];
   accountExists: (id: string) => boolean;
-  invoiceOf: (invoiceId: string) => { accountId: string; party: string; status: string } | null;
-  /** The parties an account's issued invoices were billed to. */
-  partiesOf: (account: string) => string[];
+  invoiceOf: (invoiceId: string) => { accountId: string; status: string } | null;
 }) {
   return {
     validate(data: unknown, line: { category: string }): Record<string, unknown> {
       if (typeof data !== 'object' || data === null || Array.isArray(data)) throw new Error('details.dues must be an object');
-      const d = data as { account?: unknown; party?: unknown; invoiceId?: unknown };
+      const d = data as { account?: unknown; invoiceId?: unknown };
       const allowed = settings.categories();
-      if (!allowed.includes(line.category)) throw new Error(`category: ${line.category} is not a dues category (${allowed.join(', ') || 'none set'})`);
+      if (!allowed.includes(line.category)) throw new Error(`category: ${line.category} is not a category these payments may use (${allowed.join(', ') || 'none set'})`);
       if (typeof d.account !== 'string' || d.account === '' || !settings.accountExists(d.account)) throw new Error('details.dues.account names no account');
       const invoiceId = typeof d.invoiceId === 'string' && d.invoiceId !== '' ? d.invoiceId : null;
-      let party = typeof d.party === 'string' && d.party !== '' ? d.party : null;
-      // A payment settles one party's balance (D-038): the invoice's, the one named, or the account's only one.
       if (invoiceId) {
         const invoice = settings.invoiceOf(invoiceId);
         if (!invoice || invoice.status !== 'issued') throw new Error('details.dues.invoiceId names no issued invoice');
         if (invoice.accountId !== d.account) throw new Error('details.dues.invoiceId is an invoice of another account');
-        if (party && party !== invoice.party) throw new Error('details.dues.party is not the party of that invoice');
-        party = invoice.party;
-      } else {
-        const parties = settings.partiesOf(d.account);
-        if (party && !parties.includes(party)) throw new Error('details.dues.party is not a party billed on this account');
-        if (!party && parties.length > 1) throw new Error('details.dues.party: this account bills more than one party; name the party or the invoice');
-        party = party ?? parties[0] ?? null;
       }
-      const details: DuesDetails = { account: d.account, party, invoiceId };
+      const details: DuesDetails = { account: d.account, invoiceId };
       return details as unknown as Record<string, unknown>;
     }
   };

@@ -39,13 +39,23 @@
         "on-failure": "refuse",
         "description": "Invoices issued, voided or emailed"
       }
+    },
+    "account-read": {
+      "description": "See every unit's account: its invoices, payments and balance (the board)",
+      "icon": "eye",
+      "color": "#6c757d",
+      "audit": {
+        "on-failure": "continue",
+        "enabled": false,
+        "description": "Units' accounts read"
+      }
     }
   },
   "ngdpbase.access.policies": [
     {
       "id": "accounting-dues-treasurer",
       "name": "Treasurer bills dues and assessments",
-      "description": "The treasurer role issues and voids invoices, reading each unit's billing parties through the accommodation add-on's own permission. Recording payments is the accounting add-on's ledger-record.",
+      "description": "The treasurer role issues and voids invoices, reading each unit's billing through the accommodation add-on's permission and the owners it emails through core's identity-read. Recording payments is the accounting add-on's ledger-record.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
@@ -62,13 +72,14 @@
       ],
       "actions": [
         "invoice-issue",
-        "accommodation-billing-read"
+        "accommodation-billing-read",
+        "identity-read"
       ]
     },
     {
       "id": "accounting-dues-issue-job",
       "name": "The scheduled invoice run issues invoices",
-      "description": "A scheduled run of accounting-dues.issue-invoices acts as the job (ngdpbase #1999): it holds only what issuing the month's invoices needs, reading each unit's billing parties through the accommodation add-on's own permission. Run now acts as the admin who clicked.",
+      "description": "A scheduled run of accounting-dues.issue-invoices acts as the job (ngdpbase #1999): it holds only what issuing the month's invoices needs, reading each unit's billing through the accommodation add-on's permission and the owners it emails through core's identity-read. Run now acts as the admin who clicked.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
@@ -86,8 +97,10 @@
       "actions": [
         "invoice-issue",
         "ledger-read",
-        "accommodation-billing-read"
+        "accommodation-billing-read",
+        "identity-read"
       ]
     }
-  ]
+  ],
+  "_comment_account_read": "account-read lets someone see every unit's account (invoices, payments, balance) without the rest of the ledger: for the board (D-047). No role holds it by default; a site grants it to its board in its own policy."
 }

@@ -33,7 +33,7 @@ const checked = (v: unknown): boolean => v !== undefined && v !== '' && v !== fa
 
 export const PAYMENT_FORM = {
   id: 'dues-payment', title: 'Record a payment on an account', handler: 'accounting-dues', store: false, proxySubmission: false, notifyRole: 'admin',
-  description: 'Money an account paid: cash, a check, a bank transfer. It is recorded as a receipt (R-0001, …). It settles the invoices of the party billed, oldest first, or the one you name first; money paid ahead is kept as that party\'s credit.',
+  description: 'Money an account paid: cash, a check, a bank transfer. It is recorded as a receipt (R-0001, …). It settles the unit\'s invoices oldest first, or the one you name first; money paid ahead is kept as the unit\'s credit.',
   fields: [
     { name: 'account', type: 'dropdown', label: 'Account', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=accounts)' },
     { name: 'amount', type: 'amount', label: 'Amount', required: true },
@@ -43,7 +43,6 @@ export const PAYMENT_FORM = {
     { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
     { name: 'fundId', type: 'dropdown', label: 'Fund', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' },
     { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=dues-categories)' },
-    { name: 'party', type: 'dropdown', label: 'Billed to (needed when the account bills more than one party)', required: false, optionsSource: 'fetch:DuesManager.toFormOptions(list=parties)' },
     { name: 'invoiceId', type: 'dropdown', label: 'Pays this invoice first (optional)', required: false, optionsSource: 'fetch:DuesManager.toFormOptions(list=open-invoices)' },
     { name: 'memo', type: 'textarea', label: 'Note', required: false }
   ]
@@ -51,7 +50,7 @@ export const PAYMENT_FORM = {
 
 export const ISSUE_FORM = {
   id: 'invoice-issue', title: 'Issue this month\'s invoices', handler: 'accounting-dues', store: false, proxySubmission: false, notifyRole: 'admin',
-  description: 'One invoice per billing party with something charged for the month and no invoice yet, or one account. Check the Prepare page first. Each is kept exactly as issued.',
+  description: 'One invoice per billing address with something charged for the month and no invoice yet, or one account. Check the Prepare page first. Each is kept exactly as issued.',
   fields: [
     { name: 'month', type: 'dropdown', label: 'Month', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=months)' },
     { name: 'account', type: 'dropdown', label: 'Only this account (blank: every account)', required: false, optionsSource: 'fetch:DuesManager.toFormOptions(list=accounts)' },
@@ -74,13 +73,13 @@ export function paymentFromForm(data: Data, accountLabel: string): Record<string
   return {
     date: data.date, partyName: str(data.partyName) ?? accountLabel, paymentMethod: data.paymentMethod, paymentMethodId: str(data.paymentMethodId),
     memo: str(data.memo) ?? `Payment on ${accountLabel}`,
-    lines: [{ amount: data.amount, fundId: data.fundId, category: data.category, details: { dues: { account: data.account, party: str(data.party), invoiceId: str(data.invoiceId) } } }]
+    lines: [{ amount: data.amount, fundId: data.fundId, category: data.category, details: { dues: { account: data.account, invoiceId: str(data.invoiceId) } } }]
   };
 }
 
 /** The form field a refusal is about, from the ledger's message ("lines[0].details.dues.account …"). */
 export function paymentField(message: string): string | undefined {
-  const m = /(account|party|invoiceId|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
+  const m = /(account|invoiceId|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
   return m?.[1];
 }
 
@@ -116,7 +115,7 @@ export async function registerDuesForms(engine: Engine, host: AddonHost, account
   };
   forms.registerHandler(ISSUE_FORM.id, async (submission, { req }) => {
     const dues = engine.getManager<DuesManagerLike>('DuesManager');
-    if (!dues) return { ok: false, error: 'Dues are not running on this site' };
+    if (!dues) return { ok: false, error: 'Invoices are not running on this site' };
     try {
       const ctx = host.ApiContext.from(req as never, engine as never);
       const d = submission.data;
@@ -130,7 +129,7 @@ export async function registerDuesForms(engine: Engine, host: AddonHost, account
   });
   forms.registerHandler(VOID_FORM.id, async (submission, { req }) => {
     const dues = engine.getManager<DuesManagerLike>('DuesManager');
-    if (!dues) return { ok: false, error: 'Dues are not running on this site' };
+    if (!dues) return { ok: false, error: 'Invoices are not running on this site' };
     try {
       const ctx = host.ApiContext.from(req as never, engine as never);
       const invoice = await dues.voidInvoice(ctx, String(submission.data.invoiceId ?? ''), String(submission.data.reason ?? ''));

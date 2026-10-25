@@ -16,8 +16,8 @@ export interface InvoiceContent {
   previous: number;
   total: number;
   owed: number;
-  /** The billing party: its names, and where the invoice goes. */
-  billTo: { name: string; address: PostalAddress | null };
+  /** Where the invoice goes: the billing address as typed, lines kept (D-047). */
+  billTo: string;
   /** The module's word for the charge, e.g. Assessment. */
   label: string;
 }
@@ -28,13 +28,6 @@ export interface PostalAddress { streetAddress: string; addressLocality?: string
 export interface InvoiceWording { organization: { name: string; address: string; payTo: string } }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
-
-/** An address as lines under the name: street, then town, region and postal code. */
-function address(a: PostalAddress | null): string {
-  if (!a) return '';
-  const town = [[a.addressLocality, a.addressRegion].filter(Boolean).join(', '), a.postalCode].filter(Boolean).join(' ');
-  return [a.streetAddress, town].filter(Boolean).map(l => `<br>${esc(l)}`).join('');
-}
 
 export function renderInvoice(c: InvoiceContent, w: InvoiceWording, formatMoney: (minor: number) => string): string {
   const money = (m: number) => esc(formatMoney(m));
@@ -53,7 +46,7 @@ export function renderInvoice(c: InvoiceContent, w: InvoiceWording, formatMoney:
 </style></head><body>
 <h1>Invoice ${esc(c.number)}</h1>
 <p class="muted">${esc(w.organization.name)}${w.organization.address ? `<br>${esc(w.organization.address)}` : ''}</p>
-<p><strong>${esc(c.accountLabel)}</strong><br>${esc(c.billTo.name)}${address(c.billTo.address)}</p>
+<p><strong>${esc(c.accountLabel)}</strong>${c.billTo.split(/\r?\n/).filter(l => l.trim()).map(l => `<br>${esc(l.trim())}`).join('')}</p>
 <p>${esc(c.label)} for ${esc(c.month)} · issued ${esc(c.date)} · due ${esc(c.dueDate)}</p>
 <table><tbody>${brought}${rows}</tbody>
 <tfoot><tr><td>Amount owed</td><td class="amount">${money(c.owed)}</td></tr></tfoot></table>

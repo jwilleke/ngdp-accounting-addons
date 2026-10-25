@@ -18,7 +18,7 @@ export default function duesRoutes(engine: Engine, host: AddonHost): Router {
     async (req: Request, res: Response): Promise<void> => {
       try {
         const dues = engine.getManager<DuesManager>('DuesManager');
-        if (!dues) { res.status(503).json({ ok: false, error: 'dues are not available on this site' }); return; }
+        if (!dues) { res.status(503).json({ ok: false, error: 'invoices are not available on this site' }); return; }
         const invoice = await read(dues, ApiContext.from(req, engine as never), String(req.params.id));
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(invoice.html);

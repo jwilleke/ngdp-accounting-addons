@@ -1,7 +1,7 @@
 # Accounting dues
 
 Dues and assessments for the [accounting](../accounting/README.md) add-on of
-[ngdpbase](https://github.com/jwilleke/ngdpbase): one invoice per billing party each month, payments
+[ngdpbase](https://github.com/jwilleke/ngdpbase): one invoice per billing address each month, payments
 as receipts, money paid ahead kept as credit, and late charges proposed for the treasurer to confirm.
 The Fairways (a condominium) is the reference site.
 
@@ -12,12 +12,12 @@ The Fairways (a condominium) is the reference site.
   accommodation add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)):
   `AccommodationManager` (`accounts-manager`) for `list()`, `get(id)`, `assessment(id)` (amount,
   monthly or annual, due day, from the accommodation's category) and `lateCharges()`; and
-  `ResidencyManager` (`billing-manager`) for `billing(ctx, id, { on })`, the unit's billing parties
-  on the charge's due date: who is billed together, at which address, for what percent.
+  `ResidencyManager` (`billing-manager`) for `billing(ctx, id, { on })`, where the unit's invoices go
+  and its owners on the charge's due date, and `ownUnits(ctx)`, the units the viewer owns today.
 - __Data:__ invoices are in this add-on's own database, declared as
   `ngdpbase.addons.accounting-dues.database`, outside the ledger, which holds only money that moved.
   A payment is a receipt made through the accounting add-on's `ReceiptManager`, whose line carries
-  `dues` details (`{ account, party, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The
+  `dues` details (`{ account, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The
   accounting database is never touched.
 - __Permissions:__ its own `invoice-issue` (issue, void and email invoices), which the add-on's
   policy grants the treasurer role; recording a payment is accounting's `ledger-record`.
@@ -46,37 +46,38 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
 
 ## How billing works
 
-- __One invoice per billing party__
-  ([D-038](../../docs/plans/decisions.md#d-038-one-invoice-per-billing-party-each-with-its-own-balance)).
-  Dues bills exactly what the unit's billing array says
-  ([D-040](../../docs/plans/decisions.md#d-040-dues-bills-exactly-as-the-billing-array-says)): each
-  party's percent of the charge, to its names and address. Joint owners at one address are one party
-  and get one invoice for the total. A unit whose billing array is refused (someone named who is not
-  an owner, shares not adding up to 100, no owner or no address) shows as not billable, with the
-  reason, and nothing is issued for it.
-- __Each month is evaluated on its own.__ Prepare This Month's Invoices shows each party's charge,
-  the late charges due on its earlier invoices, its balance brought forward and the amount owed. The
-  treasurer then issues: one invoice per party a month, I-0001 onwards, stored exactly as issued
-  with its SHA-256. A mistake is voided, with a reason, and the month issued again.
-- __Each party has its own balance.__ A payment settles only its party's invoices: the oldest first,
-  or the one it names first. What is left is that party's credit. A payment names its invoice or its
-  party; on an account with one party it may name neither. An account's balance is the sum of its
-  parties'. Refunds lower a payment; a bounced check does not count.
+- __One balance per unit__ ([D-047](../../docs/plans/decisions.md#d-047-one-balance-per-unit-billing-entries-are-only-where-invoices-go)). Its owners owe it jointly; who they are, and each one's
+  share, is the unit's owner list on the due date, from the accommodation add-on, by identity `@id`.
+  A payment names only the unit and settles its oldest invoice first, or the one it names first.
+  What is left is the unit's credit. Refunds lower a payment; a bounced check does not count.
+- __One invoice per billing address.__ The unit's billing entries say only where invoices go: an
+  address typed by the treasurer or an owner, and a share; usually one entry at 100%. Each entry's
+  invoice carries its share of the month's charge and of the balance brought forward; late charges go
+  on the first. An invoice keeps the address as typed and the owners' `@id`s and shares, never names.
+- __A unit with no billing address is never billed to a guessed one.__ It shows as not billable on
+  Prepare This Month's Invoices, with the reason, and the scheduled run names it in its result and in
+  the notice to the people who issue invoices.
+- __Each month is evaluated on its own.__ Prepare This Month's Invoices shows each entry's charge,
+  the late charges due on the unit's earlier invoices, the balance brought forward and the amount
+  owed. The treasurer then issues: I-0001 onwards, each stored exactly as issued with its SHA-256. A
+  mistake is voided, with a reason, and the month issued again.
 - __Late charges__ come from the account source's rules. A rule applies once an invoice is more than
   its days past due and still unpaid: once per invoice, or each month. Interest is simple, on what is
   still owed, at the annual rate ÷ 12. They are added only when the treasurer ticks the box.
-- __Email:__ with email ticked, an invoice with money owed goes to each person on its party with an
-  email; one paid in full by credit is kept and not sent.
+- __Email:__ with email ticked, an invoice with money owed goes to each of the unit's owners with an
+  email, looked up as the sender through ngdpbase's identity records (`identity-read`); one paid in
+  full by credit is kept and not sent.
 - __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-dues.send-to-owners` to
   `true`. While it is off nothing is sent to owners, even with the email box ticked: a development or
   copied site never mails real owners.
-- __Your own bills:__ everyone who was billed sees, on their own profile, each billing party they
-  were on: its invoices, what is paid and left to pay, and its balance. Everyone on a party sees the
-  same, whoever paid; nobody sees another party's. A seller keeps seeing what they were billed;
-  someone never billed sees no card
-  ([D-044](../../docs/plans/decisions.md#d-044-an-owners-bills-are-on-their-profile-in-accountings-card),
+- __Your own bills:__ a unit's current owners, decided when they look, see its whole account on
+  their profile: every billing entry's invoices, what is paid and left to pay, and the balance. A
+  past owner keeps seeing the invoices issued while they owned it, without the balance; someone never
+  billed sees no card ([D-047](../../docs/plans/decisions.md#d-047-one-balance-per-unit-billing-entries-are-only-where-invoices-go),
   [D-045](../../docs/plans/decisions.md#d-045-the-dues-card-shows-whoever-was-billed)). It needs
   `ledger-self`, which every account holds.
+- __The board__ sees every unit's account under `account-read`, which no role holds by default: a
+  site grants it to its board in its own policy.
 
 - __PDF:__ an emailed invoice carries a PDF of itself, made by ngdpbase's export, when the site has a
   PDF provider (`ngdpbase.export.pdf.provider`), and the PDF's SHA-256 is kept with the invoice.

@@ -1,6 +1,6 @@
 {
   "name": "@jwilleke/accounting-dues-addon",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Dues and assessments for the ngdpbase accounting add-on: invoices, payments, credits and late charges",
   "license": "Apache-2.0",
   "repository": {

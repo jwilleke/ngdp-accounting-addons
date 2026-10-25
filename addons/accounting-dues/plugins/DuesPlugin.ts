@@ -1,7 +1,7 @@
 /**
  * DuesPlugin — dues drawn on a page for the person viewing it:
  *
- *   [{Dues view='prepare'}]                 this month: each billing party's charge, late charges, balance and amount owed
+ *   [{Dues view='prepare'}]                 this month: each billing address's charge, late charges, balance and amount owed
  *   [{Dues view='prepare' month='next'}]     current (the default), next, previous, or YYYY-MM
  *   [{Dues view='invoices' month='2026-10'}] invoices, newest first (blank month: all; voided='true' adds voided ones)
  *   [{Dues view='balances'}]                each account: invoiced, paid, balance or credit
@@ -59,7 +59,7 @@ export async function renderDuesView(f: PluginFormatters, dues: DuesManager, vie
         rows.map(r => [escapeHtml(r.label), money(r.invoiced), money(r.paid), `<strong>${balance(r.balance)}</strong>`]),
         { sortable: true, emptyMessage: 'No accounts.' });
     }
-    return note(f, `Dues: unknown view '${view}'; use prepare, invoices or balances.`);
+    return note(f, `Unknown view '${view}'; use prepare, invoices or balances.`);
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status === 401 || status === 403) return note(f, 'You may not see the accounts.');
@@ -76,7 +76,7 @@ const DuesPlugin = {
   async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; formatters: PluginFormatters }, params: Params): Promise<string> {
     const dues = context.engine.getManager<DuesManager>('DuesManager');
     const ledger = context.engine.getManager<{ currencyCode(): string }>('LedgerManager');
-    if (!dues || !ledger) return note(context.formatters, 'Dues are not available on this site.');
+    if (!dues || !ledger) return note(context.formatters, 'Invoices are not available on this site.');
     // Fetched so the cached page depends on the accounts' topic too (ngdpbase caching guide: plugins declare nothing).
     const source = dues.accountsManagerName();
     if (source) context.engine.getManager(source);
