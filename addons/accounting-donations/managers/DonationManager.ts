@@ -126,6 +126,8 @@ export interface DonationOptions {
   wording?: () => StatementWording;
   /** ngdpbase's EmailManager, to send statements, as the caller. */
   email?: () => { sendTo(ctx: ActorContext, to: string, subject: string, text: string, html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }): Promise<void> } | null | undefined;
+  /** Told after every committed write; index.ts bumps the `DonationManager` cache topic (ngdpbase caching guide: the owner bumps). */
+  changed?: () => Promise<void>;
   /** ngdpbase's ExportManager, to send each statement as a PDF (#51). */
   pdf?: () => { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined;
   /** The caller's own ngdpbase person, as its `@id`, for a donor's own view (D-037); read as the caller (IdentityManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage). */
@@ -184,6 +186,7 @@ export default class DonationManager {
       this.options.db.prepare(`INSERT INTO accounting_donations_inkind (id, donor_person_id, donor_name, date, description, status, created_by, created_at)
         VALUES (?, ?, ?, ?, ?, 'posted', ?, ?)`).run(donation.id, donation.donorPersonId, donation.donorName, donation.date, donation.description, user, donation.createdAt);
     })();
+    await this.written();
     return donation;
   }
 
@@ -196,6 +199,7 @@ export default class DonationManager {
     this.options.db.transaction(() => {
       this.options.db.prepare("UPDATE accounting_donations_inkind SET status = 'voided', void_reason = ? WHERE id = ? AND status = 'posted'").run(why, id);
     })();
+    await this.written();
     return this.inKind(id);
   }
 
@@ -232,6 +236,7 @@ export default class DonationManager {
       this.options.db.prepare(`INSERT INTO accounting_donations_pledges (id, donor_person_id, donor_name, amount, fund_id, start_date, end_date, schedule, memo, status, created_by, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`).run(id, donorPersonId, donorName, input.amount, fundId, startDate, endDate, schedule, memo, user, createdAt);
     })();
+    await this.written();
     return (await this.listPledges(actor)).find(p => p.id === id) as Pledge;
   }
 
@@ -244,6 +249,7 @@ export default class DonationManager {
     this.options.db.transaction(() => {
       this.options.db.prepare("UPDATE accounting_donations_pledges SET status = 'cancelled', cancel_reason = ? WHERE id = ? AND status = 'open'").run(why, id);
     })();
+    await this.written();
     return (await this.listPledges(actor, { includeCancelled: true })).find(p => p.id === id) as Pledge;
   }
 
@@ -321,6 +327,7 @@ export default class DonationManager {
         if (sent) emailed++; else notEmailed.push(donor.name);
       }
     }
+    if (pending.length) await this.written();
     return { issued: pending.length, emailed, notEmailed };
   }
 
@@ -340,6 +347,7 @@ export default class DonationManager {
       this.insertStatement(actor, fresh, id);
     })();
     if (options.email) await this.sendStatement(actor, id);
+    await this.written();
     return this.getStatementRow(id);
   }
 
@@ -560,6 +568,15 @@ export default class DonationManager {
     this.options.db.prepare('UPDATE accounting_donations_statements SET emailed_to = ?, emailed_at = ?, pdf_sha256 = ? WHERE id = ? AND emailed_at IS NULL')
       .run(contact.email, this.stamp(), pdf ? createHash('sha256').update(pdf).digest('hex') : null, id);
     return true;
+  }
+
+  /**
+   * Told after every committed write, so pages showing donations re-render
+   * (ngdpbase caching guide: the owner bumps its own topic; index.ts bumps
+   * `DonationManager`). The one write helper.
+   */
+  private async written(): Promise<void> {
+    await this.options.changed?.();
   }
 
   private async donorOrNull(actor: DonationsActor, donor: Donor): Promise<string | null> {

@@ -1477,3 +1477,21 @@ __Decision (operator, 2026-10-24):__ a person who was billed keeps seeing those 
 The dues card shows the invoices of every billing party the person was on, under `ledger-self`
 (D-043); it does not depend on accommodation's `owner` role. This corrects D-041's line that what dues
 shows an owner rests on that role; accommodation still owns the roles.
+
+## D-046: Add-on data is shown through core's one display plugin
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-25
+- __Links:__ [ngdpbase#2074](https://github.com/jwilleke/ngdpbase/issues/2074),
+  [D-044](#d-044-an-owners-bills-are-on-their-profile-in-accountings-card),
+  [#70](https://github.com/jwilleke/ngdp-accounting-addons/issues/70)
+
+__Context:__ The self-service cards (a donor's donations, an owner's bills) are built by each add-on
+as HTML for the profile page, and could have been repeated as wiki plugins of our own.
+
+__Decision (operator, 2026-10-25, relayed by ngdpbase core):__ core provides one display plugin for
+add-on data. Add-ons register named data sources (`host.registerDataSource('<slug>.<source>',
+(ctx, params) => ({ columns, rows }))`, deciding with the viewer's context), and core renders them as a
+table, list, count or card, on any page and on `/profile`. Until it ships, accounting builds no new
+HTML views; the profile cards use core's formatters (`formatAsTable`, `formatMoney`, `escapeHtml`)
+rather than hand-built tables. When it ships, the cards become data sources.

@@ -15,7 +15,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
-import type { ActorContext, AddonHost, BackgroundJobManager, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, BackgroundJobManager, Decision, PluginFormatters } from '@jwilleke/ngdpbase-types';
 import { duesValidator } from './billing.js';
 import { registerDuesForms } from './forms.js';
 import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type DuesOptions, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
@@ -74,7 +74,7 @@ function registerScheduledRun(engine: Engine, host: AddonHost, dues: DuesManager
   });
 }
 /** What the profile card needs, set by register() (ngdpbase's profile hook, #534, calls the module, not a manager). */
-let profile: { dues: DuesManager; escapeHtml(s: string): string; money(minor: number): string; title: () => string } | null = null;
+let profile: { dues: DuesManager; f: PluginFormatters; money(minor: number): string; title: () => string } | null = null;
 
 const AccountingDuesAddon = {
   name: 'accounting-dues',
@@ -155,9 +155,9 @@ const AccountingDuesAddon = {
     if (!accounts()) host.logger.warn(`[accounting-dues] ${sourceName} is not running: there are no accounts to bill until it is`);
     registerScheduledRun(engine, host, dues);
     if (!billing()) host.logger.warn(`[accounting-dues] ${billingName} is not running: no invoice can be issued until it is`);
-    const fmt = engine.getManager<{ formatters: { escapeHtml(s: string): string } }>('PluginManager')?.formatters;
-    // Core's escaper (PluginManager formatters); without it the card stays off rather than escape by hand.
-    profile = fmt ? { dues, escapeHtml: (s) => fmt.escapeHtml(s), money: formatMoney, title: () => `Your ${label().plural.toLowerCase()}` } : null;
+    const fmt = engine.getManager<{ formatters: PluginFormatters }>('PluginManager')?.formatters;
+    // Core's formatters (escapeHtml, formatAsTable); without them the card stays off rather than build HTML by hand.
+    profile = fmt ? { dues, f: fmt, money: formatMoney, title: () => `Your ${label().plural.toLowerCase()}` } : null;
     unavailable = null;
     host.logger.info('[accounting-dues] Invoices ready');
   },
@@ -177,13 +177,13 @@ const AccountingDuesAddon = {
     let parties;
     try { parties = await profile.dues.myDues(actor); } catch { return null; }
     if (!parties.length) return null;
-    const { escapeHtml: esc, money } = profile;
+    const { f, money } = profile;
+    const esc = (s: string) => f.escapeHtml(s);
     const balance = (m: number) => esc(m < 0 ? `${money(-m)} credit` : money(m));
     const html = parties.map(p => `<p><strong>${esc(p.label)}</strong> · ${esc(p.partyName)} · balance <strong>${balance(p.balance)}</strong></p>`
-      + '<table class="table table-sm"><thead><tr><th>Invoice</th><th>Month</th><th>Due</th><th class="text-end">Charged</th><th class="text-end">Paid</th><th class="text-end">Left to pay</th></tr></thead><tbody>'
-      + p.invoices.map(i => `<tr><td><a href="/api/accounting-dues/my-invoices/${encodeURIComponent(i.id)}">${esc(i.number)}</a></td><td>${esc(i.month)}</td><td>${esc(i.dueDate)}</td>`
-        + `<td class="text-end">${esc(money(i.total))}</td><td class="text-end">${esc(money(i.paid))}</td><td class="text-end">${esc(money(i.remaining))}</td></tr>`).join('')
-      + '</tbody></table>').join('');
+      + f.formatAsTable(['Invoice', 'Month', 'Due', 'Charged', 'Paid', 'Left to pay'],
+        p.invoices.map(i => [`<a href="/api/accounting-dues/my-invoices/${encodeURIComponent(i.id)}">${esc(i.number)}</a>`, esc(i.month), esc(i.dueDate),
+          esc(money(i.total)), esc(money(i.paid)), esc(money(i.remaining))]))).join('');
     return { title: profile.title(), html };
   },
 
