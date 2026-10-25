@@ -109,6 +109,15 @@ on GitHub.
 
 Read the file the change touches, then follow that file.
 
+__Working with core__ ([addons guide, "Working with core"](https://github.com/jwilleke/ngdpbase/blob/master/docs/guides/addons-developer-guide.md#working-with-core),
+locally `../ngdpbase/docs/guides/addons-developer-guide.md`) says who decides what. Ask core before
+building anything outside accounting's own domain (fetching, scheduling, imports, files, identities,
+notifications, email, PDF, consent), even when you think it does not exist; generic work goes to core
+first; use what core has. Core decides the rules, core work, breaking changes and releases. This
+repo's session decides accounting's domain work. The operator decides priorities and anything that
+commits outside a working branch. Never wait on the operator for a core question: message the core
+session or open an ngdpbase issue.
+
 - Any add-on change: `addons-developer-guide.md`, including its standing rules and the section for what you are adding.
 - A route, manager method, job, permission, policy, or audit event: also `security-developer-guide.md` and `audit-developer-guide.md`. Run each guide's "How you know you are done" list.
 - Where pages, files, a database, or `dataPath` go: `storage-developer-guide.md`.
