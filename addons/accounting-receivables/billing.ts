@@ -1,7 +1,7 @@
 /**
- * The billing rules of the dues add-on (D-035), pure, so they are tested on
+ * The billing rules of the receivables add-on (D-035), pure, so they are tested on
  * their own: what a month charges an account, how payments settle invoices,
- * and which late charges are due. DuesManager gathers the data and stores what
+ * and which late charges are due. ReceivablesManager gathers the data and stores what
  * these decide.
  *
  * - Each month is evaluated on its own: a monthly charge falls due on its day in
@@ -102,29 +102,41 @@ export function splitByShare(amount: number, parties: { share: number }[]): numb
 }
 
 /** What is stored on a payment line: the unit it pays (D-047: one balance per unit), and the invoice it names, if any. */
-export interface DuesDetails { account: string; invoiceId: string | null }
+export interface ReceivableDetails { account: string; invoiceId: string | null }
 
-/** The `dues` kind of receipt-line details: checks what a caller sends and returns what is stored. */
-export function duesValidator(settings: {
+/** The `receivable` kind of receipt-line details: checks what a caller sends and returns what is stored. */
+export function receivableValidator(settings: {
   categories: () => string[];
   accountExists: (id: string) => boolean;
   invoiceOf: (invoiceId: string) => { accountId: string; status: string } | null;
 }) {
   return {
     validate(data: unknown, line: { category: string }): Record<string, unknown> {
-      if (typeof data !== 'object' || data === null || Array.isArray(data)) throw new Error('details.dues must be an object');
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) throw new Error('details.receivable must be an object');
       const d = data as { account?: unknown; invoiceId?: unknown };
       const allowed = settings.categories();
       if (!allowed.includes(line.category)) throw new Error(`category: ${line.category} is not a category these payments may use (${allowed.join(', ') || 'none set'})`);
-      if (typeof d.account !== 'string' || d.account === '' || !settings.accountExists(d.account)) throw new Error('details.dues.account names no account');
+      if (typeof d.account !== 'string' || d.account === '' || !settings.accountExists(d.account)) throw new Error('details.receivable.account names no account');
       const invoiceId = typeof d.invoiceId === 'string' && d.invoiceId !== '' ? d.invoiceId : null;
       if (invoiceId) {
         const invoice = settings.invoiceOf(invoiceId);
-        if (!invoice || invoice.status !== 'issued') throw new Error('details.dues.invoiceId names no issued invoice');
-        if (invoice.accountId !== d.account) throw new Error('details.dues.invoiceId is an invoice of another account');
+        if (!invoice || invoice.status !== 'issued') throw new Error('details.receivable.invoiceId names no issued invoice');
+        if (invoice.accountId !== d.account) throw new Error('details.receivable.invoiceId is an invoice of another account');
       }
-      const details: DuesDetails = { account: d.account, invoiceId };
+      const details: ReceivableDetails = { account: d.account, invoiceId };
       return details as unknown as Record<string, unknown>;
     }
   };
 }
+
+/**
+ * The line kind payments were recorded under before the add-on was renamed (`dues`, ngdpbase#2042).
+ * Registered so those payments are read as they are, never rewritten, and still count; no new line
+ * may use it.
+ */
+export const RETIRED_KIND = 'dues';
+export const retiredKind = {
+  validate(): Record<string, unknown> {
+    throw new Error('details.dues: payments are recorded as details.receivable now');
+  }
+};

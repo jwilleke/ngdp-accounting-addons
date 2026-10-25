@@ -1,11 +1,11 @@
-# Accounting dues
+# Accounting receivables
 
-Dues and assessments for the [accounting](../accounting/README.md) add-on of
+Receivables for the [accounting](../accounting/README.md) add-on of
 [ngdpbase](https://github.com/jwilleke/ngdpbase): one invoice per billing address each month, payments
 as receipts, money paid ahead kept as credit, and late charges proposed for the treasurer to confirm.
 The Fairways (a condominium) is the reference site.
 
-- __Slug:__ `accounting-dues`, equal to the `name` exported from `index.ts`.
+- __Slug:__ `accounting-receivables`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the screens.
 - __Requires:__ ngdpbase 5.31.0 or later.
 - __Accounts:__ read from managers named in configuration, and never copied. A condominium uses the
@@ -15,9 +15,9 @@ The Fairways (a condominium) is the reference site.
   `ResidencyManager` (`billing-manager`) for `billing(ctx, id, { on })`, where the unit's invoices go
   and its owners on the charge's due date, and `ownUnits(ctx)`, the units the viewer owns today.
 - __Data:__ invoices are in this add-on's own database, declared as
-  `ngdpbase.addons.accounting-dues.database`, outside the ledger, which holds only money that moved.
+  `ngdpbase.addons.accounting-receivables.database`, outside the ledger, which holds only money that moved.
   A payment is a receipt made through the accounting add-on's `ReceiptManager`, whose line carries
-  `dues` details (`{ account, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The
+  `receivable` details (`{ account, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The
   accounting database is never touched.
 - __Permissions:__ its own `invoice-issue` (issue, void and email invoices), which the add-on's
   policy grants the treasurer role; recording a payment is accounting's `ledger-record`.
@@ -34,9 +34,9 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
   "ngdpbase.addons.accounting.categories": {
     "4100": { "name": "Assessments", "type": "income", "detailType": "Service/Fee Income" }
   },
-  "ngdpbase.addons.accounting-dues.enabled": true,
-  "ngdpbase.addons.accounting-dues.label": { "singular": "Assessment", "plural": "Assessments" },
-  "ngdpbase.addons.accounting-dues.organization": {
+  "ngdpbase.addons.accounting-receivables.enabled": true,
+  "ngdpbase.addons.accounting-receivables.label": { "singular": "Assessment", "plural": "Assessments" },
+  "ngdpbase.addons.accounting-receivables.organization": {
     "name": "The Fairways Condominium Association",
     "address": "…",
     "pay-to": "Fairways Condominium Association, c/o …"
@@ -67,7 +67,7 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
 - __Email:__ with email ticked, an invoice with money owed goes to each of the unit's owners with an
   email, looked up as the sender through ngdpbase's identity records (`identity-read`); one paid in
   full by credit is kept and not sent.
-- __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-dues.send-to-owners` to
+- __Sending to owners__ is off until a site sets `ngdpbase.addons.accounting-receivables.send-to-owners` to
   `true`. While it is off nothing is sent to owners, even with the email box ticked: a development or
   copied site never mails real owners.
 - __Your own bills:__ a unit's current owners, decided when they look, see its whole account on
@@ -83,7 +83,7 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
   PDF provider (`ngdpbase.export.pdf.provider`), and the PDF's SHA-256 is kept with the invoice.
   Without one, the email carries the page alone.
 
-- __Scheduled run:__ the job `accounting-dues.issue-invoices` issues each month's invoices on the
+- __Scheduled run:__ the job `accounting-receivables.issue-invoices` issues each month's invoices on the
   1st at 06:00 in the site's time zone, with the late charges due, and emails them
   ([D-035](../../docs/plans/decisions.md#d-035-dues-and-assessments-flexible-accounts-and-charges)).
   It ships __paused__: turning it on (Admin → Scheduled Jobs → Resume) is the site's standing

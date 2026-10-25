@@ -191,7 +191,7 @@ older one.
 - No QuickBooks or Wave formats yet (#20); use the CSV.
 - No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
 - No events module yet. Donations are the `accounting-donations` add-on
-  ([Donations guide](donations-guide.md)); dues and assessments are the `accounting-dues` add-on
-  ([its README](../../addons/accounting-dues/README.md)), whose accounts come from another add-on,
+  ([Donations guide](donations-guide.md)); invoices for assessments, rent or dues are the
+  `accounting-receivables` add-on ([its README](../../addons/accounting-receivables/README.md)), whose accounts come from another add-on,
   such as the accommodation add-on's units.
 - Changing the database key, or encrypting a ledger that was started without one, is not built (#14).

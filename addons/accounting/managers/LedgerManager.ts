@@ -257,7 +257,7 @@ export interface LineDetailsKind {
 /**
  * What a module reads of its own line details, handed to it when it registers
  * the kind and to no one else: every posted receipt line carrying the kind,
- * bounced checks left out, net of refunds. accounting-dues works out which of
+ * bounced checks left out, net of refunds. accounting-receivables works out which of
  * its invoices are paid from it.
  */
 export interface LineDetailsReader {

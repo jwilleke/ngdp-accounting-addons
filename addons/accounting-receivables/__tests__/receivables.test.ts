@@ -1,6 +1,6 @@
 /**
- * Invoices (D-035), in the dues add-on's own database, outside the ledger:
- * each month evaluated on its own, payments as receipt lines with `dues`
+ * Invoices (D-035), in the receivables add-on's own database, outside the ledger:
+ * each month evaluated on its own, payments as receipt lines with `receivable`
  * details, prepayment as credit, late charges proposed and added only when
  * asked. Money goes through the accounting add-on's ledger.
  */
@@ -10,12 +10,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildAddonHost, openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
 import { openTestLedgerDatabase, testLedgerParts } from '../../accounting/__tests__/host.js';
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting/managers/LedgerManager.js';
-import DuesManager, { type AccountSource, type BillingSource, type DuesDb, type IdentitySource } from '../managers/DuesManager.js';
-import { DUES_LEDGER_TABLE, DUES_MIGRATIONS } from '../managers/migrations.js';
-import { duesValidator } from '../billing.js';
+import ReceivablesManager, { type AccountSource, type BillingSource, type ReceivablesDb, type IdentitySource } from '../managers/ReceivablesManager.js';
+import { RECEIVABLES_LEDGER_TABLE, RECEIVABLES_MIGRATIONS } from '../managers/migrations.js';
+import { receivableValidator, RETIRED_KIND, retiredKind } from '../billing.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
-const host = buildAddonHost('accounting-dues', defaults);
+const host = buildAddonHost('accounting-receivables', defaults);
 
 const decide = async (subject: unknown, { action }: { action: string }) =>
   ({ permit: Boolean((subject as { granted?: string[] } | null)?.granted?.includes(action)), applicable: true, reason: 'test' });
@@ -69,9 +69,9 @@ const residents: BillingSource = {
 
 describe('dues', () => {
   let ledgerDb: { handle: unknown; close(): void };
-  let ownDb: DuesDb & { close(): void };
+  let ownDb: ReceivablesDb & { close(): void };
   let ledger: LedgerManager;
-  let dues: DuesManager;
+  let dues: ReceivablesManager;
   let audit: Record<string, unknown>[];
   let sent: { ctx: unknown; to: string; subject: string; attachments?: { filename: string; content: Buffer }[] }[];
   let pdfMode: 'none' | 'unavailable' | 'made';
@@ -83,8 +83,8 @@ describe('dues', () => {
 
   beforeEach(async () => {
     ledgerDb = openTestLedgerDatabase();
-    ownDb = openAddonTestDatabase<DuesDb & { close(): void }>('accounting-dues',
-      { migrations: DUES_MIGRATIONS as never, ledgerTable: DUES_LEDGER_TABLE }, { slug: 'accounting-dues', defaults });
+    ownDb = openAddonTestDatabase<ReceivablesDb & { close(): void }>('accounting-receivables',
+      { migrations: RECEIVABLES_MIGRATIONS as never, ledgerTable: RECEIVABLES_LEDGER_TABLE }, { slug: 'accounting-receivables', defaults });
     audit = [];
     sent = [];
     bumps = 0;
@@ -96,9 +96,10 @@ describe('dues', () => {
     owning = { pat: ['P-1'], sam: ['P-1'], jo: ['P-2'] };
     today = '2026-09-01';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
-    let duesLines: { lines(): { amount: number; details: Record<string, unknown> }[] } | null = null;
-    dues = new DuesManager({
-      host, db: ownDb, ledger: ledger as never, decide, payments: () => duesLines?.lines() ?? [], accounts: () => units, billing: () => residents, identities: () => identities, categories: () => ['4100'],
+    let receivableLines: { lines(): { amount: number; details: Record<string, unknown> }[] } | null = null;
+    let retiredLines: { lines(): { amount: number; details: Record<string, unknown> }[] } | null = null;
+    dues = new ReceivablesManager({
+      host, db: ownDb, ledger: ledger as never, decide, payments: () => [...(receivableLines?.lines() ?? []), ...(retiredLines?.lines() ?? [])], accounts: () => units, billing: () => residents, identities: () => identities, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
       email: () => ({ sendTo: async (ctx: unknown, to: string, subject: string, _text: string, _html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }) => {
@@ -108,7 +109,8 @@ describe('dues', () => {
         return Buffer.from('%PDF-invoice');
       } })
     });
-    duesLines = ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
+    receivableLines = ledger.registerLineDetails('receivable', receivableValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
+    retiredLines = ledger.registerLineDetails(RETIRED_KIND, retiredKind);
     fundId = (await ledger.createFund(actor(), { name: 'Operating' })).id;
   });
 
@@ -116,7 +118,7 @@ describe('dues', () => {
 
   const pay = (account: string, amount: number, date: string, invoiceId?: string) => ledger.postReceipt(actor(), {
     date, partyName: account, paymentMethod: '20', memo: 'assessment',
-    lines: [{ amount, fundId, category: '4100', details: { dues: { account, invoiceId } } }]
+    lines: [{ amount, fundId, category: '4100', details: { receivable: { account, invoiceId } } }]
   }, { provider: 'manual' });
 
   test('each month is evaluated on its own; an account is invoiced once a month', async () => {
@@ -139,7 +141,7 @@ describe('dues', () => {
     expect((await dues.issueMonth(actor(), { month: '2026-09' })).issued).toBe(0);
     expect(bumps).toBe(1);
     expect((await ledger.fundBalances(actor()))[0]!.balance).toBe(0);
-    expect(() => ownDb.prepare('DELETE FROM accounting_dues_invoices').run()).toThrow(/never deleted/);
+    expect(() => ownDb.prepare('DELETE FROM accounting_receivables_invoices').run()).toThrow(/never deleted/);
     await expect(dues.issueMonth(actor(['ledger-read']), { month: '2026-10' })).rejects.toThrow('refused: invoice-issue');
   });
 
@@ -205,10 +207,10 @@ describe('dues', () => {
   test('a payment line names an account, in one of its categories, and only its own invoices', async () => {
     await dues.issueMonth(actor(), { month: '2026-09' });
     const [p2inv] = await dues.listInvoices(actor(), { accountId: 'P-2' });
-    await expect(pay('P-9', 100, '2026-09-03')).rejects.toThrow('details.dues.account names no account');
+    await expect(pay('P-9', 100, '2026-09-03')).rejects.toThrow('details.receivable.account names no account');
     await expect(pay('P-1', 100, '2026-09-03', p2inv!.id)).rejects.toThrow('an invoice of another account');
     await expect(ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'x', paymentMethod: '20', memo: 'x',
-      lines: [{ amount: 100, fundId, category: '4200', details: { dues: { account: 'P-1' } } }] }, { provider: 'manual' })).rejects.toThrow('not a category these payments may use');
+      lines: [{ amount: 100, fundId, category: '4200', details: { receivable: { account: 'P-1' } } }] }, { provider: 'manual' })).rejects.toThrow('not a category these payments may use');
     expect((await dues.toFormOptions({ list: 'open-invoices' }, { username: 'tess', granted: ALL })).map(o => o.label))
       .toEqual(['I-0002 · 2 · Jo Park · 2026-09 · $300.00 left', 'I-0001 · 1 · Pat Lee & Sam Lee · 2026-09 · $410.00 left']);
     expect(await dues.toFormOptions({ list: 'open-invoices' }, { username: 'x', granted: [] })).toEqual([]);
@@ -248,25 +250,25 @@ describe('dues', () => {
     await dues.issueMonth(actor(), { month: '2026-09' });
     // Someone pays: the receipt names the unit, not an owner.
     await ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'Lee Lee', paymentMethod: '20', memo: 'assessment',
-      lines: [{ amount: 10000, fundId, category: '4100', details: { dues: { account: 'P-1' } } }] }, { provider: 'manual' });
+      lines: [{ amount: 10000, fundId, category: '4100', details: { receivable: { account: 'P-1' } } }] }, { provider: 'manual' });
     const person = (username: string, granted = ['ledger-self']) => ({ ...actor(granted), actingUsername: () => username, subject: { username, granted } as never });
-    const [pat] = await dues.myDues(person('pat'));
+    const [pat] = await dues.myAccounts(person('pat'));
     expect(pat).toMatchObject({ accountId: 'P-1', current: true, balance: 41000 - 10000 });
     expect(pat!.invoices.map(i => [i.billedTo, i.total, i.paid])).toEqual([['Sam Lee', 16400, 0], ['Pat Lee', 24600, 10000]]);
     // Sam sees the same account: both entries, not only the one addressed to him.
-    expect((await dues.myDues(person('sam')))[0]!.invoices).toHaveLength(2);
-    expect(await dues.myDues(person('kim'))).toEqual([]);
+    expect((await dues.myAccounts(person('sam')))[0]!.invoices).toHaveLength(2);
+    expect(await dues.myAccounts(person('kim'))).toEqual([]);
     // Sam sells: a new owner sees the unit's account at once; Sam keeps the invoices that named him, without the balance.
     owning = { pat: ['P-1'], kim: ['P-1'], jo: ['P-2'] };
-    expect((await dues.myDues(person('kim')))[0]).toMatchObject({ current: true, balance: 31000 });
+    expect((await dues.myAccounts(person('kim')))[0]).toMatchObject({ current: true, balance: 31000 });
     today = '2026-10-01';
     await dues.issueMonth(actor(), { month: '2026-10', account: 'P-1' });
-    const [sam] = await dues.myDues(person('sam'));
+    const [sam] = await dues.myAccounts(person('sam'));
     expect(sam).toMatchObject({ current: false, balance: null });
     expect(sam!.invoices.every(i => i.number <= 'I-0003')).toBe(true);
     expect((await dues.myInvoice(person('pat'), pat!.invoices[0]!.id)).number).toBe(pat!.invoices[0]!.number);
     await expect(dues.myInvoice(person('jo'), pat!.invoices[0]!.id)).rejects.toThrow('unknown invoice');
-    await expect(dues.myDues(person('pat', []))).rejects.toThrow('refused: ledger-self');
+    await expect(dues.myAccounts(person('pat', []))).rejects.toThrow('refused: ledger-self');
     // ledger-self opens nothing of the treasurer's; the board reads every unit's account under account-read.
     await expect(dues.listInvoices(person('pat'))).rejects.toThrow('refused: ledger-read');
     expect((await dues.balances(person('board', ['account-read']))).map(b => b.accountId)).toEqual(['P-1', 'P-2']);
@@ -307,5 +309,22 @@ describe('dues', () => {
     const { summary } = await dues.scheduledRun(actor(), '2026-09');
     expect(summary).toBe('2026-09: 1 issued, 1 emailed; not invoiced: 1: unit P-1: no billing address; an owner or the treasurer sets one');
     expect(notices).toEqual([{ title: 'Invoices issued for 2026-09', message: summary }]);
+  });
+
+  test("payments recorded under the add-on's old name still count, as they are; no new one may use it (ngdpbase#2042)", async () => {
+    await dues.issueMonth(actor(), { month: '2026-09', account: 'P-2' });
+    // A payment from before the rename: its line carries details of kind `dues`, stored as written.
+    const old = await ledger.postReceipt(actor(), { date: '2026-09-02', partyName: 'Jo Park', paymentMethod: '20', memo: 'assessment',
+      lines: [{ amount: 30000, fundId, category: '4100' }] }, { provider: 'manual' });
+    (ledgerDb.handle as { prepare(sql: string): { run(...p: unknown[]): unknown } }).prepare('INSERT INTO accounting_line_details (line_id, kind, data) VALUES (?, ?, ?)')
+      .run(old.lines[0]!.id, 'dues', JSON.stringify({ account: 'P-2', invoiceId: null }));
+    expect((await dues.balances(actor())).find(b => b.accountId === 'P-2')!.balance).toBe(0);
+    await expect(ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'x', paymentMethod: '20', memo: 'x',
+      lines: [{ amount: 100, fundId, category: '4100', details: { dues: { account: 'P-2' } } }] }, { provider: 'manual' })).rejects.toThrow('payments are recorded as details.receivable now');
+  });
+
+  test('the tables carry the new name; none keeps the old one (ngdpbase#2042)', () => {
+    const tables = (ownDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map(t => t.name);
+    expect(tables.filter(t => t.startsWith('accounting_'))).toEqual(['accounting_receivables_invoice_lines', 'accounting_receivables_invoices', 'accounting_receivables_schema_migrations', 'accounting_receivables_sequence']);
   });
 });

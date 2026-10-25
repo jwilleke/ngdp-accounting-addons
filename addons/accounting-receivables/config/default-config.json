@@ -1,38 +1,38 @@
 {
-  "_comment_accounting_dues": "Dues and assessments for the accounting add-on (D-035). Merged into the site's configuration only while ngdpbase.addons.accounting-dues.enabled is true. It needs the accounting add-on, whose managers it calls, and a manager that holds the accounts it bills.",
-  "ngdpbase.addons.accounting-dues.enabled": false,
-  "_comment_label": "What the site calls the charge on the module's screens and emails. A condominium says Assessment; money lines show the chart category's own name (docs/guides/chart-of-accounts-guide.md).",
-  "ngdpbase.addons.accounting-dues.label": {
-    "singular": "Dues",
-    "plural": "Dues"
+  "_comment_accounting_dues": "Dues and assessments for the accounting add-on (D-035). Merged into the site's configuration only while ngdpbase.addons.accounting-receivables.enabled is true. It needs the accounting add-on, whose managers it calls, and a manager that holds the accounts it bills.",
+  "ngdpbase.addons.accounting-receivables.enabled": false,
+  "_comment_label": "What the site calls the charge on the module's screens and emails. A condominium says Assessment, a landlord Rent, a club Dues; money lines show the chart category's own name (docs/guides/chart-of-accounts-guide.md).",
+  "ngdpbase.addons.accounting-receivables.label": {
+    "singular": "Charge",
+    "plural": "Charges"
   },
   "_comment_accounts_manager": "The manager that holds the accounts billed: list(), get(id), assessment(id) and lateCharges(). A condominium uses the accommodation add-on's AccommodationManager (ngdpbase-addons).",
-  "ngdpbase.addons.accounting-dues.accounts-manager": "AccommodationManager",
+  "ngdpbase.addons.accounting-receivables.accounts-manager": "AccommodationManager",
   "_comment_billing_manager": "The manager that holds each account's billing parties on a date: billing(ctx, id, { on }), one invoice per party (D-038, D-040). A condominium uses the accommodation add-on's ResidencyManager (ngdpbase-addons).",
-  "ngdpbase.addons.accounting-dues.billing-manager": "ResidencyManager",
+  "ngdpbase.addons.accounting-receivables.billing-manager": "ResidencyManager",
   "_comment_send_to_owners": "Whether invoices may be sent to owners (D-035). Off by default, so a development, test or copied site never mails real owners; a live site turns it on. It governs every send: the issue form's email box and the scheduled run.",
-  "ngdpbase.addons.accounting-dues.send-to-owners": false,
-  "_comment_issue_job": "The scheduled invoice run, accounting-dues.issue-invoices (D-035): the 1st of each month at 06:00 in the site's time zone, with late charges, emailed. Shipped paused: a site resumes it on Admin → Scheduled Jobs, and moves the day with BackgroundJobManager's own keys. While send-to-owners is off it sends nothing to owners.",
-  "ngdpbase.jobs.accounting-dues.issue-invoices.enabled": false,
+  "ngdpbase.addons.accounting-receivables.send-to-owners": false,
+  "_comment_issue_job": "The scheduled invoice run, accounting-receivables.issue-invoices (D-035): the 1st of each month at 06:00 in the site's time zone, with late charges, emailed. Shipped paused: a site resumes it on Admin → Scheduled Jobs, and moves the day with BackgroundJobManager's own keys. While send-to-owners is off it sends nothing to owners.",
+  "ngdpbase.jobs.accounting-receivables.issue-invoices.enabled": false,
   "_comment_categories": "Chart codes a payment may be recorded under; the first is the one invoices charge. A list, so a site's value replaces this one.",
-  "ngdpbase.addons.accounting-dues.categories": [
+  "ngdpbase.addons.accounting-receivables.categories": [
     "4100"
   ],
   "_comment_organization": "Who the invoices are from: the organization's name and postal address, and where to send payment.",
-  "ngdpbase.addons.accounting-dues.organization": {
+  "ngdpbase.addons.accounting-receivables.organization": {
     "name": "",
     "address": "",
     "pay-to": ""
   },
-  "_comment_database": "The dues add-on's own database (D-035): invoices, kept outside the ledger, which holds only money that moved. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
-  "ngdpbase.addons.accounting-dues.database": {
-    "owner": "accounting-dues",
-    "ledgerTable": "accounting_dues_schema_migrations",
+  "_comment_database": "The receivables add-on's own database (D-035): invoices, kept outside the ledger, which holds only money that moved. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
+  "ngdpbase.addons.accounting-receivables.database": {
+    "owner": "accounting-receivables",
+    "ledgerTable": "accounting_receivables_schema_migrations",
     "encrypt": "optional"
   },
   "ngdpbase.permissions.definitions": {
     "invoice-issue": {
-      "description": "Issue, void and email invoices for dues or assessments",
+      "description": "Issue, void and email invoices for the site's charges (assessments, rent or dues)",
       "icon": "file-invoice",
       "color": "#0d6efd",
       "audit": {
@@ -53,8 +53,8 @@
   },
   "ngdpbase.access.policies": [
     {
-      "id": "accounting-dues-treasurer",
-      "name": "Treasurer bills dues and assessments",
+      "id": "accounting-receivables-treasurer",
+      "name": "Treasurer bills the site's charges",
       "description": "The treasurer role issues and voids invoices, reading each unit's billing through the accommodation add-on's permission and the owners it emails through core's identity-read. Recording payments is the accounting add-on's ledger-record.",
       "priority": 90,
       "effect": "allow",
@@ -77,15 +77,15 @@
       ]
     },
     {
-      "id": "accounting-dues-issue-job",
+      "id": "accounting-receivables-issue-job",
       "name": "The scheduled invoice run issues invoices",
-      "description": "A scheduled run of accounting-dues.issue-invoices acts as the job (ngdpbase #1999): it holds only what issuing the month's invoices needs, reading each unit's billing through the accommodation add-on's permission and the owners it emails through core's identity-read. Run now acts as the admin who clicked.",
+      "description": "A scheduled run of accounting-receivables.issue-invoices acts as the job (ngdpbase #1999): it holds only what issuing the month's invoices needs, reading each unit's billing through the accommodation add-on's permission and the owners it emails through core's identity-read. Run now acts as the admin who clicked.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
         {
           "type": "job",
-          "value": "accounting-dues.issue-invoices"
+          "value": "accounting-receivables.issue-invoices"
         }
       ],
       "resources": [
