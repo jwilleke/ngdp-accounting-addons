@@ -41,7 +41,6 @@ last_updated: "2026-10-24"
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
 - [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
-- [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 
 ## 🔵 In review
 
@@ -51,6 +50,7 @@ last_updated: "2026-10-24"
 
 ## ⏸ Deferred
 
+- [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 - [#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49) — [FEATURE] Stripe online payments: cards, ACH and recurring donations
 - [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21) — [FEATURE] Board report: large or unusual items, and printable / PDF / wiki-page output
 - [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
