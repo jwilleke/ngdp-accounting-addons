@@ -15,7 +15,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
-import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, BackgroundJobManager, Decision } from '@jwilleke/ngdpbase-types';
 import { duesValidator } from './billing.js';
 import { registerDuesForms } from './forms.js';
 import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type DuesOptions, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
@@ -41,6 +41,38 @@ interface DatabaseManagerLike {
 }
 
 let unavailable: string | null = 'not registered yet';
+
+/** The scheduled invoice run's job id (D-035): its own policy and its paused switch name it. */
+export const ISSUE_JOB = 'accounting-dues.issue-invoices';
+
+/**
+ * The month's invoices on the 1st at 06:00, in the site's time zone (D-035,
+ * #11). Shipped paused (`ngdpbase.jobs.accounting-dues.issue-invoices.enabled`
+ * is false here); a site resumes it on Admin → Scheduled Jobs and moves the day
+ * with BackgroundJobManager's own keys. A scheduled run acts as the job, which
+ * this add-on's policy grants only invoice-issue and ledger-read; Run now acts
+ * as the admin who clicked.
+ */
+function registerScheduledRun(engine: Engine, host: AddonHost, dues: DuesManager): void {
+  const jobs = engine.getManager<Pick<BackgroundJobManager, 'registerJob' | 'scheduleTimeZone'>>('BackgroundJobManager');
+  if (!jobs) { host.logger.warn('[accounting-dues] BackgroundJobManager is not running: the scheduled invoice run is off'); return; }
+  jobs.registerJob({
+    id: ISSUE_JOB,
+    displayName: 'Accounting Dues — Issue the month\'s invoices',
+    schedule: 'start-of-month 06:00',
+    catchUp: 'latest',
+    overlap: 'skip',
+    async run(_progress, ctx) {
+      // The local month the slot falls in, as core says (#1998); a run started by hand is this month.
+      const { year, month } = host.zonedParts(ctx.slot ? new Date(ctx.slot) : new Date(), jobs.scheduleTimeZone());
+      const actor = {
+        ipAddress: undefined, subject: ctx, actingUsername: () => ctx.username,
+        enforceDeny: async (permission: string): Promise<never> => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
+      };
+      return dues.scheduledRun(actor, `${year}-${String(month).padStart(2, '0')}`);
+    }
+  });
+}
 /** What the profile card needs, set by register() (ngdpbase's profile hook, #534, calls the module, not a manager). */
 let profile: { dues: DuesManager; escapeHtml(s: string): string; money(minor: number): string; title: () => string } | null = null;
 
@@ -100,6 +132,14 @@ const AccountingDuesAddon = {
       },
       formatMoney,
       email: () => engine.getManager<NonNullable<ReturnType<NonNullable<DuesOptions['email']>>>>('EmailManager'),
+      notifyIssuers: async (title, message) => {
+        // The holders of invoice-issue (ngdpbase: notify a permission's holders, never a role name). No one
+        // holding it means log only: an empty targetUsers would notify everyone.
+        const holders = await engine.getManager<{ usersHolding(permission: string): Promise<string[] | null> }>('PolicyDecisionPoint')?.usersHolding('invoice-issue');
+        if (!holders?.length) { host.logger.info(`[accounting-dues] ${title}: ${message} (no one holds invoice-issue to tell)`); return; }
+        await engine.getManager<{ addNotification(n: Record<string, unknown>): Promise<unknown> }>('NotificationManager')
+          ?.addNotification({ type: 'system', level: 'info', title, message, targetUsers: holders });
+      },
       pdf: () => engine.getManager<NonNullable<ReturnType<NonNullable<DuesOptions['pdf']>>>>('ExportManager'),
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
       decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
@@ -113,6 +153,7 @@ const AccountingDuesAddon = {
       return unit ? accountLabel(unit) : id;
     });
     if (!accounts()) host.logger.warn(`[accounting-dues] ${sourceName} is not running: there are no accounts to bill until it is`);
+    registerScheduledRun(engine, host, dues);
     if (!billing()) host.logger.warn(`[accounting-dues] ${billingName} is not running: no invoice can be issued until it is`);
     const fmt = engine.getManager<{ formatters: { escapeHtml(s: string): string } }>('PluginManager')?.formatters;
     // Core's escaper (PluginManager formatters); without it the card stays off rather than escape by hand.

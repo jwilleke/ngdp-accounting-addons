@@ -12,6 +12,8 @@
   "ngdpbase.addons.accounting-dues.billing-manager": "ResidencyManager",
   "_comment_send_to_owners": "Whether invoices may be sent to owners (D-035). Off by default, so a development, test or copied site never mails real owners; a live site turns it on. It governs every send: the issue form's email box and the scheduled run.",
   "ngdpbase.addons.accounting-dues.send-to-owners": false,
+  "_comment_issue_job": "The scheduled invoice run, accounting-dues.issue-invoices (D-035): the 1st of each month at 06:00 in the site's time zone, with late charges, emailed. Shipped paused: a site resumes it on Admin → Scheduled Jobs, and moves the day with BackgroundJobManager's own keys. While send-to-owners is off it sends nothing to owners.",
+  "ngdpbase.jobs.accounting-dues.issue-invoices.enabled": false,
   "_comment_categories": "Chart codes a payment may be recorded under; the first is the one invoices charge. A list, so a site's value replaces this one.",
   "ngdpbase.addons.accounting-dues.categories": [
     "4100"
@@ -43,7 +45,7 @@
     {
       "id": "accounting-dues-treasurer",
       "name": "Treasurer bills dues and assessments",
-      "description": "The treasurer role issues and voids invoices. Recording payments is the accounting add-on's ledger-record.",
+      "description": "The treasurer role issues and voids invoices, reading each unit's billing parties through the accommodation add-on's own permission. Recording payments is the accounting add-on's ledger-record.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
@@ -59,7 +61,32 @@
         }
       ],
       "actions": [
-        "invoice-issue"
+        "invoice-issue",
+        "accommodation-billing-read"
+      ]
+    },
+    {
+      "id": "accounting-dues-issue-job",
+      "name": "The scheduled invoice run issues invoices",
+      "description": "A scheduled run of accounting-dues.issue-invoices acts as the job (ngdpbase #1999): it holds only what issuing the month's invoices needs, reading each unit's billing parties through the accommodation add-on's own permission. Run now acts as the admin who clicked.",
+      "priority": 90,
+      "effect": "allow",
+      "subjects": [
+        {
+          "type": "job",
+          "value": "accounting-dues.issue-invoices"
+        }
+      ],
+      "resources": [
+        {
+          "type": "page",
+          "pattern": "*"
+        }
+      ],
+      "actions": [
+        "invoice-issue",
+        "ledger-read",
+        "accommodation-billing-read"
       ]
     }
   ]

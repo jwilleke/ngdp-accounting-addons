@@ -6,7 +6,7 @@ the receipt slip's quid pro quo disclosure, in-kind donations and pledges, and y
 
 - __Slug:__ `accounting-donations`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the donation screen.
-- __Requires:__ ngdpbase 5.30.0 or later.
+- __Requires:__ ngdpbase 5.30.1 or later.
 - __Data:__ donations of money are receipts in the accounting add-on, reached only through its managers
   (`LedgerManager.registerLineDetails`, `registerSlipNotes`, `ReceiptManager.recordReceipt`), never its
   database (operator, 2026-10-20). In-kind donations and pledges are in this add-on's own database,

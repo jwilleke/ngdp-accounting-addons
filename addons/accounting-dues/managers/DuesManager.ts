@@ -157,6 +157,11 @@ export interface DuesOptions {
   email?: () => { sendTo(ctx: ActorContext, to: string, subject: string, text: string, html?: string, options?: { attachments?: MailAttachment[] }): Promise<void> } | null | undefined;
   /** ngdpbase's ExportManager, to send each invoice as a PDF (#51). */
   pdf?: () => { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined;
+  /**
+   * Tell the people who issue invoices (the holders of invoice-issue, never a
+   * role name) what a scheduled run issued while nothing went to owners.
+   */
+  notifyIssuers?: (title: string, message: string) => Promise<void>;
   /** Whether anything may be sent to owners (`send-to-owners`, off by default): a development or copied site never mails real owners. */
   sendToOwners?: () => boolean;
   now?: () => Date;
@@ -279,6 +284,23 @@ export default class DuesManager {
     }
     if (pending.length) await this.options.changed?.();
     return { issued: pending.length, emailed, notEmailed, held };
+  }
+
+  /**
+   * The scheduled run (D-035, #11): the month's invoices, with the late charges
+   * due, emailed. Turning the schedule on is the site's standing confirmation of
+   * both. Safe to run again for the same month: a party already invoiced for it
+   * is skipped. While send-to-owners is off nothing goes to owners, as for the
+   * Issue form. Needs invoice-issue, which the job's own policy grants it.
+   */
+  async scheduledRun(actor: DuesActor, month: string): Promise<{ success: boolean; summary: string }> {
+    const result = await this.issueMonth(actor, { month, lateCharges: true, email: true });
+    const sent = result.held ? 'nothing sent to owners: sending to owners is off on this site'
+      : `${result.emailed} emailed${result.notEmailed.length ? `; not emailed: ${result.notEmailed.join(', ')}` : ''}`;
+    const summary = `${month}: ${result.issued} issued, ${sent}`;
+    // While nothing goes to owners, the people who issue invoices are told instead (D-035).
+    if (result.held && result.issued) await this.options.notifyIssuers?.(`Invoices issued for ${month}`, summary);
+    return { success: true, summary };
   }
 
   /** Void an invoice, with a reason; the month can then be invoiced again. */
