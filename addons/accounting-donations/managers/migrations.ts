@@ -111,4 +111,27 @@ const STATEMENTS: DonationsMigration = {
   }
 };
 
-export const DONATIONS_MIGRATIONS: DonationsMigration[] = [INKIND_AND_PLEDGES, STATEMENTS];
+const STATEMENT_PDF: DonationsMigration = {
+  id: '20261025090000',
+  description: "the fingerprint of the PDF a statement was emailed as (#51)",
+  up: (db) => {
+    db.exec(`
+      -- The SHA-256 of the PDF attached when the statement was emailed; null when it went as the page alone.
+      ALTER TABLE accounting_donations_statements ADD COLUMN pdf_sha256 TEXT;
+      DROP TRIGGER accounting_donations_statements_fixed;
+      CREATE TRIGGER accounting_donations_statements_fixed BEFORE UPDATE ON accounting_donations_statements
+      WHEN NEW.id IS NOT OLD.id OR NEW.donor_type IS NOT OLD.donor_type OR NEW.donor_id IS NOT OLD.donor_id
+        OR NEW.donor_name IS NOT OLD.donor_name OR NEW.year IS NOT OLD.year OR NEW.html IS NOT OLD.html
+        OR NEW.sha256 IS NOT OLD.sha256 OR NEW.total IS NOT OLD.total OR NEW.deductible IS NOT OLD.deductible
+        OR NEW.gift_count IS NOT OLD.gift_count OR NEW.issued_by IS NOT OLD.issued_by OR NEW.issued_at IS NOT OLD.issued_at
+        OR (NEW.status IS NOT OLD.status AND NOT (OLD.status = 'issued' AND NEW.status = 'superseded'
+              AND NEW.superseded_by IS NOT NULL AND NEW.reissue_reason IS NOT NULL AND NEW.reissue_reason <> ''))
+        OR (NEW.superseded_by IS NOT OLD.superseded_by AND NEW.status = OLD.status)
+        OR (NEW.emailed_at IS NOT OLD.emailed_at AND OLD.emailed_at IS NOT NULL)
+        OR (NEW.pdf_sha256 IS NOT OLD.pdf_sha256 AND OLD.emailed_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'donations: an issued statement never changes; reissue it'); END;
+    `);
+  }
+};
+
+export const DONATIONS_MIGRATIONS: DonationsMigration[] = [INKIND_AND_PLEDGES, STATEMENTS, STATEMENT_PDF];

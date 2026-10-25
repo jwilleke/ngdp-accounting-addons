@@ -18,7 +18,7 @@
 import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { duesValidator } from './billing.js';
 import { registerDuesForms } from './forms.js';
-import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
+import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type DuesOptions, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
 import { DUES_LEDGER_TABLE, DUES_MIGRATIONS } from './managers/migrations.js';
 import DuesPlugin from './plugins/DuesPlugin.js';
 import duesRoutes from './routes/api.js';
@@ -46,7 +46,7 @@ let profile: { dues: DuesManager; escapeHtml(s: string): string; money(minor: nu
 
 const AccountingDuesAddon = {
   name: 'accounting-dues',
-  version: '0.1.0',
+  version: '0.2.0',
   description: 'Dues and assessments: monthly invoices, payments, credits and late charges',
   author: 'jwilleke',
   dependencies: ['accounting'],
@@ -99,7 +99,8 @@ const AccountingDuesAddon = {
         return { organization: { name: str(org.name), address: str(org.address), payTo: str(org['pay-to']) } };
       },
       formatMoney,
-      email: () => engine.getManager<{ sendTo(to: string, subject: string, text: string, html?: string): Promise<void> }>('EmailManager'),
+      email: () => engine.getManager<NonNullable<ReturnType<NonNullable<DuesOptions['email']>>>>('EmailManager'),
+      pdf: () => engine.getManager<NonNullable<ReturnType<NonNullable<DuesOptions['pdf']>>>>('ExportManager'),
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
       decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
     });

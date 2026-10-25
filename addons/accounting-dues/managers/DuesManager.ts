@@ -21,6 +21,25 @@ import { renderInvoice, type InvoiceWording, type PostalAddress } from './invoic
 
 export type DuesHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
 
+/** A mail attachment, as ngdpbase's EmailManager takes it. */
+export interface MailAttachment { filename: string; contentType: string; content: Buffer }
+
+/**
+ * A stored page as a PDF (ngdpbase ExportManager.htmlToPdf), or null when the
+ * site has no PDF provider (`PDF_UNAVAILABLE`): then the email carries the page
+ * alone. Any other failure is thrown.
+ */
+export async function pdfOf(exporter: { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined, ctx: ActorContext, html: string): Promise<Buffer | null> {
+  if (!exporter) return null;
+  try {
+    return await exporter.htmlToPdf(ctx, html);
+  } catch (err) {
+    if ((err as { code?: string }).code === 'PDF_UNAVAILABLE') return null;
+    throw err;
+  }
+}
+
+
 /** The caller: ngdpbase's ApiContext satisfies this, as it does LedgerManager's. */
 export interface DuesActor {
   enforceDeny(permission: string, decision: Decision): Promise<never>;
@@ -82,6 +101,8 @@ export interface Invoice {
   total: number; previous: number; owed: number; owners: { username: string; name: string }[];
   lines: InvoiceLine[]; html: string; sha256: string;
   status: 'issued' | 'voided'; voidReason: string | null; emailedTo: string | null; emailedAt: string | null;
+  /** The SHA-256 of the PDF it was emailed as; null when it went as the page alone, or was not emailed. */
+  pdfSha256: string | null;
   createdBy: string; createdAt: string;
   /** What payments have settled of it so far, and what is left. */
   paid: number; remaining: number;
@@ -132,8 +153,10 @@ export interface DuesOptions {
   changed?: () => Promise<void>;
   /** The account source's manager name, for pages to depend on its cache topic. */
   accountsManager?: string;
-  /** ngdpbase's EmailManager, to send invoices. */
-  email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
+  /** ngdpbase's EmailManager, to send invoices, as the caller. */
+  email?: () => { sendTo(ctx: ActorContext, to: string, subject: string, text: string, html?: string, options?: { attachments?: MailAttachment[] }): Promise<void> } | null | undefined;
+  /** ngdpbase's ExportManager, to send each invoice as a PDF (#51). */
+  pdf?: () => { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined;
   /** Whether anything may be sent to owners (`send-to-owners`, off by default): a development or copied site never mails real owners. */
   sendToOwners?: () => boolean;
   now?: () => Date;
@@ -144,7 +167,7 @@ interface InvoiceRow {
   id: string; number: string; account_id: string; account_label: string; month: string; date: string; due_date: string;
   total: number; previous: number; owed: number; owners: string; html: string; sha256: string; status: 'issued' | 'voided';
   void_reason: string | null; emailed_to: string | null; emailed_at: string | null; created_by: string; created_at: string;
-  party: string; party_name: string; address: string | null;
+  party: string; party_name: string; address: string | null; pdf_sha256: string | null;
 }
 interface LineRow { invoice_id: string; position: number; kind: 'charge' | 'late-charge'; description: string; amount: number; category: string; rule_id: string | null; applies_to: string | null; charge_key: string | null }
 
@@ -251,7 +274,7 @@ export default class DuesManager {
     for (const p of pending) {
       const id = this.insertInvoice(actor, month, p.row, p.late);
       if (input.email && !held && this.row(id).owed > 0) {
-        if (await this.sendInvoice(id, p.row.to)) emailed++; else notEmailed.push(`${p.row.label} · ${p.row.partyName}`);
+        if (await this.sendInvoice(actor, id, p.row.to)) emailed++; else notEmailed.push(`${p.row.label} · ${p.row.partyName}`);
       }
     }
     if (pending.length) await this.options.changed?.();
@@ -533,24 +556,38 @@ export default class DuesManager {
     return id;
   }
 
-  /** Email a stored invoice to each person on its party with an email; false when none could be sent. */
-  private async sendInvoice(id: string, owners: AccountOwner[]): Promise<boolean> {
+  /**
+   * Email a stored invoice to each person on its party with an email, as the
+   * caller, with the invoice attached as a PDF when the site makes PDFs (else
+   * the page alone); false when none could be sent.
+   */
+  private async sendInvoice(actor: DuesActor, id: string, owners: AccountOwner[]): Promise<boolean> {
     const row = this.row(id);
     const mailer = this.options.email?.();
+    const ctx = actor.subject;
     const to = owners.map(o => o.email).filter((e): e is string => typeof e === 'string' && e !== '');
-    if (!mailer || !to.length) return false;
+    if (!mailer || !ctx || !to.length) return false;
+    let pdf: Buffer | null;
+    try {
+      pdf = await pdfOf(this.options.pdf?.(), ctx, row.html);
+    } catch {
+      return false; // a PDF provider that fails is reported by ExportManager; nothing is sent half-made
+    }
     const org = this.wording().organization.name || 'the association';
+    const where = pdf ? 'It is attached, and below.' : 'It is below.';
+    const options = pdf ? { attachments: [{ filename: `Invoice ${row.number}.pdf`, contentType: 'application/pdf', content: pdf }] } : {};
     const sent: string[] = [];
     for (const address of to) {
       try {
-        await mailer.sendTo(address, `Invoice ${row.number} from ${org}`, `Invoice ${row.number} from ${org}: ${this.options.formatMoney(row.owed)} owed, due ${row.due_date}. It is below.`, row.html);
+        await mailer.sendTo(ctx, address, `Invoice ${row.number} from ${org}`, `Invoice ${row.number} from ${org}: ${this.options.formatMoney(row.owed)} owed, due ${row.due_date}. ${where}`, row.html, options);
         sent.push(address);
       } catch {
         // EmailManager reports the failure to administrators itself (#1916)
       }
     }
     if (!sent.length) return false;
-    this.options.db.prepare('UPDATE accounting_dues_invoices SET emailed_to = ?, emailed_at = ? WHERE id = ? AND emailed_at IS NULL').run(sent.join(', '), this.stamp(), id);
+    this.options.db.prepare('UPDATE accounting_dues_invoices SET emailed_to = ?, emailed_at = ?, pdf_sha256 = ? WHERE id = ? AND emailed_at IS NULL')
+      .run(sent.join(', '), this.stamp(), pdf ? createHash('sha256').update(pdf).digest('hex') : null, id);
     return true;
   }
 
@@ -572,7 +609,7 @@ export default class DuesManager {
       id: r.id, number: r.number, accountId: r.account_id, accountLabel: r.account_label, month: r.month, date: r.date, dueDate: r.due_date,
       party: r.party, partyName: r.party_name, address: r.address ? JSON.parse(r.address) as PostalAddress : null,
       total: r.total, previous: r.previous, owed: r.owed, owners: JSON.parse(r.owners) as Invoice['owners'], lines, html: r.html, sha256: r.sha256,
-      status: r.status, voidReason: r.void_reason, emailedTo: r.emailed_to, emailedAt: r.emailed_at, createdBy: r.created_by, createdAt: r.created_at,
+      status: r.status, voidReason: r.void_reason, emailedTo: r.emailed_to, emailedAt: r.emailed_at, pdfSha256: r.pdf_sha256, createdBy: r.created_by, createdAt: r.created_at,
       paid, remaining: r.status === 'issued' ? r.total - paid : 0
     };
   }

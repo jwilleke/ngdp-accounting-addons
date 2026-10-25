@@ -111,10 +111,10 @@ transfers), which is always on. Online providers will be added to
 
 If the database is off, the add-on starts nothing and says why on __Admin → Add-ons__.
 
-When an update changes one of the add-on's forms, the site's copy is not replaced on its own. The
-forms admin shows it as an update to __Sync__, like Admin → Required Pages, and administrators get a
-notice. A form whose old copy no longer works with the ledger (Record an Entry) raises that notice
-as critical. A form edited on the site is kept unless an administrator chooses to overwrite it.
+The add-ons' forms are shipped with them and are read-only on the site. When an update raises an
+add-on's version, its forms replace the site's copies at the next start; nothing needs syncing by
+hand. A site that runs an older add-on than the forms it holds keeps its copies, and administrators
+get a notice.
 
 ## Give the treasurer access
 

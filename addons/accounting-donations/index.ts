@@ -16,7 +16,7 @@
 import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import { DEFAULT_QUID_PRO_QUO, giftSlipNotes, giftValidator, type GiftSettings, type ReceiptLike } from './gift.js';
 import { registerGiftForms } from './forms.js';
-import DonationManager, { type Contacts, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
+import DonationManager, { type Contacts, type DonationOptions, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from './managers/migrations.js';
 import DonationsPlugin from './plugins/DonationsPlugin.js';
 import donationRoutes from './routes/api.js';
@@ -46,7 +46,7 @@ let profile: { donations: DonationManager; escapeHtml(s: string): string; money(
 
 const AccountingDonationsAddon = {
   name: 'accounting-donations',
-  version: '0.1.0',
+  version: '0.2.0',
   description: 'Donations: gifts on receipts, and the receipt slip\'s quid pro quo disclosure',
   author: 'jwilleke',
   dependencies: ['accounting'],
@@ -98,7 +98,8 @@ const AccountingDonationsAddon = {
           goodsNote: pick('goods-note', DEFAULT_WORDING.goodsNote), taxIdNote: pick('tax-id', DEFAULT_WORDING.taxIdNote)
         };
       },
-      email: () => engine.getManager<{ sendTo(to: string, subject: string, text: string, html?: string): Promise<void> }>('EmailManager'),
+      email: () => engine.getManager<NonNullable<ReturnType<NonNullable<DonationOptions['email']>>>>('EmailManager'),
+      pdf: () => engine.getManager<NonNullable<ReturnType<NonNullable<DonationOptions['pdf']>>>>('ExportManager'),
       personOf: async (actor) => {
         if (!actor.subject) return null;
         const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('PersonManager');

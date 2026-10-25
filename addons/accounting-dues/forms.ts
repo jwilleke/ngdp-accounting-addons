@@ -15,7 +15,7 @@ interface FormsAddonLike {
   registerHandler(formId: string, handler: (submission: { data: Data }, context: { engine: unknown; req: unknown }) => Promise<HandlerResult>): void;
 }
 /** ngdpbase's forms add-on (v5.22.0, #1880, #1918): a shipped form is registered on every start. */
-interface FormsDataManagerLike { registerShippedForm(addon: string, definition: unknown, options?: { required?: boolean }): Promise<unknown> }
+interface FormsDataManagerLike { registerShippedForm(addon: string, definition: unknown, ctx: unknown): Promise<unknown> }
 
 /** The slice of the accounting add-on's ReceiptManager this add-on calls. */
 export interface ReceiptManagerLike {
@@ -95,7 +95,8 @@ export async function registerDuesForms(engine: Engine, host: AddonHost, account
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
   if (!forms || !definitions) { host.logger.info('[accounting-dues] Forms add-on not enabled: the dues screens are off'); return; }
-  for (const definition of [PAYMENT_FORM, ISSUE_FORM, VOID_FORM]) await definitions.registerShippedForm('accounting-dues', definition);
+  // Registered on every start, as the system (ngdpbase #1973): replaced when this add-on's version is newer.
+  for (const definition of [PAYMENT_FORM, ISSUE_FORM, VOID_FORM]) await definitions.registerShippedForm('accounting-dues', definition, host.systemContext(`accounting-dues: shipped form ${definition.id}`));
 
   forms.registerHandler(PAYMENT_FORM.id, async (submission, { req }) => {
     const receipts = engine.getManager<ReceiptManagerLike>('ReceiptManager');

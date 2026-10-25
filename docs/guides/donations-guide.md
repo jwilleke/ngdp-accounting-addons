@@ -95,9 +95,10 @@ the donor, and the donor still gets a statement.
 - Statements are emailed in bulk or downloaded. Each issued statement is __kept exactly as sent and
   cannot be changed__; a correction is __reissued__, and the original is marked superseded. A gift
   voided after its statement was issued flags that statement for reissue.
-- Statements are __web pages__ for now: HTML styled for printing, built through ngdpbase's export
-  path, printable or saved as PDF from the browser, emailed as the message itself, and stored with a
-  fingerprint. Real PDF files wait for a PDF export in ngdpbase core, if wanted later.
+- Statements are stored as __web pages__, HTML styled for printing, with a fingerprint. Emailed, a
+  statement goes as a PDF attachment made by ngdpbase's export (its fingerprint stored too) when the
+  site has a PDF provider (`ngdpbase.export.pdf.provider`); without one it goes as the page alone,
+  which the donor can still print or save as PDF from the browser.
 - The __wording__ of the statement and of the disclosure is a site setting, starting from the IRS's
   own language. The organization checks it with its accountant.
 - Issuing, reissuing and bulk-sending statements need the `statement-issue` permission, and are
