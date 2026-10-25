@@ -32,6 +32,15 @@ the source of truth. Why: [D-036](../../docs/plans/decisions.md#d-036-donations-
 `categories` lists the chart codes a donation may use. The disclosure's wording is
 `ngdpbase.addons.accounting-donations.wording["quid-pro-quo"]`; check it with your accountant.
 
+## Upgrading to 0.3.0
+
+One term, donation ([D-042](../../docs/plans/decisions.md#d-042-one-term-donation)): the
+`gift-record` form is replaced by `donation-record`. After the upgrade, the forms admin
+(`/addons/forms`) lists `gift-record` as "No longer provided by accounting-donations". An
+administrator deletes it there. It never stored submissions (each one became a receipt in the
+ledger), so nothing is lost. Stored line details and statement counts are renamed by migration;
+issued statements are unchanged.
+
 ## Develop
 
 ```bash
