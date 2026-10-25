@@ -40,7 +40,6 @@ last_updated: "2026-10-24"
 
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
-- [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
 
 ## 🔵 In review
 
@@ -56,6 +55,7 @@ last_updated: "2026-10-24"
 - [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
 - [#9](https://github.com/jwilleke/ngdp-accounting-addons/issues/9) — Treasurer handover record tied to board memory
 - [#8](https://github.com/jwilleke/ngdp-accounting-addons/issues/8) — Expense reimbursement requests with treasurer approval
+- [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
 
 ## ❓ Needs triage
 
