@@ -67,6 +67,7 @@ describe('dues', () => {
   let audit: Record<string, unknown>[];
   let sent: { ctx: unknown; to: string; subject: string; attachments?: { filename: string; content: Buffer }[] }[];
   let pdfMode: 'none' | 'unavailable' | 'made';
+  let notices: { title: string; message: string }[];
   let fundId: string;
   let today: string;
   let bumps: number;
@@ -81,6 +82,7 @@ describe('dues', () => {
     bumps = 0;
     sending = true;
     pdfMode = 'none';
+    notices = [];
     billingAsked.length = 0;
     p1 = 'joint';
     today = '2026-09-01';
@@ -91,7 +93,7 @@ describe('dues', () => {
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
       email: () => ({ sendTo: async (ctx: unknown, to: string, subject: string, _text: string, _html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }) => {
-        sent.push({ ctx, to, subject, attachments: options?.attachments }); } }), sendToOwners: () => sending,
+        sent.push({ ctx, to, subject, attachments: options?.attachments }); } }), sendToOwners: () => sending, notifyIssuers: async (title: string, message: string) => { notices.push({ title, message }); },
       pdf: () => (pdfMode === 'none' ? null : { htmlToPdf: async () => {
         if (pdfMode === 'unavailable') throw Object.assign(new Error('no PDF provider'), { code: 'PDF_UNAVAILABLE' });
         return Buffer.from('%PDF-invoice');
@@ -262,5 +264,22 @@ describe('dues', () => {
     await dues.issueMonth(actor(), { month: '2026-09', account: 'P-1', email: true });
     expect(sent.at(-1)!.attachments?.map(a => [a.filename, a.content.toString()])).toEqual([['Invoice I-0002.pdf', '%PDF-invoice']]);
     expect((await dues.listInvoices(actor(), { accountId: 'P-1' }))[0]!.pdfSha256).toBe(createHash('sha256').update('%PDF-invoice').digest('hex'));
+  });
+
+  test('the scheduled run issues the month with late charges and email; run again it changes nothing; while held, the issuers are told (D-035, #11)', async () => {
+    sending = false;
+    expect(await dues.scheduledRun(actor(), '2026-09')).toEqual({ success: true, summary: '2026-09: 2 issued, nothing sent to owners: sending to owners is off on this site' });
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([{ title: 'Invoices issued for 2026-09', message: '2026-09: 2 issued, nothing sent to owners: sending to owners is off on this site' }]);
+    // A retry or a rerun of the same slot: nothing issued twice, nobody told again.
+    expect((await dues.scheduledRun(actor(), '2026-09')).summary).toBe('2026-09: 0 issued, nothing sent to owners: sending to owners is off on this site');
+    expect(notices).toHaveLength(1);
+    // Late charges are included: October's run adds September's unpaid late charge.
+    sending = true;
+    today = '2026-10-15';
+    expect((await dues.scheduledRun(actor(), '2026-10')).summary).toBe('2026-10: 2 issued, 2 emailed');
+    expect((await dues.listInvoices(actor(), { accountId: 'P-1', month: '2026-10' }))[0]!.lines.map(l => l.kind)).toEqual(['charge', 'late-charge']);
+    expect(notices).toHaveLength(1);
+    await expect(dues.scheduledRun(actor(['ledger-read']), '2026-11')).rejects.toThrow('refused: invoice-issue');
   });
 });

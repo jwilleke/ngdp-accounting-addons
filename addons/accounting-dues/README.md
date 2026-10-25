@@ -7,7 +7,7 @@ The Fairways (a condominium) is the reference site.
 
 - __Slug:__ `accounting-dues`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the screens.
-- __Requires:__ ngdpbase 5.30.0 or later.
+- __Requires:__ ngdpbase 5.30.1 or later.
 - __Accounts:__ read from managers named in configuration, and never copied. A condominium uses the
   accommodation add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)):
   `AccommodationManager` (`accounts-manager`) for `list()`, `get(id)`, `assessment(id)` (amount,
@@ -82,7 +82,17 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
   PDF provider (`ngdpbase.export.pdf.provider`), and the PDF's SHA-256 is kept with the invoice.
   Without one, the email carries the page alone.
 
-Not yet: sending by each user's communication preference (ngdpbase #1969), and a scheduled send.
+- __Scheduled run:__ the job `accounting-dues.issue-invoices` issues each month's invoices on the
+  1st at 06:00 in the site's time zone, with the late charges due, and emails them
+  ([D-035](../../docs/plans/decisions.md#d-035-dues-and-assessments-flexible-accounts-and-charges)).
+  It ships __paused__: turning it on (Admin → Scheduled Jobs → Resume) is the site's standing
+  confirmation of the late charges and the email. Move the day with BackgroundJobManager's own keys.
+  Run again for the same month, it issues nothing twice. A scheduled run acts as the job, which this
+  add-on's policy grants only `invoice-issue`, `ledger-read` and the accommodation add-on's
+  `accommodation-billing-read`; Run now acts as the admin who clicked. While `send-to-owners` is off,
+  nothing goes to owners and the holders of `invoice-issue` get a notice of what was issued.
+
+Not yet: sending by each user's communication preference (ngdpbase #1969).
 
 ## Develop
 
