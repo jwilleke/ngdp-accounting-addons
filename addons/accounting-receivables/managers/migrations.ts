@@ -1,15 +1,16 @@
 /**
- * The dues database's migration ledger: a database of the accounting-dues
+ * The receivables database's migration ledger: a database of the accounting-receivables
  * add-on's own (D-035), never the accounting add-on's. Each entry is a frozen
  * snapshot; a change is a new, later entry. Every table starts with
- * `accounting_dues_`.
+ * `accounting_receivables_` (`accounting_dues_` in the entries written before
+ * the rename, which keep their names).
  */
 export interface MigrationDb { exec(sql: string): unknown }
-export interface DuesMigration { id: string; description: string; up: (db: MigrationDb) => void }
+export interface ReceivablesMigration { id: string; description: string; up: (db: MigrationDb) => void }
 
-export const DUES_LEDGER_TABLE = 'accounting_dues_schema_migrations';
+export const RECEIVABLES_LEDGER_TABLE = 'accounting_receivables_schema_migrations';
 
-const INVOICES: DuesMigration = {
+const INVOICES: ReceivablesMigration = {
   id: '20261021180000',
   description: 'invoices and their lines, outside the ledger (D-035)',
   up: (db) => {
@@ -85,7 +86,7 @@ const INVOICES: DuesMigration = {
   }
 };
 
-const BILLING_PARTIES: DuesMigration = {
+const BILLING_PARTIES: ReceivablesMigration = {
   id: '20261023120000',
   description: 'one invoice per billing party, each party with its own balance (D-038, D-040)',
   up: (db) => {
@@ -118,7 +119,7 @@ const BILLING_PARTIES: DuesMigration = {
   }
 };
 
-const INVOICE_PDF: DuesMigration = {
+const INVOICE_PDF: ReceivablesMigration = {
   id: '20261025090000',
   description: "the fingerprint of the PDF an invoice was emailed as (#51)",
   up: (db) => {
@@ -142,7 +143,7 @@ const INVOICE_PDF: DuesMigration = {
   }
 };
 
-const IDENTITY_BILLING: DuesMigration = {
+const IDENTITY_BILLING: ReceivablesMigration = {
   id: '20261025150000',
   description: 'invoices go to billing addresses; the owners who owe are named by identity @id (D-047, ngdpbase#2042)',
   up: (db) => {
@@ -169,4 +170,19 @@ const IDENTITY_BILLING: DuesMigration = {
   }
 };
 
-export const DUES_MIGRATIONS: DuesMigration[] = [INVOICES, BILLING_PARTIES, INVOICE_PDF, IDENTITY_BILLING];
+const RENAMED: ReceivablesMigration = {
+  id: '20261025180000',
+  description: 'the add-on is accounting-receivables, not accounting-dues: its tables are renamed (ngdpbase#2042)',
+  up: (db) => {
+    db.exec(`
+      -- A rename only: every row, index and guard trigger stays as it is (SQLite renames the tables in
+      -- the triggers too; their own names are left as written). The entries above keep the names they
+      -- were written with.
+      ALTER TABLE accounting_dues_sequence RENAME TO accounting_receivables_sequence;
+      ALTER TABLE accounting_dues_invoices RENAME TO accounting_receivables_invoices;
+      ALTER TABLE accounting_dues_invoice_lines RENAME TO accounting_receivables_invoice_lines;
+    `);
+  }
+};
+
+export const RECEIVABLES_MIGRATIONS: ReceivablesMigration[] = [INVOICES, BILLING_PARTIES, INVOICE_PDF, IDENTITY_BILLING, RENAMED];

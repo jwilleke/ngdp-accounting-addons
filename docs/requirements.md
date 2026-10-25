@@ -74,7 +74,7 @@ One repository with a required base add-on and optional module add-ons. Each mod
 | Add-on | Phase | Contents | Depends on |
 | --- | --- | --- | --- |
 | `accounting` | 1 (MVP) | Funds, ledger, audit trail, monthly summary and CSV export, `ReceiptManager` and receipt providers ([D-017](plans/decisions.md#d-017-paymentmanager-lives-in-the-accounting-add-on)), the accounting database, base permissions | none |
-| `accounting-dues` | 1 | Tiers, memberships, invoices, reminders | `accounting` |
+| `accounting-receivables` | 1 | Invoices for assessments, rent or dues; payments, balances, late charges (memberships later) | `accounting` |
 | `accounting-donations` | 1 | Donations and giving statements | `accounting` |
 | `accounting-events` | 1 | Paid registrations | `accounting` |
 | `accounting-loyalty` | to be decided | Loyalty members and gift cards ([#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18)) | `accounting` |

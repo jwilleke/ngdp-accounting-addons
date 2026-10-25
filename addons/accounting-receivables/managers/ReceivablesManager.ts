@@ -1,7 +1,7 @@
 /**
- * DuesManager — the dues add-on's one door (D-035): invoices in this add-on's
+ * ReceivablesManager — the receivables add-on's one door (D-035): invoices in this add-on's
  * own database, outside the ledger, which holds only money that moved. A
- * payment is an ordinary receipt (R-number) whose line has `dues` details
+ * payment is an ordinary receipt (R-number) whose line has `receivable` details
  * naming the account; this manager reads those through LedgerManager and never
  * touches the accounting database.
  *
@@ -19,7 +19,7 @@ import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types
 import { billingMonth, chargeFor, lateChargesDue, settle, splitByShare, type Assessment, type Billed, type LateChargeRule, type Payment, type ProposedLateCharge } from '../billing.js';
 import { renderInvoice, type InvoiceWording, type PostalAddress } from './invoice.js';
 
-export type DuesHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
+export type ReceivablesHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
 
 /** A mail attachment, as ngdpbase's EmailManager takes it. */
 export interface MailAttachment { filename: string; contentType: string; content: Buffer }
@@ -41,14 +41,14 @@ export async function pdfOf(exporter: { htmlToPdf(ctx: ActorContext, html: strin
 
 
 /** The caller: ngdpbase's ApiContext satisfies this, as it does LedgerManager's. */
-export interface DuesActor {
+export interface ReceivablesActor {
   enforceDeny(permission: string, decision: Decision): Promise<never>;
   actingUsername(): string;
   readonly ipAddress: string | undefined;
   readonly subject: ActorContext | null;
 }
 
-export interface DuesDb {
+export interface ReceivablesDb {
   prepare(sql: string): { run(...p: unknown[]): unknown; get(...p: unknown[]): unknown; all(...p: unknown[]): unknown[] };
   transaction<T>(fn: () => T): () => T;
 }
@@ -96,7 +96,7 @@ export interface LedgerLike {
 }
 
 /** A refusal the caller can fix. Named LedgerError so the forms show it on the field, as the ledger's are. */
-export class DuesError extends Error {
+export class ReceivablesError extends Error {
   constructor(public readonly status: 400 | 404 | 409, message: string) {
     super(message);
     this.name = 'LedgerError';
@@ -145,14 +145,14 @@ export interface MonthRow {
 
 export interface AccountBalance { accountId: string; label: string; invoiced: number; paid: number; balance: number }
 
-export interface DuesOptions {
-  host: DuesHost;
-  db: DuesDb;
+export interface ReceivablesOptions {
+  host: ReceivablesHost;
+  db: ReceivablesDb;
   ledger: LedgerLike;
   /**
-   * The payments: every posted `dues` receipt line, net of refunds, bounced
+   * The payments: every posted `receivable` receipt line (and `dues`, from before the rename), net of refunds, bounced
    * checks left out. The ledger hands this reader to the add-on that registered
-   * the `dues` kind, and to no one else (LedgerManager.registerLineDetails).
+   * the kind, and to no one else (LedgerManager.registerLineDetails).
    */
   payments: () => { amount: number; details: Record<string, unknown> }[];
   /** The account source; looked up when used, so it may arrive after this manager. */
@@ -165,11 +165,11 @@ export interface DuesOptions {
   decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Chart codes a payment may use; the first is the one invoices charge (configuration). */
   categories: () => string[];
-  /** The module's word for the charge (configuration): Dues, Assessment. */
+  /** The site's word for the charge (configuration): Assessment, Rent, Dues. */
   label: () => { singular: string; plural: string };
   wording?: () => InvoiceWording;
   formatMoney: (minor: number) => string;
-  /** Told after every committed write; index.ts bumps the `DuesManager` cache topic (ngdpbase caching guide: the owner bumps). */
+  /** Told after every committed write; index.ts bumps the `ReceivablesManager` cache topic (ngdpbase caching guide: the owner bumps). */
   changed?: () => Promise<void>;
   /** The account source's manager name, for pages to depend on its cache topic. */
   accountsManager?: string;
@@ -200,11 +200,11 @@ interface LineRow { invoice_id: string; position: number; kind: 'charge' | 'late
 /** What a unit's money looks like (D-047): its issued invoices, what payments settled, and the balance. */
 interface AccountState { invoices: Billed[]; paid: Map<string, number>; credit: number; invoiced: number; payments: number }
 
-export default class DuesManager {
+export default class ReceivablesManager {
   private readonly now: () => Date;
   private readonly newId: () => string;
 
-  constructor(private readonly options: DuesOptions) {
+  constructor(private readonly options: ReceivablesOptions) {
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? randomUUID;
   }
@@ -220,7 +220,7 @@ export default class DuesManager {
    * (no billing address, no owner, …) is shown with the reason, and not billed.
    * Needs ledger-read.
    */
-  async prepareMonth(actor: DuesActor, month: string): Promise<MonthRow[]> {
+  async prepareMonth(actor: ReceivablesActor, month: string): Promise<MonthRow[]> {
     await this.authorize(actor, 'ledger-read');
     const m = this.month(month);
     const source = this.source();
@@ -247,7 +247,7 @@ export default class DuesManager {
         // Read as the caller (treasurer or job), so the read is attributed and decided (accommodation-billing-read).
         billing = await this.billingSource().billing(actor.subject as ActorContext, unit.id, { on: charge?.dueDate ?? `${m}-01` });
       } catch (err) {
-        if (err instanceof DuesError) throw err;
+        if (err instanceof ReceivablesError) throw err;
         rows.push({ accountId: unit.id, label, party: '', partyName: '', address: null, owners: [], problem: (err as Error).message,
           charge, lateCharges: [], previous: 0, total: 0, owed: 0, invoiced: null });
         continue;
@@ -277,20 +277,20 @@ export default class DuesManager {
    * cannot be billed is skipped and named in `skipped`, never billed to a
    * guessed address (D-047).
    */
-  async issueMonth(actor: DuesActor, input: { month: string; account?: string; lateCharges?: boolean; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean; skipped: string[] }> {
+  async issueMonth(actor: ReceivablesActor, input: { month: string; account?: string; lateCharges?: boolean; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean; skipped: string[] }> {
     await this.authorize(actor, 'invoice-issue');
     const month = this.month(input.month);
     const prepared = (await this.prepareMonth(actor, month)).filter(r => !input.account || r.accountId === input.account);
     const skipped = prepared.filter(r => r.problem).map(r => `${r.label}: ${r.problem}`);
     const rows = prepared.filter(r => !r.invoiced && !r.problem);
-    if (input.account && !rows.length) throw new DuesError(409, `account: nothing to invoice for ${month}, or it is already invoiced${skipped.length ? ` (${skipped.join('; ')})` : ''}`);
+    if (input.account && !rows.length) throw new ReceivablesError(409, `account: nothing to invoice for ${month}, or it is already invoiced${skipped.length ? ` (${skipped.join('; ')})` : ''}`);
     const pending: { row: MonthRow; late: ProposedLateCharge[] }[] = [];
     for (const row of rows) {
       const late = input.lateCharges ? row.lateCharges : [];
       if (!row.charge && !late.length) continue;
       pending.push({ row, late });
     }
-    await this.audit(actor, { action: 'invoice-issue', severity: 'high', resource: `invoices:${month}`, resourceType: 'dues-invoice',
+    await this.audit(actor, { action: 'invoice-issue', severity: 'high', resource: `invoices:${month}`, resourceType: 'receivables-invoice',
       metadata: { month, count: pending.length, accounts: pending.map(p => p.row.accountId), entries: pending.map(p => p.row.party), skipped,
         lateCharges: input.lateCharges === true, email: input.email === true } });
     let emailed = 0;
@@ -321,7 +321,7 @@ export default class DuesManager {
    * is skipped. While send-to-owners is off nothing goes to owners, as for the
    * Issue form. Needs invoice-issue, which the job's own policy grants it.
    */
-  async scheduledRun(actor: DuesActor, month: string): Promise<{ success: boolean; summary: string }> {
+  async scheduledRun(actor: ReceivablesActor, month: string): Promise<{ success: boolean; summary: string }> {
     const result = await this.issueMonth(actor, { month, lateCharges: true, email: true });
     const sent = result.held ? 'nothing sent to owners: sending to owners is off on this site'
       : `${result.emailed} emailed${result.notEmailed.length ? `; not emailed: ${result.notEmailed.join(', ')}` : ''}`;
@@ -333,15 +333,15 @@ export default class DuesManager {
   }
 
   /** Void an invoice, with a reason; the month can then be invoiced again. */
-  async voidInvoice(actor: DuesActor, invoiceId: string, reason: string): Promise<Invoice> {
+  async voidInvoice(actor: ReceivablesActor, invoiceId: string, reason: string): Promise<Invoice> {
     await this.authorize(actor, 'invoice-issue');
     const why = text(reason, 'reason');
     const row = this.row(text(invoiceId, 'invoiceId'));
-    if (row.status === 'voided') throw new DuesError(409, 'invoiceId: this invoice is already voided');
-    await this.audit(actor, { action: 'invoice-void', severity: 'high', resource: row.id, resourceType: 'dues-invoice', reason: why,
+    if (row.status === 'voided') throw new ReceivablesError(409, 'invoiceId: this invoice is already voided');
+    await this.audit(actor, { action: 'invoice-void', severity: 'high', resource: row.id, resourceType: 'receivables-invoice', reason: why,
       metadata: { number: row.number, account: row.account_id, month: row.month, total: row.total } });
     this.options.db.transaction(() => {
-      this.options.db.prepare("UPDATE accounting_dues_invoices SET status = 'voided', void_reason = ? WHERE id = ? AND status = 'issued'").run(why, row.id);
+      this.options.db.prepare("UPDATE accounting_receivables_invoices SET status = 'voided', void_reason = ? WHERE id = ? AND status = 'issued'").run(why, row.id);
     })();
     await this.options.changed?.();
     return this.getInvoice(actor, row.id);
@@ -350,28 +350,28 @@ export default class DuesManager {
   // ── Reading ────────────────────────────────────────────────────────────
 
   /** An invoice, exactly as issued, with what has been paid of it. Needs ledger-read, or account-read (the board, D-047). */
-  async getInvoice(actor: DuesActor, invoiceId: string): Promise<Invoice> {
+  async getInvoice(actor: ReceivablesActor, invoiceId: string): Promise<Invoice> {
     await this.authorizeAny(actor, ['account-read', 'ledger-read']);
     const row = this.row(invoiceId);
     return this.toInvoice(row, this.states().get(row.account_id) ?? emptyState());
   }
 
   /** Invoices, newest first; one account's, or one month's; voided ones only when asked. Needs ledger-read, or account-read. */
-  async listInvoices(actor: DuesActor, filter: { accountId?: string; month?: string; includeVoided?: boolean } = {}): Promise<Invoice[]> {
+  async listInvoices(actor: ReceivablesActor, filter: { accountId?: string; month?: string; includeVoided?: boolean } = {}): Promise<Invoice[]> {
     await this.authorizeAny(actor, ['account-read', 'ledger-read']);
     const where: string[] = [];
     const params: unknown[] = [];
     if (!filter.includeVoided) where.push("status = 'issued'");
     if (filter.accountId) { where.push('account_id = ?'); params.push(filter.accountId); }
     if (filter.month) { where.push('month = ?'); params.push(this.month(filter.month)); }
-    const rows = this.options.db.prepare(`SELECT * FROM accounting_dues_invoices ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    const rows = this.options.db.prepare(`SELECT * FROM accounting_receivables_invoices ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY month DESC, number DESC`).all(...params) as InvoiceRow[];
     const states = this.states();
     return rows.map(r => this.toInvoice(r, states.get(r.account_id) ?? emptyState()));
   }
 
   /** Each unit: what was invoiced, what was paid, and the balance (negative is a credit). Needs ledger-read, or account-read. */
-  async balances(actor: DuesActor): Promise<AccountBalance[]> {
+  async balances(actor: ReceivablesActor): Promise<AccountBalance[]> {
     await this.authorizeAny(actor, ['account-read', 'ledger-read']);
     const states = this.states();
     return this.source().list().map(unit => {
@@ -391,7 +391,7 @@ export default class DuesManager {
    * username on invoices from before), and no balance. Needs ledger-self, which
    * every signed-in person holds.
    */
-  async myDues(actor: DuesActor): Promise<{ accountId: string; label: string; current: boolean; balance: number | null;
+  async myAccounts(actor: ReceivablesActor): Promise<{ accountId: string; label: string; current: boolean; balance: number | null;
     invoices: { id: string; number: string; month: string; dueDate: string; billedTo: string; total: number; paid: number; remaining: number }[] }[]> {
     await this.authorize(actor, 'ledger-self');
     const { current, rows } = await this.ownRows(actor);
@@ -413,11 +413,11 @@ export default class DuesManager {
     }).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
 
-  /** One of the signed-in person's own invoices (as myDues decides), exactly as issued; any other is not found. Needs ledger-self. */
-  async myInvoice(actor: DuesActor, invoiceId: string): Promise<Invoice> {
+  /** One of the signed-in person's own invoices (as myAccounts decides), exactly as issued; any other is not found. Needs ledger-self. */
+  async myInvoice(actor: ReceivablesActor, invoiceId: string): Promise<Invoice> {
     await this.authorize(actor, 'ledger-self');
     const row = (await this.ownRows(actor)).rows.find(r => r.id === invoiceId);
-    if (!row) throw new DuesError(404, 'invoiceId: unknown invoice');
+    if (!row) throw new ReceivablesError(404, 'invoiceId: unknown invoice');
     return this.toInvoice(row, this.states().get(row.account_id) ?? emptyState());
   }
 
@@ -426,20 +426,20 @@ export default class DuesManager {
    * invoice of a unit they own now (accommodation, as the viewer), and any other naming them, by
    * identity @id, or by username on invoices issued before identities (D-045, D-047).
    */
-  private async ownRows(actor: DuesActor): Promise<{ current: Set<string>; rows: InvoiceRow[] }> {
+  private async ownRows(actor: ReceivablesActor): Promise<{ current: Set<string>; rows: InvoiceRow[] }> {
     const ctx = actor.subject as ActorContext;
     const username = actor.actingUsername();
     const units = await this.billingSource().ownUnits?.(ctx).catch(() => []) ?? [];
     const current = new Set(units.filter(u => u.as.includes('owner')).map(u => u.id));
     const me = (await this.identitySource()?.getByUserIdentifier(ctx, username).catch(() => null))?.['@id'];
-    const rows = (this.options.db.prepare("SELECT * FROM accounting_dues_invoices WHERE status = 'issued' ORDER BY month DESC, number DESC").all() as InvoiceRow[])
+    const rows = (this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE status = 'issued' ORDER BY month DESC, number DESC").all() as InvoiceRow[])
       .filter(r => current.has(r.account_id) || (me && ownersOf(r).some(o => o['@id'] === me)) || (!r.owner_ids && r.party.split(',').includes(username)));
     return { current, rows };
   }
 
-  /** An invoice's account and status, for the `dues` line kind's validator. */
+  /** An invoice's account and status, for the `receivable` line kind's validator. */
   invoiceOf(invoiceId: string): { accountId: string; status: string } | null {
-    const row = this.options.db.prepare('SELECT account_id, status FROM accounting_dues_invoices WHERE id = ?').get(invoiceId) as
+    const row = this.options.db.prepare('SELECT account_id, status FROM accounting_receivables_invoices WHERE id = ?').get(invoiceId) as
       { account_id: string; status: string } | undefined;
     return row ? { accountId: row.account_id, status: row.status } : null;
   }
@@ -458,7 +458,7 @@ export default class DuesManager {
 
   /**
    *   accounts         every account, by label           (none: no account source)
-   *   dues-categories  the chart's dues categories       ledger-record (through LedgerManager)
+   *   receivable-categories  the chart's categories for payments ledger-record (through LedgerManager)
    *   months           last month, this month, next month
    *   open-invoices    issued invoices with money owed   ledger-read
    *   invoices         issued invoices, for voiding      ledger-read
@@ -468,7 +468,7 @@ export default class DuesManager {
       const source = this.options.accounts();
       return (source?.list() ?? []).map(u => ({ value: u.id, label: accountLabel(u) })).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
     }
-    if (options.list === 'dues-categories') {
+    if (options.list === 'receivable-categories') {
       const allowed = new Set(this.options.categories());
       return (await this.options.ledger.toFormOptions({ list: 'categories', kind: 'in' }, viewer)).filter(c => allowed.has(c.value));
     }
@@ -495,7 +495,7 @@ export default class DuesManager {
 
   private source(): AccountSource {
     const source = this.options.accounts();
-    if (!source) throw new DuesError(409, 'the accounts to bill are not available on this site (ngdpbase.addons.accounting-dues.accounts-manager)');
+    if (!source) throw new ReceivablesError(409, 'the accounts to bill are not available on this site (ngdpbase.addons.accounting-receivables.accounts-manager)');
     return source;
   }
 
@@ -505,23 +505,23 @@ export default class DuesManager {
 
   private billingSource(): BillingSource {
     const source = this.options.billing();
-    if (!source) throw new DuesError(409, 'the billing parties are not available on this site (ngdpbase.addons.accounting-dues.billing-manager)');
+    if (!source) throw new ReceivablesError(409, 'the billing parties are not available on this site (ngdpbase.addons.accounting-receivables.billing-manager)');
     return source;
   }
 
   private month(value: unknown): string {
-    try { return billingMonth(value); } catch (err) { throw new DuesError(400, (err as Error).message); }
+    try { return billingMonth(value); } catch (err) { throw new ReceivablesError(400, (err as Error).message); }
   }
 
   /**
    * Every unit's issued invoices and payments, read once, by unit (D-047):
-   * payments are posted dues lines, less refunds, bounced checks left out, and
+   * payments are posted receivable lines, less refunds, bounced checks left out, and
    * settle the unit's invoices oldest first, or the one they name first.
    * Invoices issued to billing parties before (D-038) count in their unit too.
    */
   private states(): Map<string, AccountState> {
     const invoices = new Map<string, Billed[]>();
-    for (const r of this.options.db.prepare("SELECT id, number, account_id, due_date, total FROM accounting_dues_invoices WHERE status = 'issued'").all() as
+    for (const r of this.options.db.prepare("SELECT id, number, account_id, due_date, total FROM accounting_receivables_invoices WHERE status = 'issued'").all() as
       { id: string; number: string; account_id: string; due_date: string; total: number }[]) {
       invoices.set(r.account_id, [...(invoices.get(r.account_id) ?? []), { id: r.id, number: r.number, dueDate: r.due_date, total: r.total }]);
     }
@@ -543,20 +543,20 @@ export default class DuesManager {
 
   /** Late charges already on issued invoices, by key, so none is made twice. */
   private madeKeys(): Set<string> {
-    return new Set((this.options.db.prepare(`SELECT l.charge_key FROM accounting_dues_invoice_lines l JOIN accounting_dues_invoices i ON i.id = l.invoice_id
+    return new Set((this.options.db.prepare(`SELECT l.charge_key FROM accounting_receivables_invoice_lines l JOIN accounting_receivables_invoices i ON i.id = l.invoice_id
       WHERE i.status = 'issued' AND l.charge_key IS NOT NULL`).all() as { charge_key: string }[]).map(r => r.charge_key));
   }
 
   /** A unit's issued invoices for a month. */
   private monthRows(accountId: string, month: string): InvoiceRow[] {
-    return this.options.db.prepare("SELECT * FROM accounting_dues_invoices WHERE account_id = ? AND month = ? AND status = 'issued' ORDER BY number")
+    return this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE account_id = ? AND month = ? AND status = 'issued' ORDER BY number")
       .all(accountId, month) as InvoiceRow[];
   }
 
-  private insertInvoice(actor: DuesActor, month: string, row: MonthRow, late: ProposedLateCharge[]): string {
+  private insertInvoice(actor: ReceivablesActor, month: string, row: MonthRow, late: ProposedLateCharge[]): string {
     const label = this.options.label();
     const category = this.options.categories()[0];
-    if (!category) throw new DuesError(409, 'no dues category is set (ngdpbase.addons.accounting-dues.categories)');
+    if (!category) throw new ReceivablesError(409, 'no category is set for invoices (ngdpbase.addons.accounting-receivables.categories)');
     const lines: (InvoiceLine & { key: string | null })[] = [
       ...(row.charge ? [{ description: `${label.singular} for ${month}`, amount: row.charge.amount, kind: 'charge' as const, category, ruleId: null, appliesTo: null, key: null }] : []),
       ...late.map(l => ({ description: `Late charge on ${l.appliesToNumber}, ${l.daysLate} days past due`, amount: l.amount, kind: 'late-charge' as const,
@@ -569,20 +569,20 @@ export default class DuesManager {
     const dueDate = row.charge?.dueDate ?? `${month}-01`;
 
     this.options.db.transaction(() => {
-      const seq = this.options.db.prepare("SELECT next FROM accounting_dues_sequence WHERE name = 'invoice'").get() as { next: number };
-      this.options.db.prepare("UPDATE accounting_dues_sequence SET next = next + 1 WHERE name = 'invoice'").run();
+      const seq = this.options.db.prepare("SELECT next FROM accounting_receivables_sequence WHERE name = 'invoice'").get() as { next: number };
+      this.options.db.prepare("UPDATE accounting_receivables_sequence SET next = next + 1 WHERE name = 'invoice'").run();
       const number = `I-${String(seq.next).padStart(4, '0')}`;
       const html = renderInvoice({ number, accountLabel: row.label, month, date, dueDate, lines, previous: row.previous, total, owed,
         billTo: row.address ?? '', label: label.singular },
         this.wording(), this.options.formatMoney);
       // Where it went as typed, and the owners by @id and share at that date: no names (D-047).
-      this.options.db.prepare(`INSERT INTO accounting_dues_invoices (id, number, account_id, account_label, month, date, due_date, total, previous, owed, owners,
+      this.options.db.prepare(`INSERT INTO accounting_receivables_invoices (id, number, account_id, account_label, month, date, due_date, total, previous, owed, owners,
           party, party_name, address, billing_address, owner_ids, html, sha256, status, created_by, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, NULL, ?, ?, ?, ?, 'issued', ?, ?)`).run(
         id, number, row.accountId, row.label, month, date, dueDate, total, row.previous, owed,
         row.party, row.partyName, row.address, JSON.stringify(row.owners),
         html, createHash('sha256').update(html).digest('hex'), actor.actingUsername(), this.stamp());
-      lines.forEach((l, position) => this.options.db.prepare(`INSERT INTO accounting_dues_invoice_lines (id, invoice_id, position, kind, description, amount, category,
+      lines.forEach((l, position) => this.options.db.prepare(`INSERT INTO accounting_receivables_invoice_lines (id, invoice_id, position, kind, description, amount, category,
           rule_id, applies_to, charge_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(this.newId(), id, position, l.kind, l.description, l.amount, l.category, l.ruleId, l.appliesTo, l.key));
     })();
     return id;
@@ -593,7 +593,7 @@ export default class DuesManager {
    * caller), with the invoice attached as a PDF when the site makes PDFs (else
    * the page alone); false when none could be sent.
    */
-  private async sendInvoice(actor: DuesActor, id: string, to: string[]): Promise<boolean> {
+  private async sendInvoice(actor: ReceivablesActor, id: string, to: string[]): Promise<boolean> {
     const row = this.row(id);
     const mailer = this.options.email?.();
     const ctx = actor.subject;
@@ -617,7 +617,7 @@ export default class DuesManager {
       }
     }
     if (!sent.length) return false;
-    this.options.db.prepare('UPDATE accounting_dues_invoices SET emailed_to = ?, emailed_at = ?, pdf_sha256 = ? WHERE id = ? AND emailed_at IS NULL')
+    this.options.db.prepare('UPDATE accounting_receivables_invoices SET emailed_to = ?, emailed_at = ?, pdf_sha256 = ? WHERE id = ? AND emailed_at IS NULL')
       .run(sent.join(', '), this.stamp(), pdf ? createHash('sha256').update(pdf).digest('hex') : null, id);
     return true;
   }
@@ -627,13 +627,13 @@ export default class DuesManager {
   }
 
   private row(id: string): InvoiceRow {
-    const row = this.options.db.prepare('SELECT * FROM accounting_dues_invoices WHERE id = ?').get(id) as InvoiceRow | undefined;
-    if (!row) throw new DuesError(404, 'invoiceId: unknown invoice');
+    const row = this.options.db.prepare('SELECT * FROM accounting_receivables_invoices WHERE id = ?').get(id) as InvoiceRow | undefined;
+    if (!row) throw new ReceivablesError(404, 'invoiceId: unknown invoice');
     return row;
   }
 
   private toInvoice(r: InvoiceRow, state: AccountState): Invoice {
-    const lines = (this.options.db.prepare('SELECT * FROM accounting_dues_invoice_lines WHERE invoice_id = ? ORDER BY position').all(r.id) as LineRow[])
+    const lines = (this.options.db.prepare('SELECT * FROM accounting_receivables_invoice_lines WHERE invoice_id = ? ORDER BY position').all(r.id) as LineRow[])
       .map(l => ({ description: l.description, amount: l.amount, kind: l.kind, category: l.category, ruleId: l.rule_id, appliesTo: l.applies_to }));
     const paid = r.status === 'issued' ? state.paid.get(r.id) ?? 0 : 0;
     return {
@@ -646,13 +646,13 @@ export default class DuesManager {
     };
   }
 
-  private async authorize(actor: DuesActor, action: string): Promise<void> {
+  private async authorize(actor: ReceivablesActor, action: string): Promise<void> {
     const decision = await this.options.decide(actor.subject, { action });
     if (!decision.permit) await actor.enforceDeny(action, decision);
   }
 
   /** Allowed when any of the actions is; refused naming the last. */
-  private async authorizeAny(actor: DuesActor, actions: string[]): Promise<void> {
+  private async authorizeAny(actor: ReceivablesActor, actions: string[]): Promise<void> {
     let last: Decision | null = null;
     for (const action of actions) {
       last = await this.options.decide(actor.subject, { action });
@@ -661,7 +661,7 @@ export default class DuesManager {
     await actor.enforceDeny(actions[actions.length - 1] as string, last as Decision);
   }
 
-  private async audit(actor: DuesActor, record: { action: string; severity: string; resource: string; resourceType: string; reason?: string; metadata: Record<string, unknown> }): Promise<void> {
+  private async audit(actor: ReceivablesActor, record: { action: string; severity: string; resource: string; resourceType: string; reason?: string; metadata: Record<string, unknown> }): Promise<void> {
     const who = actor.subject
       ? this.options.host.actorOf(actor.subject)
       : { user: 'unknown', ipAddress: actor.ipAddress, metadata: { actorMissing: true } };
@@ -693,13 +693,13 @@ export function accountLabel(unit: { id: string } & Record<string, unknown>): st
 }
 
 function text(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new DuesError(400, `${field} is required`);
-  if (value.length > 2000) throw new DuesError(400, `${field} is longer than 2000 characters`);
+  if (typeof value !== 'string' || value.trim() === '') throw new ReceivablesError(400, `${field} is required`);
+  if (value.length > 2000) throw new ReceivablesError(400, `${field} is longer than 2000 characters`);
   return value.trim();
 }
 
 /** A page render's viewer as a caller, for reading only, as LedgerManager.viewerActor does. */
-function viewerActor(viewer: unknown): DuesActor {
+function viewerActor(viewer: unknown): ReceivablesActor {
   const username = (viewer as { username?: unknown } | null | undefined)?.username;
   return {
     ipAddress: undefined, subject: (viewer ?? null) as ActorContext | null,

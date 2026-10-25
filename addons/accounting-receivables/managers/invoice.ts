@@ -1,7 +1,7 @@
 /**
  * An invoice's page (D-035), exactly as it is stored and sent: one account's
  * charges for a month, the balance brought forward (a credit when negative),
- * the amount owed, and the billing party it is addressed to. Pure: DuesManager gathers the
+ * the amount owed, and the billing party it is addressed to. Pure: ReceivablesManager gathers the
  * data and stores what this renders.
  */
 

@@ -1,9 +1,9 @@
 /**
- * The treasurer's dues screens: forms of ngdpbase's forms add-on on locked
+ * The treasurer's receivables screens: forms of ngdpbase's forms add-on on locked
  * pages this add-on ships (pages/). A payment is one call to the accounting
  * add-on's ReceiptManager, the one door for money in: a receipt line with
  * `dues` details naming the account (D-035). Issuing and voiding invoices are
- * one call each to DuesManager. When the forms add-on is not enabled, nothing
+ * one call each to ReceivablesManager. When the forms add-on is not enabled, nothing
  * here runs.
  */
 import type { AddonHost, ApiContext } from '@jwilleke/ngdpbase-types';
@@ -22,8 +22,8 @@ export interface ReceiptManagerLike {
   recordReceipt(actor: ApiContext, input: Record<string, unknown>): Promise<{ id: string; number: string | null }>;
 }
 
-/** The slice of DuesManager the forms call. */
-export interface DuesManagerLike {
+/** The slice of ReceivablesManager the forms call. */
+export interface ReceivablesManagerLike {
   issueMonth(actor: ApiContext, input: Record<string, unknown>): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean }>;
   voidInvoice(actor: ApiContext, id: string, reason: string): Promise<{ id: string; number: string }>;
 }
@@ -32,52 +32,52 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 const checked = (v: unknown): boolean => v !== undefined && v !== '' && v !== false;
 
 export const PAYMENT_FORM = {
-  id: 'dues-payment', title: 'Record a payment on an account', handler: 'accounting-dues', store: false, proxySubmission: false, notifyRole: 'admin',
+  id: 'receivable-payment', title: 'Record a payment on an account', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
   description: 'Money an account paid: cash, a check, a bank transfer. It is recorded as a receipt (R-0001, …). It settles the unit\'s invoices oldest first, or the one you name first; money paid ahead is kept as the unit\'s credit.',
   fields: [
-    { name: 'account', type: 'dropdown', label: 'Account', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=accounts)' },
+    { name: 'account', type: 'dropdown', label: 'Account', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=accounts)' },
     { name: 'amount', type: 'amount', label: 'Amount', required: true },
     { name: 'date', type: 'date', label: 'Date received', required: true },
     { name: 'partyName', type: 'text', label: 'Received from (blank: the account)', required: false },
     { name: 'paymentMethod', type: 'dropdown', label: 'Method', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=payment-methods)' },
     { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
     { name: 'fundId', type: 'dropdown', label: 'Fund', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' },
-    { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=dues-categories)' },
-    { name: 'invoiceId', type: 'dropdown', label: 'Pays this invoice first (optional)', required: false, optionsSource: 'fetch:DuesManager.toFormOptions(list=open-invoices)' },
+    { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=receivable-categories)' },
+    { name: 'invoiceId', type: 'dropdown', label: 'Pays this invoice first (optional)', required: false, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=open-invoices)' },
     { name: 'memo', type: 'textarea', label: 'Note', required: false }
   ]
 };
 
 export const ISSUE_FORM = {
-  id: 'invoice-issue', title: 'Issue this month\'s invoices', handler: 'accounting-dues', store: false, proxySubmission: false, notifyRole: 'admin',
+  id: 'invoice-issue', title: 'Issue this month\'s invoices', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
   description: 'One invoice per billing address with something charged for the month and no invoice yet, or one account. Check the Prepare page first. Each is kept exactly as issued.',
   fields: [
-    { name: 'month', type: 'dropdown', label: 'Month', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=months)' },
-    { name: 'account', type: 'dropdown', label: 'Only this account (blank: every account)', required: false, optionsSource: 'fetch:DuesManager.toFormOptions(list=accounts)' },
+    { name: 'month', type: 'dropdown', label: 'Month', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=months)' },
+    { name: 'account', type: 'dropdown', label: 'Only this account (blank: every account)', required: false, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=accounts)' },
     { name: 'lateCharges', type: 'checkbox', label: 'Add the late charges shown on the Prepare page', required: false },
     { name: 'email', type: 'checkbox', label: 'Email each invoice with money owed to the owners', required: false }
   ]
 };
 
 export const VOID_FORM = {
-  id: 'invoice-void', title: 'Void an invoice', handler: 'accounting-dues', store: false, proxySubmission: false, notifyRole: 'admin',
+  id: 'invoice-void', title: 'Void an invoice', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
   description: 'An invoice issued by mistake. It is kept, marked voided with the reason; issue the month again for the account if needed.',
   fields: [
-    { name: 'invoiceId', type: 'dropdown', label: 'Invoice', required: true, optionsSource: 'fetch:DuesManager.toFormOptions(list=invoices)' },
+    { name: 'invoiceId', type: 'dropdown', label: 'Invoice', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=invoices)' },
     { name: 'reason', type: 'textarea', label: 'Reason', required: true }
   ]
 };
 
-/** The receipt a submitted payment form makes: one line, with the dues details naming the account. */
+/** The receipt a submitted payment form makes: one line, with the receivable details naming the account. */
 export function paymentFromForm(data: Data, accountLabel: string): Record<string, unknown> {
   return {
     date: data.date, partyName: str(data.partyName) ?? accountLabel, paymentMethod: data.paymentMethod, paymentMethodId: str(data.paymentMethodId),
     memo: str(data.memo) ?? `Payment on ${accountLabel}`,
-    lines: [{ amount: data.amount, fundId: data.fundId, category: data.category, details: { dues: { account: data.account, invoiceId: str(data.invoiceId) } } }]
+    lines: [{ amount: data.amount, fundId: data.fundId, category: data.category, details: { receivable: { account: data.account, invoiceId: str(data.invoiceId) } } }]
   };
 }
 
-/** The form field a refusal is about, from the ledger's message ("lines[0].details.dues.account …"). */
+/** The form field a refusal is about, from the ledger's message ("lines[0].details.receivable.account …"). */
 export function paymentField(message: string): string | undefined {
   const m = /(account|invoiceId|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
   return m?.[1];
@@ -90,12 +90,12 @@ const refusal = (err: unknown, fieldOf: (message: string) => string | undefined)
   return { ok: false, error: message, ...(field ? { fields: { [field]: message } } : {}) };
 };
 
-export async function registerDuesForms(engine: Engine, host: AddonHost, accountLabel: (id: string) => string): Promise<void> {
+export async function registerReceivableForms(engine: Engine, host: AddonHost, accountLabel: (id: string) => string): Promise<void> {
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
-  if (!forms || !definitions) { host.logger.info('[accounting-dues] Forms add-on not enabled: the dues screens are off'); return; }
+  if (!forms || !definitions) { host.logger.info('[accounting-receivables] Forms add-on not enabled: the invoice screens are off'); return; }
   // Registered on every start, as the system (ngdpbase #1973): replaced when this add-on's version is newer.
-  for (const definition of [PAYMENT_FORM, ISSUE_FORM, VOID_FORM]) await definitions.registerShippedForm('accounting-dues', definition, host.systemContext(`accounting-dues: shipped form ${definition.id}`));
+  for (const definition of [PAYMENT_FORM, ISSUE_FORM, VOID_FORM]) await definitions.registerShippedForm('accounting-receivables', definition, host.systemContext(`accounting-receivables: shipped form ${definition.id}`));
 
   forms.registerHandler(PAYMENT_FORM.id, async (submission, { req }) => {
     const receipts = engine.getManager<ReceiptManagerLike>('ReceiptManager');
@@ -114,7 +114,7 @@ export async function registerDuesForms(engine: Engine, host: AddonHost, account
     return field && definition.fields.some(f => f.name === field) ? field : undefined;
   };
   forms.registerHandler(ISSUE_FORM.id, async (submission, { req }) => {
-    const dues = engine.getManager<DuesManagerLike>('DuesManager');
+    const dues = engine.getManager<ReceivablesManagerLike>('ReceivablesManager');
     if (!dues) return { ok: false, error: 'Invoices are not running on this site' };
     try {
       const ctx = host.ApiContext.from(req as never, engine as never);
@@ -128,7 +128,7 @@ export async function registerDuesForms(engine: Engine, host: AddonHost, account
     }
   });
   forms.registerHandler(VOID_FORM.id, async (submission, { req }) => {
-    const dues = engine.getManager<DuesManagerLike>('DuesManager');
+    const dues = engine.getManager<ReceivablesManagerLike>('ReceivablesManager');
     if (!dues) return { ok: false, error: 'Invoices are not running on this site' };
     try {
       const ctx = host.ApiContext.from(req as never, engine as never);
