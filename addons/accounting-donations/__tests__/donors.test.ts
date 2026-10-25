@@ -68,7 +68,7 @@ describe('donors', () => {
     const jane = await donations.addDonor(actor(), { type: 'person', givenName: 'Jane', familyName: 'Roe', email: 'jane@example.com',
       streetAddress: '1 Main St', addressLocality: 'Columbus', addressRegion: 'OH', postalCode: '43215', organization: `organization|${acme.id}`, role: 'Treasurer' });
     expect(jane).toMatchObject({ type: 'person', name: 'Jane Roe' });
-    expect(contacts.people.get(jane.id)).toMatchObject({ affiliation: [{ organization: acme.id, role: 'Treasurer' }],
+    expect(contacts.people.get(jane.id)).toMatchObject({ affiliation: [{ '@type': 'OrganizationRole', memberOf: { '@id': acme.id }, roleName: 'Treasurer' }],
       address: { '@type': 'PostalAddress', streetAddress: '1 Main St', postalCode: '43215' } });
     await expect(donations.addDonor(actor(['identity-read']), { type: 'organization', name: 'X' })).rejects.toMatchObject({ name: 'ContactRefusedError', permission: 'identity-manage' });
     await expect(donations.addDonor(actor(), { type: 'person', givenName: 'Only' })).rejects.toThrow('familyName is required');

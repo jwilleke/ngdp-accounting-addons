@@ -7,7 +7,7 @@ The Fairways (a condominium) is the reference site.
 
 - __Slug:__ `accounting-dues`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the screens.
-- __Requires:__ ngdpbase 5.30.1 or later.
+- __Requires:__ ngdpbase 5.31.0 or later.
 - __Accounts:__ read from managers named in configuration, and never copied. A condominium uses the
   accommodation add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)):
   `AccommodationManager` (`accounts-manager`) for `list()`, `get(id)`, `assessment(id)` (amount,
