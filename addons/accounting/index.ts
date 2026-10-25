@@ -54,7 +54,7 @@ let unavailable: string | null = 'not registered yet';
 
 const AccountingAddon = {
   name: 'accounting',
-  version: '0.2.0',
+  version: '0.3.0',
   description: 'Accounting for ngdpbase: funds, a single-entry ledger and its audit trail',
   author: 'jwilleke',
   dependencies: [] as string[],

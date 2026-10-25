@@ -4,7 +4,7 @@
   "_comment_categories": "Income and expense categories (D-023, D-034): a starter chart that follows QuickBooks, keyed by account code. Each is { \"name\", \"type\" (income, other-income, cost-of-goods, expense, other-expense), \"detailType\" (QuickBooks' detail type) }; the older \"<code>\": \"<name>\" still works, its type read from the number. A map, so a site adds, renames or removes (false) one code at a time in app-custom-config.json. Receipts offer income types; money out offers the rest.",
   "ngdpbase.addons.accounting.categories": {
     "4100": { "name": "Dues and memberships", "type": "income", "detailType": "Service/Fee Income" },
-    "4200": { "name": "Donations and gifts", "type": "income", "detailType": "Non-Profit Income" },
+    "4200": { "name": "Donations", "type": "income", "detailType": "Non-Profit Income" },
     "4300": { "name": "Grants", "type": "income", "detailType": "Non-Profit Income" },
     "4400": { "name": "Sales", "type": "income", "detailType": "Sales of Product Income" },
     "4500": { "name": "Event and program fees", "type": "income", "detailType": "Service/Fee Income" },
@@ -55,7 +55,7 @@
       "audit": { "on-failure": "continue", "enabled": false, "description": "Ledger entries read" }
     },
     "ledger-self": {
-      "description": "See your own receipts: your gifts and statements, your dues payments (D-037)",
+      "description": "See your own receipts: your donations and statements, your dues payments (D-037)",
       "icon": "user",
       "color": "#6c757d",
       "audit": { "on-failure": "continue", "enabled": false, "description": "Own receipts read" }

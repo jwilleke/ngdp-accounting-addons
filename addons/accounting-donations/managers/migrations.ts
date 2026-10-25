@@ -134,4 +134,16 @@ const STATEMENT_PDF: DonationsMigration = {
   }
 };
 
-export const DONATIONS_MIGRATIONS: DonationsMigration[] = [INKIND_AND_PLEDGES, STATEMENTS, STATEMENT_PDF];
+const DONATION_COUNT: DonationsMigration = {
+  id: '20261025120000',
+  description: 'statements count donations, not gifts (D-042, #64)',
+  up: (db) => {
+    db.exec(`
+      -- One term, donation (D-042). A rename of the column only: issued statements keep their
+      -- values, their pages and their fingerprints. SQLite renames it in the guard trigger too.
+      ALTER TABLE accounting_donations_statements RENAME COLUMN gift_count TO donation_count;
+    `);
+  }
+};
+
+export const DONATIONS_MIGRATIONS: DonationsMigration[] = [INKIND_AND_PLEDGES, STATEMENTS, STATEMENT_PDF, DONATION_COUNT];

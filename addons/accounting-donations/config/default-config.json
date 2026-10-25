@@ -1,19 +1,19 @@
 {
-  "_comment_accounting_donations": "Donations for the accounting add-on (D-036; docs/guides/donations-guide.md is the source of truth). Merged into the site's configuration only while ngdpbase.addons.accounting-donations.enabled is true. It needs the accounting add-on, whose managers it calls; it keeps no database of its own for gifts.",
+  "_comment_accounting_donations": "Donations for the accounting add-on (D-036; docs/guides/donations-guide.md is the source of truth). Merged into the site's configuration only while ngdpbase.addons.accounting-donations.enabled is true. It needs the accounting add-on, whose managers it calls; it keeps no database of its own for donations.",
   "ngdpbase.addons.accounting-donations.enabled": false,
-  "_comment_categories": "Chart codes a gift may be recorded under: donation categories in the accounting chart (docs/guides/chart-of-accounts-guide.md). A list, so a site's value replaces this one.",
+  "_comment_categories": "Chart codes a donation may be recorded under: donation categories in the accounting chart (docs/guides/chart-of-accounts-guide.md). A list, so a site's value replaces this one.",
   "ngdpbase.addons.accounting-donations.categories": [
     "4200"
   ],
   "_comment_wording": "The receipt slip's quid pro quo disclosure and the year-end statement's wording (IRS Publication 1771). {amount}, {deductible}, {goods}, {value}, {organization}, {year} and {taxId} are filled in. The organization checks the wording with its accountant.",
   "ngdpbase.addons.accounting-donations.wording": {
-    "quid-pro-quo": "Of your gift of {amount}, {deductible} is deductible for federal income tax purposes. You received {goods}, valued at {value}.",
+    "quid-pro-quo": "Of your donation of {amount}, {deductible} is deductible for federal income tax purposes. You received {goods}, valued at {value}.",
     "statement-intro": "Thank you for your support of {organization}. This statement lists your contributions received in {year}.",
     "no-goods": "No goods or services were provided in exchange for these contributions.",
     "goods-note": "Where goods or services were provided in exchange for a contribution, their value is shown, and only the amount above it is deductible.",
     "tax-id": "{organization} is a tax-exempt organization. Its federal tax identification number is {taxId}."
   },
-  "_comment_database": "Donations' own database (operator, 2026-10-20): in-kind gifts and pledges. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
+  "_comment_database": "Donations' own database (operator, 2026-10-20): in-kind donations and pledges. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
   "ngdpbase.addons.accounting-donations.database": {
     "owner": "accounting-donations",
     "ledgerTable": "accounting_donations_schema_migrations",
@@ -21,21 +21,21 @@
   },
   "ngdpbase.permissions.definitions": {
     "donation-record": {
-      "description": "Record in-kind gifts and pledges, and void or cancel them",
+      "description": "Record in-kind donations and pledges, and void or cancel them",
       "icon": "hand-holding-heart",
       "color": "#198754",
       "audit": {
         "on-failure": "refuse",
-        "description": "In-kind gift or pledge recorded, voided or cancelled"
+        "description": "In-kind donation or pledge recorded, voided or cancelled"
       }
     },
     "statement-issue": {
-      "description": "Issue, reissue and email year-end giving statements",
+      "description": "Issue, reissue and email year-end donation statements",
       "icon": "file-invoice-dollar",
       "color": "#fd7e14",
       "audit": {
         "on-failure": "refuse",
-        "description": "Giving statements issued, reissued or emailed"
+        "description": "Donation statements issued, reissued or emailed"
       }
     }
   },
@@ -43,7 +43,7 @@
     {
       "id": "accounting-donations-treasurer",
       "name": "Treasurer keeps the donations",
-      "description": "The treasurer role records in-kind gifts and pledges, finds donors and adds new ones (core's contacts, ngdpbase #1930). Recording gifts of money is the accounting add-on's ledger-record.",
+      "description": "The treasurer role records in-kind donations and pledges, finds donors and adds new ones (core's contacts, ngdpbase #1930). Recording donations of money is the accounting add-on's ledger-record.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
@@ -66,7 +66,7 @@
       ]
     }
   ],
-  "_comment_organization": "Who the giving statements are from: the organization's name, its federal tax ID (EIN) and postal address, printed on every statement.",
+  "_comment_organization": "Who the donation statements are from: the organization's name, its federal tax ID (EIN) and postal address, printed on every statement.",
   "ngdpbase.addons.accounting-donations.organization": {
     "name": "",
     "taxId": "",

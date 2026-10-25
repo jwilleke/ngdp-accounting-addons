@@ -59,7 +59,7 @@ describe('period locks', () => {
     await ledger.lockPeriod(actor(), '2026-09-30');
     await expect(out('2026-09-20')).rejects.toThrow('date: 2026-09-20 is in a locked period (locked through 2026-09-30)');
     await expect(ledger.voidTransaction(actor(), early.id, 'oops')).rejects.toThrow('transactionId: 2026-09-15 is in a locked period');
-    await expect(ledger.postReceipt(actor(), { amount: 100, date: '2026-08-01', fundId, category: '4200', partyName: 'Pat', paymentMethod: '10', memo: 'gift' }, { provider: 'manual' }))
+    await expect(ledger.postReceipt(actor(), { amount: 100, date: '2026-08-01', fundId, category: '4200', partyName: 'Pat', paymentMethod: '10', memo: 'donation' }, { provider: 'manual' }))
       .rejects.toThrow('is in a locked period');
     await expect(ledger.createFund(actor(), { name: 'Roof', openingDate: '2026-09-01' })).rejects.toThrow('openingDate: 2026-09-01 is in a locked period');
     expect((await out('2026-10-01')).date).toBe('2026-10-01');

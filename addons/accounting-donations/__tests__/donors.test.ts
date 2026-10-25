@@ -1,6 +1,6 @@
 /**
  * Donors are core's contacts (ngdpbase #1930): persons and organizations,
- * reached through their doors with the caller's context. A gift keeps the
+ * reached through their doors with the caller's context. A donation keeps the
  * donor's name as well as the @id, since a deleted account deletes its person.
  */
 import { readFileSync } from 'node:fs';
@@ -10,8 +10,8 @@ import { openTestLedgerDatabase, testLedgerParts } from '../../accounting/__test
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting/managers/LedgerManager.js';
 import DonationManager, { type DonationsDb } from '../managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from '../managers/migrations.js';
-import { giftValidator } from '../gift.js';
-import { giftFromForm } from '../forms.js';
+import { donationValidator } from '../donation.js';
+import { donationFromForm } from '../forms.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 const host = buildAddonHost('accounting-donations', defaults);
@@ -57,7 +57,7 @@ describe('donors', () => {
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     donations = new DonationManager({ host, db: ownDb, ledger: ledger as never, decide, categories: () => ['4200'], formatMoney: String,
       recordAudit: async () => undefined, contacts: () => contacts as never });
-    ledger.registerLineDetails('gift', giftValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
+    ledger.registerLineDetails('donation', donationValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
   });
 
   afterEach(() => { ledgerDb.close(); ownDb.close(); });
@@ -85,13 +85,13 @@ describe('donors', () => {
     expect(await donations.toFormOptions({ list: 'donors' }, { username: 'board', granted: ['ledger-read'] })).toEqual([]);
   });
 
-  test('a gift keeps its donor\'s id and name; a donor deleted since is refused on a new gift', async () => {
+  test('a donation keeps its donor\'s id and name; a donor deleted since is refused on a new donation', async () => {
     const jane = await donations.addDonor(actor(), { type: 'person', givenName: 'Jane', familyName: 'Roe' });
     const fundId = (await ledger.createFund(actor(), { name: 'General' })).id;
     const donor = await donations.donor(actor(), `person|${jane.id}`);
-    const receipt = await ledger.postReceipt(actor(), giftFromForm({ amount: 5_000, date: '2026-10-21', fundId, category: '4200', paymentMethod: '20', memo: 'gift' }, donor) as never, { provider: 'manual' });
+    const receipt = await ledger.postReceipt(actor(), donationFromForm({ amount: 5_000, date: '2026-10-21', fundId, category: '4200', paymentMethod: '20', memo: 'donation' }, donor) as never, { provider: 'manual' });
     expect(receipt).toMatchObject({ partyName: 'Jane Roe', partyPersonId: jane.id });
-    expect(receipt.lines[0].details.gift.donor).toEqual({ type: 'person', id: jane.id, name: 'Jane Roe' });
+    expect(receipt.lines[0].details.donation.donor).toEqual({ type: 'person', id: jane.id, name: 'Jane Roe' });
     contacts.people.delete(jane.id);
     await expect(donations.donor(actor(), `person|${jane.id}`)).rejects.toThrow('donor: this donor no longer exists');
     expect((await ledger.getDocument(actor(), receipt.id)).partyName).toBe('Jane Roe');

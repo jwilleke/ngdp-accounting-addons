@@ -442,4 +442,19 @@ const PERIOD_LOCKS: AccountingMigration = {
   }
 };
 
-export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES, LINE_DETAILS, PERIOD_LOCKS];
+const DONATION_DETAILS: AccountingMigration = {
+  id: '20261025120000',
+  description: "the donations add-on's line details are called donation, not gift (D-042, #64)",
+  up: (db) => {
+    db.exec(`
+      -- One term, donation (D-042). Line details never change, so the guard is lifted for the
+      -- rename of the kind alone, and put back; what each line records is untouched.
+      DROP TRIGGER accounting_line_details_fixed;
+      UPDATE accounting_line_details SET kind = 'donation' WHERE kind = 'gift';
+      CREATE TRIGGER accounting_line_details_fixed BEFORE UPDATE ON accounting_line_details
+      BEGIN SELECT RAISE(ABORT, 'accounting: a line''s details never change; void the receipt and record it again'); END;
+    `);
+  }
+};
+
+export const ACCOUNTING_MIGRATIONS: AccountingMigration[] = [FUNDS_TRANSACTIONS_HISTORY, ACCOUNTS, DEPOSITS, DOCUMENTS, CLEARINGS, BOUNCES, LINE_DETAILS, PERIOD_LOCKS, DONATION_DETAILS];

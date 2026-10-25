@@ -244,8 +244,8 @@ describe('receipts', () => {
       expect((await ledger.getDocument(actor(), r.id)).lines[0].details).toEqual({ tip: { note: 'thanks', ofAmount: 500 } });
       await expect(receipts.recordReceipt(actor(), { ...dues(500), lines: [{ amount: 500, fundId, category: '4100', details: { tip: {} } }] }))
         .rejects.toThrow('lines[0]: details.tip.note is required');
-      await expect(receipts.recordReceipt(actor(), { ...dues(500), lines: [{ amount: 500, fundId, category: '4100', details: { gift: {} } }] }))
-        .rejects.toThrow("details: no module on this site records 'gift' details");
+      await expect(receipts.recordReceipt(actor(), { ...dues(500), lines: [{ amount: 500, fundId, category: '4100', details: { donation: {} } }] }))
+        .rejects.toThrow("details: no module on this site records 'donation' details");
       expect(() => ledger.registerLineDetails('tip', tip)).toThrow('already registered');
     });
 

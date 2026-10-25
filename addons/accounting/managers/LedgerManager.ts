@@ -240,13 +240,13 @@ export interface DocumentLine {
   status: 'posted' | 'voided';
   /** A refund line: the receipt line it gives back. */
   receiptLineId: string | null;
-  /** What modules added to the line, by kind: e.g. `{ gift: { goodsValue, anonymous, … } }` (D-036). */
+  /** What modules added to the line, by kind: e.g. `{ donation: { goodsValue, anonymous, … } }` (D-036). */
   details: Record<string, Record<string, unknown>>;
 }
 
 /**
  * A kind of detail a module adds to receipt lines (accounting-donations adds
- * `gift`). `validate` gets what the caller sent and the line, and returns what
+ * `donation`). `validate` gets what the caller sent and the line, and returns what
  * is stored; it throws an Error naming the field when the data is wrong, which
  * the ledger refuses as the caller's mistake (400).
  */
@@ -264,7 +264,7 @@ export interface LineDetailsReader {
   lines(): { lineId: string; receiptId: string; date: string; amount: number; details: Record<string, unknown> }[];
 }
 
-/** Notes a module adds to a receipt slip, e.g. a gift's quid pro quo disclosure: plain text, one per paragraph. */
+/** Notes a module adds to a receipt slip, e.g. a donation's quid pro quo disclosure: plain text, one per paragraph. */
 export type SlipNotes = (receipt: Receipt) => string[];
 
 /** A receipt as its printable slip shows it: the receipt and the notes modules add. */
@@ -1144,7 +1144,7 @@ export default class LedgerManager {
 
   /**
    * Let a module add details of its own to receipt lines (accounting-donations:
-   * `gift`). Called from the module's register(); a kind is registered once.
+   * `donation`). Called from the module's register(); a kind is registered once.
    * Returns the module's reader of its own lines (LineDetailsReader).
    */
   registerLineDetails(kind: string, definition: LineDetailsKind): LineDetailsReader {
@@ -1936,7 +1936,7 @@ export default class LedgerManager {
   /**
    * The caller's own receipts, or refunds of them: those whose payer is the
    * caller's own ngdpbase person (D-037). Needs ledger-self, which every
-   * signed-in person holds; the modules show their own lines from it (gifts,
+   * signed-in person holds; the modules show their own lines from it (donations,
    * dues payments).
    */
   async ownDocuments(actor: LedgerActor, kind: 'receipt' | 'refund', filter: { includeVoided?: boolean } = {}): Promise<(Receipt | Refund)[]> {
