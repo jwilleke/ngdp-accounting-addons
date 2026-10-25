@@ -38,7 +38,7 @@ last_updated: "2026-10-24"
 
 ## 🟡 P2
 
-- [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50) — [FEATURE] Self-service profile panels: donor's gifts and statements, owner's invoices and balance
+- [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50) — [FEATURE] Self-service profile panels: donor's donations and statements, owner's invoices and balance
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
 - [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled invoice send for accounting-dues (BackgroundJobManager)
@@ -53,7 +53,7 @@ last_updated: "2026-10-24"
 
 ## ⏸ Deferred
 
-- [#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49) — [FEATURE] Stripe online payments: cards, ACH and recurring gifts
+- [#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49) — [FEATURE] Stripe online payments: cards, ACH and recurring donations
 - [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21) — [FEATURE] Board report: large or unusual items, and printable / PDF / wiki-page output
 - [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
 - [#9](https://github.com/jwilleke/ngdp-accounting-addons/issues/9) — Treasurer handover record tied to board memory
@@ -64,7 +64,7 @@ last_updated: "2026-10-24"
 <!-- Issues and PRs with no resolvable placement. `/pstatus` labels untriaged issues `needs-triage`; -->
 <!-- an open PR lands here when it has neither a placement label nor a linked issue to inherit from. -->
 
-- [#64](https://github.com/jwilleke/ngdp-accounting-addons/issues/64) — [FEATURE] One term: rename gift to donation everywhere (D-042)
+*None.*
 
 <!-- KIT:END -->
 
