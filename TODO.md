@@ -41,7 +41,6 @@ last_updated: "2026-10-24"
 - [#50](https://github.com/jwilleke/ngdp-accounting-addons/issues/50) — [FEATURE] Self-service profile panels: donor's donations and statements, owner's invoices and balance
 - [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#14](https://github.com/jwilleke/ngdp-accounting-addons/issues/14) — Change the database encryption key, and encrypt an existing plain database
-- [#11](https://github.com/jwilleke/ngdp-accounting-addons/issues/11) — Scheduled invoice send for accounting-dues (BackgroundJobManager)
 - [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
 - [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 
