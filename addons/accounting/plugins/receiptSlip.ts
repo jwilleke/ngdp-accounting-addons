@@ -1,6 +1,6 @@
 /**
  * The printable receipt slip: one receipt, its lines and the notes modules add
- * (a gift's quid pro quo disclosure, D-036). A plain page the treasurer prints
+ * (a donation's quid pro quo disclosure, D-036). A plain page the treasurer prints
  * or saves as PDF from the browser, and hands to the payer.
  */
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';

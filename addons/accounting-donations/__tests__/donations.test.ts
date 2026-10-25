@@ -1,6 +1,6 @@
 /**
- * In-kind gifts and pledges (D-036), in the donations add-on's own database:
- * described not valued; pledges outside the ledger, with gifts that name them
+ * In-kind donations and pledges (D-036), in the donations add-on's own database:
+ * described not valued; pledges outside the ledger, with donations that name them
  * counted as given. Money goes through the accounting add-on's ledger.
  */
 import { readFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ import { openTestLedgerDatabase, testLedgerParts } from '../../accounting/__test
 import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting/managers/LedgerManager.js';
 import DonationManager, { type DonationsDb } from '../managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from '../managers/migrations.js';
-import { giftValidator } from '../gift.js';
+import { donationValidator } from '../donation.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 const host = buildAddonHost('accounting-donations', defaults);
@@ -39,18 +39,18 @@ describe('donations', () => {
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     donations = new DonationManager({ host, db: ownDb, ledger: ledger as never, decide, categories: () => ['4200'], formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); } });
-    ledger.registerLineDetails('gift', giftValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String, pledgeIsOpen: (id) => donations.pledgeIsOpen(id) }));
+    ledger.registerLineDetails('donation', donationValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String, pledgeIsOpen: (id) => donations.pledgeIsOpen(id) }));
     fundId = (await ledger.createFund(actor(), { name: 'Building' })).id;
   });
 
   afterEach(() => { ledgerDb.close(); ownDb.close(); });
 
-  const gift = (amount: number, pledgeId?: string) => ledger.postReceipt(actor(), {
+  const donation = (amount: number, pledgeId?: string) => ledger.postReceipt(actor(), {
     date: '2026-10-20', partyName: 'Pat Lee', paymentMethod: '20', memo: 'pledge payment',
-    lines: [{ amount, fundId, category: '4200', details: { gift: { pledgeId } } }]
+    lines: [{ amount, fundId, category: '4200', details: { donation: { pledgeId } } }]
   }, { provider: 'manual' });
 
-  test('an in-kind gift is described, never valued, and voided with a reason', async () => {
+  test('an in-kind donation is described, never valued, and voided with a reason', async () => {
     const g = await donations.recordInKind(actor(), { donorName: 'Pat Lee', date: '2026-10-20', description: 'Dell laptop, used' });
     expect(g).toMatchObject({ donorName: 'Pat Lee', description: 'Dell laptop, used', status: 'posted' });
     expect(Object.keys(g)).not.toContain('value');
@@ -61,17 +61,17 @@ describe('donations', () => {
     expect(() => ownDb.prepare('DELETE FROM accounting_donations_inkind').run()).toThrow(/never deleted/);
   });
 
-  test('a pledge stays outside the ledger; gifts that name it count as given', async () => {
+  test('a pledge stays outside the ledger; donations that name it count as given', async () => {
     const p = await donations.createPledge(actor(), { donorName: 'Pat Lee', amount: 120_000, fundId, startDate: '2026-01-01', endDate: '2026-12-31', schedule: 'monthly', memo: 'roof' });
     expect(p).toMatchObject({ amount: 120_000, given: 0, remaining: 120_000, status: 'open' });
     expect((await ledger.fundBalances(actor()))[0].balance).toBe(0);
-    await gift(10_000, p.id);
-    await gift(10_000, p.id);
-    await gift(5_000);
+    await donation(10_000, p.id);
+    await donation(10_000, p.id);
+    await donation(5_000);
     expect((await donations.listPledges(actor()))[0]).toMatchObject({ given: 20_000, remaining: 100_000 });
-    await expect(gift(100, 'nope')).rejects.toThrow('details.gift.pledgeId names no open pledge');
+    await expect(donation(100, 'nope')).rejects.toThrow('details.donation.pledgeId names no open pledge');
     await donations.cancelPledge(actor(), p.id, 'donor moved away');
-    await expect(gift(100, p.id)).rejects.toThrow('names no open pledge');
+    await expect(donation(100, p.id)).rejects.toThrow('names no open pledge');
     expect(await donations.listPledges(actor())).toEqual([]);
   });
 
@@ -83,7 +83,7 @@ describe('donations', () => {
 
   test('the forms offer open pledges with what is left', async () => {
     const p = await donations.createPledge(actor(), { donorName: 'Pat Lee', amount: 50_000, fundId, startDate: '2026-01-01' });
-    await gift(20_000, p.id);
+    await donation(20_000, p.id);
     expect(await donations.toFormOptions({ list: 'open-pledges' }, { username: 'tess', granted: ALL })).toEqual([
       { value: p.id, amount: 30_000, label: 'Pat Lee · $500.00 pledged · $300.00 left' }
     ]);

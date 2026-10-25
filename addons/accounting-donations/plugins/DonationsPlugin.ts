@@ -3,7 +3,7 @@
  *
  *   [{Donations view='pledges'}]          open pledges: pledged, given, left
  *   [{Donations view='pledges' cancelled='true'}]
- *   [{Donations view='inkind'}]           in-kind gifts: donor, date, description (never a value)
+ *   [{Donations view='inkind'}]           in-kind donations: donor, date, description (never a value)
  *   [{Donations view='statements' year='2026'}]  each donor's year: totals and statement (blank year: last year)
  *
  * Every read goes through DonationManager as the viewer, so its permissions
@@ -32,21 +32,21 @@ export async function renderDonationsView(f: PluginFormatters, donations: Donati
         { sortable: true, emptyMessage: 'No pledges.' });
     }
     if (view === 'inkind') {
-      const gifts = await donations.listInKind(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
+      const inKind = await donations.listInKind(actor, { includeVoided: parseBoolParam(params.voided as string | undefined, false) });
       return formatAsTable(['Date', 'Donor', 'What', 'Status'],
-        gifts.map(g => [escapeHtml(g.date), escapeHtml(g.donorName), escapeHtml(g.description), g.status === 'voided' ? `voided: ${escapeHtml(g.voidReason ?? '')}` : 'posted']),
-        { sortable: true, emptyMessage: 'No in-kind gifts.' });
+        inKind.map(g => [escapeHtml(g.date), escapeHtml(g.donorName), escapeHtml(g.description), g.status === 'voided' ? `voided: ${escapeHtml(g.voidReason ?? '')}` : 'posted']),
+        { sortable: true, emptyMessage: 'No in-kind donations.' });
     }
     if (view === 'statements') {
       const year = Number(params.year) || new Date().getUTCFullYear() - 1;
       const rows = await donations.yearOverview(actor, year);
-      return `<p class="text-muted">${year}</p>` + formatAsTable(['Donor', 'Gifts', 'Total', 'Deductible', 'In-kind', 'Statement'],
-        rows.map(r => [escapeHtml(r.donor.name), String(r.giftCount), money(r.total), money(r.deductible), String(r.inKindCount),
+      return `<p class="text-muted">${year}</p>` + formatAsTable(['Donor', 'Donations', 'Total', 'Deductible', 'In-kind', 'Statement'],
+        rows.map(r => [escapeHtml(r.donor.name), String(r.donationCount), money(r.total), money(r.deductible), String(r.inKindCount),
           r.statement
             ? `<a href="/api/accounting-donations/statements/${encodeURIComponent(r.statement.id)}">issued ${escapeHtml(r.statement.issuedAt.slice(0, 10))}</a>`
               + (r.statement.emailedTo ? ' · emailed' : '') + (r.statement.needsReissue ? ' · <strong>needs reissue</strong>' : '')
             : `<a href="/api/accounting-donations/statements/preview?donor=${encodeURIComponent(`${r.donor.type}|${r.donor.id}`)}&amp;year=${year}">not issued: preview</a>`]),
-        { sortable: true, emptyMessage: 'No donors with gifts in this year.' });
+        { sortable: true, emptyMessage: 'No donors with donations in this year.' });
     }
     return note(f, `Donations: unknown view '${view}'; use pledges, inkind or statements.`);
   } catch (err) {
@@ -58,7 +58,7 @@ export async function renderDonationsView(f: PluginFormatters, donations: Donati
 
 const DonationsPlugin = {
   name: 'Donations',
-  description: 'Pledges and in-kind gifts, for those allowed to see them',
+  description: 'Pledges and in-kind donations, for those allowed to see them',
   author: 'jwilleke',
   version: '0.1.0',
   async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; formatters: PluginFormatters }, params: Params): Promise<string> {

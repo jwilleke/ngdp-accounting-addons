@@ -1,12 +1,12 @@
 /**
- * A year-end giving statement's content and page (D-036, donations guide): a
- * donor's gifts for the year (receipt lines with gift details naming them, net
- * of refunds, bounced checks left out), their in-kind gifts (described, never
+ * A year-end donation statement's content and page (D-036, donations guide): a
+ * donor's donations for the year (receipt lines with donation details naming them, net
+ * of refunds, bounced checks left out), their in-kind donations (described, never
  * valued), the totals, and the site's wording. Pure: DonationManager gathers
  * the data and stores what this renders.
  */
 
-export interface StatementGift {
+export interface StatementDonation {
   receiptNumber: string | null; date: string; amount: number; deductible: number;
   goodsValue: number; goodsDescription: string | null;
 }
@@ -14,7 +14,7 @@ export interface StatementGift {
 export interface StatementContent {
   donor: { type: 'person' | 'organization'; id: string; name: string };
   year: number;
-  gifts: StatementGift[];
+  donations: StatementDonation[];
   inKind: { date: string; description: string }[];
   total: number;
   deductible: number;
@@ -36,28 +36,28 @@ export const DEFAULT_WORDING = {
 };
 
 /** The donor's year, from receipts and refunds read through the ledger. */
-export function giftsFor(
+export function donationsFor(
   donorId: string, year: number,
   receipts: { number: string | null; date: string; status: string; bounced?: boolean; lines: { id: string; amount: number; status: string; details: Record<string, Record<string, unknown>> }[] }[],
   refunds: { status: string; lines: { amount: number; status: string; receiptLineId: string | null }[] }[]
-): StatementGift[] {
+): StatementDonation[] {
   const refunded = new Map<string, number>();
   for (const r of refunds) if (r.status === 'posted') for (const l of r.lines) {
     if (l.status === 'posted' && l.receiptLineId) refunded.set(l.receiptLineId, (refunded.get(l.receiptLineId) ?? 0) + l.amount);
   }
-  const gifts: StatementGift[] = [];
+  const donations: StatementDonation[] = [];
   for (const r of receipts) {
     if (r.status !== 'posted' || r.bounced || Number(r.date.slice(0, 4)) !== year) continue;
     for (const l of r.lines) {
-      const gift = l.details.gift as { donor?: { id?: string }; goodsValue?: number; goodsDescription?: string | null } | undefined;
-      if (l.status !== 'posted' || gift?.donor?.id !== donorId) continue;
+      const donation = l.details.donation as { donor?: { id?: string }; goodsValue?: number; goodsDescription?: string | null } | undefined;
+      if (l.status !== 'posted' || donation?.donor?.id !== donorId) continue;
       const amount = l.amount - (refunded.get(l.id) ?? 0);
       if (amount <= 0) continue;
-      const goodsValue = Math.min(gift.goodsValue ?? 0, amount);
-      gifts.push({ receiptNumber: r.number, date: r.date, amount, deductible: amount - goodsValue, goodsValue, goodsDescription: gift.goodsDescription ?? null });
+      const goodsValue = Math.min(donation.goodsValue ?? 0, amount);
+      donations.push({ receiptNumber: r.number, date: r.date, amount, deductible: amount - goodsValue, goodsValue, goodsDescription: donation.goodsDescription ?? null });
     }
   }
-  return gifts.sort((a, b) => a.date.localeCompare(b.date));
+  return donations.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -66,16 +66,16 @@ const fill = (template: string, values: Record<string, string>): string => templ
 /** The statement page, exactly as it is stored and sent. */
 export function renderStatement(c: StatementContent, w: StatementWording, formatMoney: (minor: number) => string, issuedOn: string): string {
   const values = { organization: w.organization.name, year: String(c.year), taxId: w.organization.taxId };
-  const anyGoods = c.gifts.some(g => g.goodsValue > 0);
-  const rows = c.gifts.map(g => `<tr><td>${esc(g.date)}</td><td>${esc(g.receiptNumber ?? '')}</td><td class="amount">${esc(formatMoney(g.amount))}</td>`
+  const anyGoods = c.donations.some(g => g.goodsValue > 0);
+  const rows = c.donations.map(g => `<tr><td>${esc(g.date)}</td><td>${esc(g.receiptNumber ?? '')}</td><td class="amount">${esc(formatMoney(g.amount))}</td>`
     + (anyGoods ? `<td>${g.goodsValue > 0 ? `${esc(g.goodsDescription ?? 'goods or services')}: ${esc(formatMoney(g.goodsValue))}` : ''}</td>` : '')
     + `<td class="amount">${esc(formatMoney(g.deductible))}</td></tr>`).join('');
   const inKind = c.inKind.length
-    ? `<h2>Gifts of goods or services</h2><p>Described, not valued: the value of a non-cash gift is for you to determine.</p><ul>${c.inKind.map(i => `<li>${esc(i.date)}: ${esc(i.description)}</li>`).join('')}</ul>`
+    ? `<h2>Donations of goods or services</h2><p>Described, not valued: the value of a non-cash donation is for you to determine.</p><ul>${c.inKind.map(i => `<li>${esc(i.date)}: ${esc(i.description)}</li>`).join('')}</ul>`
     : '';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(String(c.year))} giving statement · ${esc(c.donor.name)}</title>
+<title>${esc(String(c.year))} donation statement · ${esc(c.donor.name)}</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; color: #111; }
   h1 { font-size: 1.4rem; margin-bottom: 0.2rem; } h2 { font-size: 1.1rem; margin-top: 1.5rem; } .muted { color: #555; }
@@ -83,7 +83,7 @@ export function renderStatement(c: StatementContent, w: StatementWording, format
   .amount { text-align: right; } tfoot td { font-weight: 600; border-bottom: none; }
   @media print { body { margin: 0; } }
 </style></head><body>
-<h1>${esc(String(c.year))} giving statement</h1>
+<h1>${esc(String(c.year))} donation statement</h1>
 <p class="muted">${esc(w.organization.name)}${w.organization.address ? `<br>${esc(w.organization.address)}` : ''}</p>
 <p><strong>${esc(c.donor.name)}</strong></p>
 <p>${esc(fill(w.intro, values))}</p>

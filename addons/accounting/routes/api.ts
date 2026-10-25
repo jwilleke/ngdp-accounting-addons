@@ -96,7 +96,7 @@ export default function apiRoutes(engine: Engine, host: AddonHost): Router {
   router.get('/summary', handle(200, (ctx, ledger, req) => ledger.periodSummary(ctx, period(ledger, req))));
 
   // The printable receipt slip (D-036): a page the treasurer prints for the payer, with the notes
-  // modules add (a gift's quid pro quo disclosure). A link, so a refusal goes to sign in.
+  // modules add (a donation's quid pro quo disclosure). A link, so a refusal goes to sign in.
   router.get('/receipts/:id/slip', async (req: Request, res: Response): Promise<void> => {
     try {
       const ledger = engine.getManager<LedgerManager>('LedgerManager');

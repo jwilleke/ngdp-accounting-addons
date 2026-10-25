@@ -1,5 +1,5 @@
 /**
- * DonationManager — the donations add-on's one door (D-036): in-kind gifts
+ * DonationManager — the donations add-on's one door (D-036): in-kind donations
  * and pledges in this add-on's own database, and the form choices it adds.
  * Money always goes through the accounting add-on's managers; this one only
  * reads the ledger (receipts paying a pledge) through LedgerManager.
@@ -8,7 +8,7 @@
  * record and wait for it (on-failure: refuse), then change the rows.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { giftsFor, renderStatement, type StatementContent, type StatementWording } from './statement.js';
+import { donationsFor, renderStatement, type StatementContent, type StatementWording } from './statement.js';
 import type { ActorContext, AddonHost, Decision, IdentityManager, OrganizationManager } from '@jwilleke/ngdpbase-types';
 
 /**
@@ -62,7 +62,7 @@ export class DonationError extends Error {
   }
 }
 
-export interface InKindGift {
+export interface InKindDonation {
   id: string; donorPersonId: string | null; donorName: string; date: string; description: string;
   status: 'posted' | 'voided'; voidReason: string | null; createdBy: string; createdAt: string;
 }
@@ -74,7 +74,7 @@ export interface Pledge {
   id: string; donorPersonId: string | null; donorName: string; amount: number; fundId: string;
   startDate: string; endDate: string | null; schedule: PledgeSchedule; memo: string;
   status: 'open' | 'cancelled'; cancelReason: string | null;
-  /** Posted gift lines that name this pledge. */
+  /** Posted donation lines that name this pledge. */
   given: number;
   remaining: number;
   createdBy: string; createdAt: string;
@@ -98,15 +98,15 @@ export interface NewDonor {
   organization?: string; role?: string;
 }
 
-/** One donor's year, for the Giving Statements page. */
+/** One donor's year, for the Donation Statements page. */
 export interface DonorYear {
-  donor: Donor; total: number; deductible: number; giftCount: number; inKindCount: number;
-  /** The standing statement for the year, if issued; needsReissue when the gifts have changed since. */
+  donor: Donor; total: number; deductible: number; donationCount: number; inKindCount: number;
+  /** The standing statement for the year, if issued; needsReissue when the donations have changed since. */
   statement: { id: string; issuedAt: string; emailedTo: string | null; needsReissue: boolean } | null;
 }
 
 export interface IssuedStatement {
-  id: string; donor: Donor; year: number; html: string; sha256: string; total: number; deductible: number; giftCount: number;
+  id: string; donor: Donor; year: number; html: string; sha256: string; total: number; deductible: number; donationCount: number;
   status: 'issued' | 'superseded'; supersededBy: string | null; reissueReason: string | null;
   emailedTo: string | null; emailedAt: string | null; issuedBy: string; issuedAt: string;
 }
@@ -117,7 +117,7 @@ export interface DonationOptions {
   ledger: LedgerLike;
   recordAudit: (record: Record<string, unknown>) => Promise<void>;
   decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
-  /** Chart codes a gift may use (configuration). */
+  /** Chart codes a donation may use (configuration). */
   categories: () => string[];
   formatMoney: (minor: number) => string;
   /** Core's contact doors; looked up when used, so they may arrive after this manager. */
@@ -167,31 +167,31 @@ export default class DonationManager {
     this.newId = options.newId ?? randomUUID;
   }
 
-  // ── In-kind gifts ──────────────────────────────────────────────────────
+  // ── In-kind donations ──────────────────────────────────────────────────────
 
-  /** A gift of goods or services: the donor, the date and a description, never a value. */
-  async recordInKind(actor: DonationsActor, input: { donorName: string; donorPersonId?: string; date: string; description: string }): Promise<InKindGift> {
+  /** A donation of goods or services: the donor, the date and a description, never a value. */
+  async recordInKind(actor: DonationsActor, input: { donorName: string; donorPersonId?: string; date: string; description: string }): Promise<InKindDonation> {
     await this.authorize(actor, 'donation-record');
     const user = actor.actingUsername();
-    const gift: InKindGift = {
+    const donation: InKindDonation = {
       id: this.newId(), donorName: text(input.donorName, 'donorName', { required: true, max: 200 }) as string,
       donorPersonId: text(input.donorPersonId, 'donorPersonId', { max: 64 }) ?? null, date: isoDate(input.date, 'date'),
       description: text(input.description, 'description', { required: true, max: 500 }) as string,
       status: 'posted', voidReason: null, createdBy: user, createdAt: this.stamp()
     };
-    await this.audit(actor, { action: 'inkind-record', severity: 'low', resource: gift.id, resourceType: 'donations-inkind', metadata: { date: gift.date, description: gift.description } });
+    await this.audit(actor, { action: 'inkind-record', severity: 'low', resource: donation.id, resourceType: 'donations-inkind', metadata: { date: donation.date, description: donation.description } });
     this.options.db.transaction(() => {
       this.options.db.prepare(`INSERT INTO accounting_donations_inkind (id, donor_person_id, donor_name, date, description, status, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, 'posted', ?, ?)`).run(gift.id, gift.donorPersonId, gift.donorName, gift.date, gift.description, user, gift.createdAt);
+        VALUES (?, ?, ?, ?, ?, 'posted', ?, ?)`).run(donation.id, donation.donorPersonId, donation.donorName, donation.date, donation.description, user, donation.createdAt);
     })();
-    return gift;
+    return donation;
   }
 
-  async voidInKind(actor: DonationsActor, id: string, reason: string): Promise<InKindGift> {
+  async voidInKind(actor: DonationsActor, id: string, reason: string): Promise<InKindDonation> {
     await this.authorize(actor, 'donation-record');
     const why = text(reason, 'reason', { required: true }) as string;
-    const gift = this.inKind(id);
-    if (gift.status === 'voided') throw new DonationError(409, 'this in-kind gift is already voided');
+    const donation = this.inKind(id);
+    if (donation.status === 'voided') throw new DonationError(409, 'this in-kind donation is already voided');
     await this.audit(actor, { action: 'inkind-void', severity: 'medium', resource: id, resourceType: 'donations-inkind', reason: why, metadata: {} });
     this.options.db.transaction(() => {
       this.options.db.prepare("UPDATE accounting_donations_inkind SET status = 'voided', void_reason = ? WHERE id = ? AND status = 'posted'").run(why, id);
@@ -199,8 +199,8 @@ export default class DonationManager {
     return this.inKind(id);
   }
 
-  /** In-kind gifts, newest first. Needs ledger-read: it names donors. */
-  async listInKind(actor: DonationsActor, filter: { includeVoided?: boolean } = {}): Promise<InKindGift[]> {
+  /** In-kind donations, newest first. Needs ledger-read: it names donors. */
+  async listInKind(actor: DonationsActor, filter: { includeVoided?: boolean } = {}): Promise<InKindDonation[]> {
     await this.authorize(actor, 'ledger-read');
     return (this.options.db.prepare(`SELECT * FROM accounting_donations_inkind ${filter.includeVoided ? '' : "WHERE status = 'posted'"}
       ORDER BY date DESC, created_at DESC`).all() as InKindRow[]).map(toInKind);
@@ -208,7 +208,7 @@ export default class DonationManager {
 
   // ── Pledges ────────────────────────────────────────────────────────────
 
-  /** A promise to give, kept outside the ledger; gifts that pay toward it name it. */
+  /** A promise to give, kept outside the ledger; donations that pay toward it name it. */
   async createPledge(actor: DonationsActor, input: { donorName: string; donorPersonId?: string; amount: number; fundId: string; startDate: string; endDate?: string; schedule?: string; memo?: string }): Promise<Pledge> {
     await this.authorize(actor, 'donation-record');
     const user = actor.actingUsername();
@@ -247,13 +247,13 @@ export default class DonationManager {
     return (await this.listPledges(actor, { includeCancelled: true })).find(p => p.id === id) as Pledge;
   }
 
-  /** Pledges with what has been given toward each (posted gift lines naming it), newest first. Needs ledger-read. */
+  /** Pledges with what has been given toward each (posted donation lines naming it), newest first. Needs ledger-read. */
   async listPledges(actor: DonationsActor, filter: { includeCancelled?: boolean } = {}): Promise<Pledge[]> {
     await this.authorize(actor, 'ledger-read');
     const given = new Map<string, number>();
     for (const receipt of await this.options.ledger.listDocuments(actor, 'receipt')) {
       for (const line of receipt.lines) {
-        const pledgeId = line.status === 'posted' ? line.details.gift?.pledgeId : undefined;
+        const pledgeId = line.status === 'posted' ? line.details.donation?.pledgeId : undefined;
         if (typeof pledgeId === 'string') given.set(pledgeId, (given.get(pledgeId) ?? 0) + line.amount);
       }
     }
@@ -261,15 +261,15 @@ export default class DonationManager {
       ORDER BY start_date DESC, created_at DESC`).all() as PledgeRow[]).map(r => toPledge(r, given.get(r.id) ?? 0));
   }
 
-  /** Whether a gift may name this pledge: it exists and is open. For the gift kind's validator. */
+  /** Whether a donation may name this pledge: it exists and is open. For the donation kind's validator. */
   pledgeIsOpen(id: string): boolean {
     const row = this.options.db.prepare('SELECT status FROM accounting_donations_pledges WHERE id = ?').get(id) as { status: string } | undefined;
     return row?.status === 'open';
   }
 
-  // ── Year-end giving statements (D-036) ──────────────────────────────────
+  // ── Year-end donation statements (D-036) ──────────────────────────────────
 
-  /** Each donor with gifts or in-kind gifts in a year, their totals and their statement's standing. Needs ledger-read. */
+  /** Each donor with donations or in-kind donations in a year, their totals and their statement's standing. Needs ledger-read. */
   async yearOverview(actor: DonationsActor, year: number): Promise<DonorYear[]> {
     await this.authorize(actor, 'ledger-read');
     const y = statementYear(year);
@@ -278,7 +278,7 @@ export default class DonationManager {
       const content = await this.contentFor(actor, donor, y);
       const row = this.currentStatement(donor.id, y);
       out.push({
-        donor, total: content.total, deductible: content.deductible, giftCount: content.gifts.length, inKindCount: content.inKind.length,
+        donor, total: content.total, deductible: content.deductible, donationCount: content.donations.length, inKindCount: content.inKind.length,
         statement: row ? { id: row.id, issuedAt: row.issued_at, emailedTo: row.emailed_to, needsReissue: changed(row, content) } : null
       });
     }
@@ -293,7 +293,7 @@ export default class DonationManager {
   }
 
   /**
-   * Issue the year's statements: to one donor, or to every donor with gifts in
+   * Issue the year's statements: to one donor, or to every donor with donations in
    * the year who has none yet. Each is stored exactly as issued, with its
    * fingerprint. With `email`, each is sent to the donor's email on file.
    */
@@ -308,7 +308,7 @@ export default class DonationManager {
         continue;
       }
       const content = await this.contentFor(actor, donor, year);
-      if (content.gifts.length || content.inKind.length) pending.push({ donor, content });
+      if (content.donations.length || content.inKind.length) pending.push({ donor, content });
     }
     await this.audit(actor, { eventType: 'statement-issue', action: 'statement-issue', severity: 'high', resource: `statements:${year}`, resourceType: 'donations-statement',
       metadata: { year, count: pending.length, donors: pending.map(p => p.donor.id), email: input.email === true } });
@@ -360,11 +360,11 @@ export default class DonationManager {
   // ── A donor's own view (D-037) ──────────────────────────────────────────
 
   /**
-   * The signed-in donor's own giving, by year, newest first: their gifts (their
-   * own receipts' gift lines, net of refunds) and their issued statements.
+   * The signed-in donor's own donations, by year, newest first: their donations (their
+   * own receipts' donation lines, net of refunds) and their issued statements.
    * Needs ledger-self, which every signed-in person holds.
    */
-  async myGiving(actor: DonationsActor): Promise<{ year: number; giftCount: number; total: number; deductible: number; statements: { id: string; issuedAt: string }[] }[]> {
+  async myDonations(actor: DonationsActor): Promise<{ year: number; donationCount: number; total: number; deductible: number; statements: { id: string; issuedAt: string }[] }[]> {
     await this.authorize(actor, 'ledger-self');
     const personId = await this.options.personOf?.(actor);
     if (!personId) return [];
@@ -374,10 +374,10 @@ export default class DonationManager {
       .all(personId) as { id: string; year: number; issued_at: string }[];
     const years = new Set([...receipts.map(r => Number(r.date.slice(0, 4))), ...statements.map(s => s.year)]);
     return [...years].sort((a, b) => b - a).map(year => {
-      const gifts = giftsFor(personId, year, receipts, refunds);
-      return { year, giftCount: gifts.length, total: gifts.reduce((t, g) => t + g.amount, 0), deductible: gifts.reduce((t, g) => t + g.deductible, 0),
+      const donations = donationsFor(personId, year, receipts, refunds);
+      return { year, donationCount: donations.length, total: donations.reduce((t, g) => t + g.amount, 0), deductible: donations.reduce((t, g) => t + g.deductible, 0),
         statements: statements.filter(s => s.year === year).map(s => ({ id: s.id, issuedAt: s.issued_at })) };
-    }).filter(y => y.giftCount || y.statements.length);
+    }).filter(y => y.donationCount || y.statements.length);
   }
 
   /** One of the signed-in donor's own issued statements, exactly as stored; another donor's is not found. Needs ledger-self. */
@@ -448,7 +448,7 @@ export default class DonationManager {
   // ── Form choices ───────────────────────────────────────────────────────
 
   /**
-   *   gift-categories  the chart's donation categories   ledger-record (through LedgerManager)
+   *   donation-categories  the chart's donation categories   ledger-record (through LedgerManager)
    *   open-pledges     open pledges, with what is left   ledger-read
    */
   async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<{ value: string; label: string; amount?: number }[]> {
@@ -467,7 +467,7 @@ export default class DonationManager {
         throw err;
       }
     }
-    if (options.list === 'gift-categories') {
+    if (options.list === 'donation-categories') {
       const allowed = new Set(this.options.categories());
       return (await this.options.ledger.toFormOptions({ list: 'categories', kind: 'in' }, viewer)).filter(c => allowed.has(c.value));
     }
@@ -497,13 +497,13 @@ export default class DonationManager {
 
   // ── Internals ──────────────────────────────────────────────────────────
 
-  /** Donors named by the year's gift lines and in-kind gifts, by @id; the latest name each was recorded under. */
+  /** Donors named by the year's donation lines and in-kind donations, by @id; the latest name each was recorded under. */
   private async donorsOfYear(actor: DonationsActor, year: number): Promise<Map<string, Donor>> {
     const donors = new Map<string, Donor>();
     for (const r of await this.options.ledger.listDocuments(actor, 'receipt')) {
       if (Number(r.date.slice(0, 4)) !== year) continue;
       for (const l of r.lines) {
-        const d = l.details.gift?.donor as Donor | null | undefined;
+        const d = l.details.donation?.donor as Donor | null | undefined;
         if (d?.id) donors.set(d.id, d);
       }
     }
@@ -514,10 +514,10 @@ export default class DonationManager {
   }
 
   private async contentFor(actor: DonationsActor, donor: Donor, year: number): Promise<StatementContent> {
-    const gifts = giftsFor(donor.id, year, await this.options.ledger.listDocuments(actor, 'receipt'), await this.options.ledger.listDocuments(actor, 'refund'));
+    const donations = donationsFor(donor.id, year, await this.options.ledger.listDocuments(actor, 'receipt'), await this.options.ledger.listDocuments(actor, 'refund'));
     const inKind = (this.options.db.prepare(`SELECT date, description FROM accounting_donations_inkind
       WHERE status = 'posted' AND donor_person_id = ? AND substr(date, 1, 4) = ? ORDER BY date`).all(donor.id, String(year)) as { date: string; description: string }[]);
-    return { donor, year, gifts, inKind, total: gifts.reduce((t, g) => t + g.amount, 0), deductible: gifts.reduce((t, g) => t + g.deductible, 0) };
+    return { donor, year, donations, inKind, total: donations.reduce((t, g) => t + g.amount, 0), deductible: donations.reduce((t, g) => t + g.deductible, 0) };
   }
 
   private wording(): StatementWording {
@@ -528,9 +528,9 @@ export default class DonationManager {
     const issuedAt = this.stamp();
     const html = renderStatement(content, this.wording(), this.options.formatMoney, issuedAt.slice(0, 10));
     this.options.db.prepare(`INSERT INTO accounting_donations_statements (id, donor_type, donor_id, donor_name, year, html, sha256, total, deductible,
-        gift_count, status, issued_by, issued_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`).run(
+        donation_count, status, issued_by, issued_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`).run(
       id, content.donor.type, content.donor.id, content.donor.name, content.year, html, createHash('sha256').update(html).digest('hex'),
-      content.total, content.deductible, content.gifts.length, actor.actingUsername(), issuedAt);
+      content.total, content.deductible, content.donations.length, actor.actingUsername(), issuedAt);
     return id;
   }
 
@@ -551,9 +551,9 @@ export default class DonationManager {
     }
     try {
       const org = this.wording().organization.name;
-      const options = pdf ? { attachments: [{ filename: `${row.year} giving statement.pdf`, contentType: 'application/pdf', content: pdf }] } : {};
-      await mailer.sendTo(ctx, contact.email, `${row.year} giving statement from ${org}`,
-        `Your ${row.year} giving statement from ${org} is ${pdf ? 'attached, and below' : 'below'}.`, row.html, options);
+      const options = pdf ? { attachments: [{ filename: `${row.year} donation statement.pdf`, contentType: 'application/pdf', content: pdf }] } : {};
+      await mailer.sendTo(ctx, contact.email, `${row.year} donation statement from ${org}`,
+        `Your ${row.year} donation statement from ${org} is ${pdf ? 'attached, and below' : 'below'}.`, row.html, options);
     } catch {
       return false; // EmailManager reports the failure to administrators itself (#1916)
     }
@@ -580,7 +580,7 @@ export default class DonationManager {
     const r = this.statementRow(id);
     return {
       id: r.id, donor: { type: r.donor_type, id: r.donor_id, name: r.donor_name }, year: r.year, html: r.html, sha256: r.sha256, total: r.total,
-      deductible: r.deductible, giftCount: r.gift_count, status: r.status, supersededBy: r.superseded_by, reissueReason: r.reissue_reason,
+      deductible: r.deductible, donationCount: r.donation_count, status: r.status, supersededBy: r.superseded_by, reissueReason: r.reissue_reason,
       emailedTo: r.emailed_to, emailedAt: r.emailed_at, issuedBy: r.issued_by, issuedAt: r.issued_at
     };
   }
@@ -600,9 +600,9 @@ export default class DonationManager {
       ipAddress: fields.ipAddress, metadata: { ...whoMetadata, ...record.metadata } });
   }
 
-  private inKind(id: string): InKindGift {
+  private inKind(id: string): InKindDonation {
     const row = this.options.db.prepare('SELECT * FROM accounting_donations_inkind WHERE id = ?').get(id) as InKindRow | undefined;
-    if (!row) throw new DonationError(404, 'unknown in-kind gift');
+    if (!row) throw new DonationError(404, 'unknown in-kind donation');
     return toInKind(row);
   }
 
@@ -629,7 +629,7 @@ function viewerActor(viewer: unknown): DonationsActor {
 
 interface StatementRow {
   id: string; donor_type: 'person' | 'organization'; donor_id: string; donor_name: string; year: number; html: string; sha256: string;
-  total: number; deductible: number; gift_count: number; status: 'issued' | 'superseded'; superseded_by: string | null;
+  total: number; deductible: number; donation_count: number; status: 'issued' | 'superseded'; superseded_by: string | null;
   reissue_reason: string | null; emailed_to: string | null; emailed_at: string | null; issued_by: string; issued_at: string;
 }
 
@@ -640,12 +640,12 @@ function statementYear(value: unknown): number {
   return year;
 }
 
-/** Whether the gifts behind a statement have changed since it was issued (a gift voided, refunded or added). */
+/** Whether the donations behind a statement have changed since it was issued (a donation voided, refunded or added). */
 function changed(row: StatementRow, content: StatementContent): boolean {
-  return row.total !== content.total || row.deductible !== content.deductible || row.gift_count !== content.gifts.length;
+  return row.total !== content.total || row.deductible !== content.deductible || row.donation_count !== content.donations.length;
 }
 
-/** A contact's name for a gift record: its name, else given and family name, else its email. */
+/** A contact's name for a donation record: its name, else given and family name, else its email. */
 function donorName(c: { name?: unknown; givenName?: unknown; familyName?: unknown; email?: unknown; '@id'?: unknown }): string {
   if (typeof c.name === 'string' && c.name.trim() !== '') return c.name.trim();
   const parts = [c.givenName, c.familyName].filter((x): x is string => typeof x === 'string' && x.trim() !== '');
@@ -653,7 +653,7 @@ function donorName(c: { name?: unknown; givenName?: unknown; familyName?: unknow
   return typeof c.email === 'string' ? c.email : String(c['@id'] ?? 'unknown');
 }
 
-const toInKind = (r: InKindRow): InKindGift => ({
+const toInKind = (r: InKindRow): InKindDonation => ({
   id: r.id, donorPersonId: r.donor_person_id, donorName: r.donor_name, date: r.date, description: r.description,
   status: r.status, voidReason: r.void_reason, createdBy: r.created_by, createdAt: r.created_at
 });

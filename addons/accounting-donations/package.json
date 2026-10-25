@@ -1,7 +1,7 @@
 {
   "name": "@jwilleke/accounting-donations-addon",
-  "version": "0.2.0",
-  "description": "Donations for the ngdpbase accounting add-on: gifts on receipts and giving statements",
+  "version": "0.3.0",
+  "description": "Donations for the ngdpbase accounting add-on: donations on receipts and donation statements",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -31,7 +31,7 @@
   },
   "files": [
     "index.js",
-    "gift.js",
+    "donation.js",
     "forms.js",
     "managers/*.js",
     "plugins/*.js",

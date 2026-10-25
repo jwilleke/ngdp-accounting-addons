@@ -120,9 +120,9 @@ describe('the entry form', () => {
     const receiptForm = formById('receipt-record');
     expect(receiptForm.definition.fields.find(f => f.name === 'lines')).toMatchObject({ type: 'lines', minRows: 1, amountField: 'amount' });
     expect(receiptFromForm({ date: '2026-10-21', partyName: 'Pat', paymentMethod: '20', memo: 'October', accountId: '',
-      lines: [{ amount: 5_000, fundId: 'f1', category: '4100', memo: '' }, { amount: 2_500, fundId: 'f2', category: '4200', memo: 'gift' }] }))
+      lines: [{ amount: 5_000, fundId: 'f1', category: '4100', memo: '' }, { amount: 2_500, fundId: 'f2', category: '4200', memo: 'donation' }] }))
       .toEqual({ date: '2026-10-21', accountId: undefined, partyName: 'Pat', paymentMethod: '20', paymentMethodId: undefined, memo: 'October',
-        lines: [{ amount: 5_000, fundId: 'f1', category: '4100', memo: undefined }, { amount: 2_500, fundId: 'f2', category: '4200', memo: 'gift' }] });
+        lines: [{ amount: 5_000, fundId: 'f1', category: '4100', memo: undefined }, { amount: 2_500, fundId: 'f2', category: '4200', memo: 'donation' }] });
     expect(fieldOf(receiptForm, 'lines[1].amount must be a whole number of cents, more than 0')).toBe('lines[1].amount');
     expect(fieldOf(receiptForm, "lines[0]: fund 'Roof' is closed")).toBe('lines');
     const refundForm = formById('receipt-refund');

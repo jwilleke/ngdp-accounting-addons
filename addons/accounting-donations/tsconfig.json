@@ -28,7 +28,7 @@
   },
   "include": [
     "index.ts",
-    "gift.ts",
+    "donation.ts",
     "forms.ts",
     "managers/**/*.ts",
     "plugins/**/*.ts",

@@ -161,7 +161,7 @@ export const LEDGER_FORMS: LedgerForm[] = [
       [{ name: 'money', type: 'section', label: 'Money' },
         { name: 'date', type: 'date', label: 'Date received', required: true },
         accountChoice(),
-        { name: 'lines', type: 'lines', label: 'What it is for (one line per fund and category: dues and a gift on one check are two lines)', required: true,
+        { name: 'lines', type: 'lines', label: 'What it is for (one line per fund and category: dues and a donation on one check are two lines)', required: true,
           minRows: 1, maxRows: 50, amountField: 'amount',
           fields: [
             { name: 'amount', type: 'amount', label: 'Amount', required: true },

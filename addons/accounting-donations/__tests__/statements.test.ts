@@ -1,6 +1,6 @@
 /**
- * Year-end giving statements (D-036): per donor and year, from gift lines that
- * name them (net of refunds, bounced checks left out) and their in-kind gifts;
+ * Year-end donation statements (D-036): per donor and year, from donation lines that
+ * name them (net of refunds, bounced checks left out) and their in-kind donations;
  * kept exactly as issued; reissued with the old one superseded; emailed to the
  * donor's address on file.
  */
@@ -13,7 +13,7 @@ import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting
 import DonationManager, { type DonationsDb } from '../managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from '../managers/migrations.js';
 import { DEFAULT_WORDING } from '../managers/statement.js';
-import { giftValidator } from '../gift.js';
+import { donationValidator } from '../donation.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 const host = buildAddonHost('accounting-donations', defaults);
@@ -25,7 +25,7 @@ const actor = (granted: string[] = ALL): LedgerActor => ({
   enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
 });
 
-describe('giving statements', () => {
+describe('donation statements', () => {
   let ledgerDb: { handle: unknown; close(): void };
   let ownDb: DonationsDb & { close(): void };
   let ledger: LedgerManager;
@@ -48,7 +48,7 @@ describe('giving statements', () => {
     sent = []; audit = []; pdfMode = 'none';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide,
       personOf: async (a) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[a.actingUsername()] ?? null,
-      categories: () => ({ '4200': 'Donations and gifts', '6100': { name: 'Bank Charges', type: 'expense' }, '8900': { name: 'Other Miscellaneous Income', type: 'other-income' } }),
+      categories: () => ({ '4200': 'Donations', '6100': { name: 'Bank Charges', type: 'expense' }, '8900': { name: 'Other Miscellaneous Income', type: 'other-income' } }),
       bouncedChecks: () => ({ bankChargesCategory: '6100', otherIncomeCategory: '8900', penalty: 0 }) });
     const door = { get: async (_ctx: unknown, id: string) => people.get(id) ?? null, list: async () => [...people.values()] };
     donations = new DonationManager({ host, db: ownDb, ledger: ledger as never, decide, categories: () => ['4200'], formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
@@ -62,26 +62,26 @@ describe('giving statements', () => {
       } }),
       personOf: async (a) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[a.actingUsername()] ?? null,
       now: () => new Date('2027-01-15T12:00:00Z') });
-    ledger.registerLineDetails('gift', giftValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
+    ledger.registerLineDetails('donation', donationValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
     fundId = (await ledger.createFund(actor(), { name: 'General', openingDate: '2026-01-01' })).id;
   });
 
   afterEach(() => { ledgerDb.close(); ownDb.close(); });
 
-  const gift = (donor: typeof jane, amount: number, date: string, extra: Record<string, unknown> = {}) => ledger.postReceipt(actor(), {
-    date, partyName: donor.name, partyPersonId: donor.id, paymentMethod: '20', memo: 'gift',
-    lines: [{ amount, fundId, category: '4200', details: { gift: { donor, ...extra } } }]
+  const donation = (donor: typeof jane, amount: number, date: string, extra: Record<string, unknown> = {}) => ledger.postReceipt(actor(), {
+    date, partyName: donor.name, partyPersonId: donor.id, paymentMethod: '20', memo: 'donation',
+    lines: [{ amount, fundId, category: '4200', details: { donation: { donor, ...extra } } }]
   }, { provider: 'manual' });
 
-  test('a donor\'s year: their gifts net of refunds, their in-kind gifts, and the totals', async () => {
-    await gift(jane, 10_000, '2026-03-01', { goodsValue: 4_000, goodsDescription: 'gala dinner' });
-    const second = await gift(jane, 5_000, '2026-06-01');
-    await gift(jane, 9_999, '2027-01-02');
-    await gift(bo, 2_500, '2026-05-01');
+  test('a donor\'s year: their donations net of refunds, their in-kind donations, and the totals', async () => {
+    await donation(jane, 10_000, '2026-03-01', { goodsValue: 4_000, goodsDescription: 'gala dinner' });
+    const second = await donation(jane, 5_000, '2026-06-01');
+    await donation(jane, 9_999, '2027-01-02');
+    await donation(bo, 2_500, '2026-05-01');
     await ledger.refundReceipt(actor(), second.id, { amount: 1_000, date: '2026-06-02', memo: 'paid twice' });
     await donations.recordInKind(actor(), { donorName: 'Jane Roe', donorPersonId: jane.id, date: '2026-09-01', description: 'Dell laptop, used' });
     const year = await donations.yearOverview(actor(), 2026);
-    expect(year.map(d => [d.donor.name, d.giftCount, d.total, d.deductible, d.inKindCount, d.statement])).toEqual([
+    expect(year.map(d => [d.donor.name, d.donationCount, d.total, d.deductible, d.inKindCount, d.statement])).toEqual([
       ['Bo Diaz', 1, 2_500, 2_500, 0, null], ['Jane Roe', 2, 14_000, 10_000, 1, null]
     ]);
     const preview = await donations.previewStatement(actor(), `person|${jane.id}`, 2026);
@@ -92,11 +92,11 @@ describe('giving statements', () => {
   });
 
   test('issuing stores each statement exactly as issued, emails it, and skips donors who already have one', async () => {
-    await gift(jane, 10_000, '2026-03-01');
-    await gift(bo, 2_500, '2026-05-01');
+    await donation(jane, 10_000, '2026-03-01');
+    await donation(bo, 2_500, '2026-05-01');
     await expect(donations.issueStatements(actor(['ledger-read']), { year: 2026 })).rejects.toThrow('refused: statement-issue');
     expect(await donations.issueStatements(actor(), { year: 2026, email: true })).toEqual({ issued: 2, emailed: 1, notEmailed: ['Bo Diaz'] });
-    expect(sent.map(s => [s.to, s.subject])).toEqual([['jane@example.com', '2026 giving statement from Fairways Fund']]);
+    expect(sent.map(s => [s.to, s.subject])).toEqual([['jane@example.com', '2026 donation statement from Fairways Fund']]);
     const first = (await donations.listStatements(actor(), { year: 2026 })).find(st => st.donor.id === jane.id)!;
     expect(first).toMatchObject({ emailedTo: 'jane@example.com', total: 10_000 });
     expect(sent[0].html).toBe(first.html);
@@ -107,43 +107,43 @@ describe('giving statements', () => {
     expect(audit.find(a => a.action === 'statement-issue')).toMatchObject({ metadata: { year: 2026, count: 2, email: true } });
   });
 
-  test('a gift voided or bounced after issue flags the statement; reissuing supersedes it with the reason', async () => {
-    const a = await gift(jane, 10_000, '2026-03-01');
-    const b = await gift(jane, 5_000, '2026-04-01');
+  test('a donation voided or bounced after issue flags the statement; reissuing supersedes it with the reason', async () => {
+    const a = await donation(jane, 10_000, '2026-03-01');
+    const b = await donation(jane, 5_000, '2026-04-01');
     await donations.issueStatements(actor(), { year: 2026 });
     await ledger.voidTransaction(actor(), b.id, 'wrong donor');
     expect((await donations.yearOverview(actor(), 2026))[0].statement).toMatchObject({ needsReissue: true });
     const [old] = await donations.listStatements(actor(), { year: 2026 });
-    const fresh = await donations.reissueStatement(actor(), old.id, 'a gift was voided', { email: true });
-    expect(fresh).toMatchObject({ total: 10_000, giftCount: 1, status: 'issued' });
+    const fresh = await donations.reissueStatement(actor(), old.id, 'a donation was voided', { email: true });
+    expect(fresh).toMatchObject({ total: 10_000, donationCount: 1, status: 'issued' });
     expect((await donations.listStatements(actor(), { year: 2026, includeSuperseded: true })).find(s => s.id === old.id))
-      .toMatchObject({ status: 'superseded', supersededBy: fresh.id, reissueReason: 'a gift was voided' });
+      .toMatchObject({ status: 'superseded', supersededBy: fresh.id, reissueReason: 'a donation was voided' });
     await expect(donations.reissueStatement(actor(), old.id, 'again')).rejects.toThrow('already reissued');
     // A bounced check leaves the statement too: the issued one now needs reissuing.
     await ledger.makeDeposit(actor(), { accountId: 'checking', date: '2026-03-02', receiptIds: [a.id], total: 10_000 });
     await ledger.recordBounce(actor(), a.id, { date: '2026-03-10' });
-    expect((await donations.yearOverview(actor(), 2026)).map(d => [d.giftCount, d.total, d.statement?.needsReissue])).toEqual([[0, 0, true]]);
+    expect((await donations.yearOverview(actor(), 2026)).map(d => [d.donationCount, d.total, d.statement?.needsReissue])).toEqual([[0, 0, true]]);
   });
 
-  test('a donor sees only their own giving and statements (D-037, ledger-self)', async () => {
-    await gift(jane, 10_000, '2026-03-01', { goodsValue: 4_000, goodsDescription: 'gala dinner' });
-    await gift(bo, 2_500, '2026-05-01');
+  test('a donor sees only their own donations and statements (D-037, ledger-self)', async () => {
+    await donation(jane, 10_000, '2026-03-01', { goodsValue: 4_000, goodsDescription: 'gala dinner' });
+    await donation(bo, 2_500, '2026-05-01');
     await donations.issueStatements(actor(), { year: 2026 });
     const self = (username: string, granted = ['ledger-self']): LedgerActor => ({
       ipAddress: undefined, actingUsername: () => username, subject: { username, granted } as never,
       enforceDeny: (p: string) => Promise.reject(Object.assign(new Error(`refused: ${p}`), { status: 403 }))
     });
-    const mine = await donations.myGiving(self('jane'));
-    expect(mine.map(y => [y.year, y.giftCount, y.total, y.deductible, y.statements.length])).toEqual([[2026, 1, 10_000, 6_000, 1]]);
+    const mine = await donations.myDonations(self('jane'));
+    expect(mine.map(y => [y.year, y.donationCount, y.total, y.deductible, y.statements.length])).toEqual([[2026, 1, 10_000, 6_000, 1]]);
     expect((await donations.myStatement(self('jane'), mine[0]!.statements[0]!.id)).donor.name).toBe('Jane Roe');
     const bos = (await donations.listStatements(actor())).find(st => st.donor.id === bo.id)!;
     await expect(donations.myStatement(self('jane'), bos.id)).rejects.toThrow('unknown statement');
-    await expect(donations.myGiving(self('jane', []))).rejects.toThrow('refused: ledger-self');
-    expect(await donations.myGiving(self('nobody'))).toEqual([]);
+    await expect(donations.myDonations(self('jane', []))).rejects.toThrow('refused: ledger-self');
+    expect(await donations.myDonations(self('nobody'))).toEqual([]);
   });
 
   test('a statement is emailed as the caller, with its PDF attached when the site makes PDFs, else the page alone (#51)', async () => {
-    await gift(jane, 5_000, '2026-03-01');
+    await donation(jane, 5_000, '2026-03-01');
     pdfMode = 'unavailable';
     await donations.issueStatements(actor(), { year: 2026, email: true });
     expect(sent.map(s => [s.to, s.attachments])).toEqual([['jane@example.com', undefined]]);
@@ -151,11 +151,11 @@ describe('giving statements', () => {
     const [plain] = await donations.listStatements(actor(), { year: 2026 });
     expect(ownDb.prepare('SELECT pdf_sha256 FROM accounting_donations_statements WHERE id = ?').get(plain!.id)).toEqual({ pdf_sha256: null });
     // The next year's statement, with a PDF provider.
-    await gift(jane, 6_000, '2027-01-02');
+    await donation(jane, 6_000, '2027-01-02');
     pdfMode = 'made';
     sent = [];
     await donations.issueStatements(actor(), { year: 2027, email: true });
-    expect(sent[0]!.attachments?.map(a => [a.filename, a.content.toString()])).toEqual([['2027 giving statement.pdf', '%PDF-statement']]);
+    expect(sent[0]!.attachments?.map(a => [a.filename, a.content.toString()])).toEqual([['2027 donation statement.pdf', '%PDF-statement']]);
     const [stored] = await donations.listStatements(actor(), { year: 2027 });
     expect(ownDb.prepare('SELECT pdf_sha256 FROM accounting_donations_statements WHERE id = ?').get(stored!.id)).toEqual({
       pdf_sha256: createHash('sha256').update('%PDF-statement').digest('hex') });

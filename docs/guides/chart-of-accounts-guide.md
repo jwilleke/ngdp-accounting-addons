@@ -56,7 +56,7 @@ maps one to one. The chart is generic: it suits a club, a nonprofit or a small b
 | Code | Name | Type | QuickBooks detail type |
 | --- | --- | --- | --- |
 | 4100 | Dues and memberships | income | Service/Fee Income |
-| 4200 | Donations and gifts | income | Non-Profit Income |
+| 4200 | Donations | income | Non-Profit Income |
 | 4300 | Grants | income | Non-Profit Income |
 | 4400 | Sales | income | Sales of Product Income |
 | 4500 | Event and program fees | income | Service/Fee Income |
