@@ -118,7 +118,7 @@ const AccountingAddon = {
     // A person's own receipts (D-037): core's person for a username, read when asked.
     const personOf = async (actor: { readonly subject: ActorContext | null; actingUsername(): string }): Promise<string | null> => {
       if (!actor.subject) return null;
-      const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('PersonManager');
+      const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('IdentityManager');
       return (await persons?.getByUserIdentifier(actor.subject, actor.actingUsername()))?.['@id'] ?? null;
     };
     const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv, personOf });

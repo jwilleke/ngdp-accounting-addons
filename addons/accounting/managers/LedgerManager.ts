@@ -536,7 +536,7 @@ export interface LedgerOptions {
   dataChanged?: () => Promise<void> | void;
   /**
    * The caller's own ngdpbase person, as its `@id`, for the caller's own receipts (D-037); read as
-   * the caller (PersonManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage).
+   * the caller (IdentityManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage).
    * Without it a person has no receipts of their own.
    */
   personOf?: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;

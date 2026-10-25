@@ -9,7 +9,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { giftsFor, renderStatement, type StatementContent, type StatementWording } from './statement.js';
-import type { ActorContext, AddonHost, Decision, OrganizationManager, PersonManager } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, Decision, IdentityManager, OrganizationManager } from '@jwilleke/ngdpbase-types';
 
 /**
  * A stored page as a PDF (ngdpbase ExportManager.htmlToPdf), or null when the
@@ -87,7 +87,7 @@ export interface Pledge {
 export interface Donor { type: 'person' | 'organization'; id: string; name: string }
 
 /** Core's contact doors (ngdpbase v5.22.0). Every call takes the caller's context first. */
-export interface Contacts { persons?: PersonManager | null; organizations?: OrganizationManager | null }
+export interface Contacts { persons?: IdentityManager | null; organizations?: OrganizationManager | null }
 
 /** A new donor: a person (given and family name) or an organization (name), with what a statement needs. */
 export interface NewDonor {
@@ -128,7 +128,7 @@ export interface DonationOptions {
   email?: () => { sendTo(ctx: ActorContext, to: string, subject: string, text: string, html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }): Promise<void> } | null | undefined;
   /** ngdpbase's ExportManager, to send each statement as a PDF (#51). */
   pdf?: () => { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined;
-  /** The caller's own ngdpbase person, as its `@id`, for a donor's own view (D-037); read as the caller (PersonManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage). */
+  /** The caller's own ngdpbase person, as its `@id`, for a donor's own view (D-037); read as the caller (IdentityManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage). */
   personOf?: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;
   now?: () => Date;
   newId?: () => string;
@@ -393,7 +393,7 @@ export default class DonationManager {
 
   /**
    * A donor from a donor-list value (`person|<@id>` or `organization|<@id>`),
-   * read through core's door with the caller's context (contact-read). A
+   * read through core's door with the caller's context (identity-read). A
    * contact that no longer exists is refused, naming the field.
    */
   async donor(actor: DonationsActor, value: string, field = 'donor'): Promise<Donor> {
@@ -410,7 +410,7 @@ export default class DonationManager {
 
   /**
    * Add a donor who has no account: a person or an organization, created
-   * through core's door (contact-manage, audited by core). Returns it as a
+   * through core's door (identity-manage, audited by core). Returns it as a
    * donor-list value's parts.
    */
   async addDonor(actor: DonationsActor, input: NewDonor): Promise<Donor> {
@@ -453,7 +453,7 @@ export default class DonationManager {
    */
   async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<{ value: string; label: string; amount?: number }[]> {
     if (options.list === 'donors' || options.list === 'organizations') {
-      // Core's doors decide with the viewer's own context (contact-read); a refusal is no choices.
+      // Core's doors decide with the viewer's own context (identity-read); a refusal is no choices.
       const contacts = this.options.contacts?.() ?? {};
       try {
         const orgs = (await contacts.organizations?.list(viewer as never)) ?? [];
