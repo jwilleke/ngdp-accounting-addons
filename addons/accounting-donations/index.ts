@@ -13,7 +13,7 @@
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
-import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
+import type { ActorContext, AddonHost, Decision, PluginFormatters } from '@jwilleke/ngdpbase-types';
 import { DEFAULT_QUID_PRO_QUO, donationSlipNotes, donationValidator, type DonationSettings, type ReceiptLike } from './donation.js';
 import { registerDonationForms } from './forms.js';
 import DonationManager, { type Contacts, type DonationOptions, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
@@ -42,7 +42,7 @@ interface DatabaseManagerLike {
 
 let unavailable: string | null = 'not registered yet';
 /** What the profile card needs, set by register() (ngdpbase's profile hook, #534, calls the module, not a manager). */
-let profile: { donations: DonationManager; escapeHtml(s: string): string; money(minor: number): string } | null = null;
+let profile: { donations: DonationManager; f: PluginFormatters; money(minor: number): string } | null = null;
 
 const AccountingDonationsAddon = {
   name: 'accounting-donations',
@@ -100,6 +100,8 @@ const AccountingDonationsAddon = {
       },
       email: () => engine.getManager<NonNullable<ReturnType<NonNullable<DonationOptions['email']>>>>('EmailManager'),
       pdf: () => engine.getManager<NonNullable<ReturnType<NonNullable<DonationOptions['pdf']>>>>('ExportManager'),
+      // The owner bumps (ngdpbase caching guide): pages that show donations re-render after each write.
+      changed: async () => { await engine.getManager<{ bump(topic: string): Promise<unknown> }>('CacheManager')?.bump('DonationManager'); },
       personOf: async (actor) => {
         if (!actor.subject) return null;
         const persons = engine.getManager<{ getByUserIdentifier(ctx: ActorContext, u: string): Promise<{ '@id': string } | null> }>('IdentityManager');
@@ -118,9 +120,9 @@ const AccountingDonationsAddon = {
     await engine.getManager<{ registerPlugin(name: string, plugin: unknown): Promise<void> }>('PluginManager')?.registerPlugin('Donations', DonationsPlugin);
     engine.app?.use('/api/accounting-donations', donationRoutes(engine, host));
     await registerDonationForms(engine, host);
-    const fmt = engine.getManager<{ formatters: { escapeHtml(s: string): string } }>('PluginManager')?.formatters;
-    // Core's escaper (PluginManager formatters); without it the card stays off rather than escape by hand.
-    profile = fmt ? { donations, escapeHtml: (s) => fmt.escapeHtml(s), money: settings.formatMoney } : null;
+    const fmt = engine.getManager<{ formatters: PluginFormatters }>('PluginManager')?.formatters;
+    // Core's formatters (escapeHtml, formatAsTable); without them the card stays off rather than build HTML by hand.
+    profile = fmt ? { donations, f: fmt, money: settings.formatMoney } : null;
     unavailable = null;
     host.logger.info('[accounting-donations] Donations ready');
   },
@@ -139,11 +141,11 @@ const AccountingDonationsAddon = {
     let years;
     try { years = await profile.donations.myDonations(actor); } catch { return null; }
     if (!years.length) return null;
-    const { escapeHtml: esc, money } = profile;
-    const rows = years.map(y => `<tr><td>${y.year}</td><td>${y.donationCount}</td><td class="text-end">${esc(money(y.total))}</td><td class="text-end">${esc(money(y.deductible))}</td><td>`
-      + (y.statements.map(s => `<a href="/api/accounting-donations/my-statements/${encodeURIComponent(s.id)}">statement, issued ${esc(s.issuedAt.slice(0, 10))}</a>`).join('<br>') || 'not issued yet')
-      + '</td></tr>').join('');
-    return { title: 'Your donations', html: `<table class="table table-sm"><thead><tr><th>Year</th><th>Donations</th><th class="text-end">Total</th><th class="text-end">Deductible</th><th>Statement</th></tr></thead><tbody>${rows}</tbody></table>` };
+    const { f, money } = profile;
+    const esc = (s: string) => f.escapeHtml(s);
+    return { title: 'Your donations', html: f.formatAsTable(['Year', 'Donations', 'Total', 'Deductible', 'Statement'],
+      years.map(y => [String(y.year), String(y.donationCount), esc(money(y.total)), esc(money(y.deductible)),
+        y.statements.map(s => `<a href="/api/accounting-donations/my-statements/${encodeURIComponent(s.id)}">statement, issued ${esc(s.issuedAt.slice(0, 10))}</a>`).join('<br>') || 'not issued yet'])) };
   },
 
   status(): { healthy: boolean; message: string } {

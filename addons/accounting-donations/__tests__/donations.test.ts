@@ -30,15 +30,17 @@ describe('donations', () => {
   let donations: DonationManager;
   let audit: Record<string, unknown>[];
   let fundId: string;
+  let bumps: number;
 
   beforeEach(async () => {
     ledgerDb = openTestLedgerDatabase();
     ownDb = openAddonTestDatabase<DonationsDb & { close(): void }>('accounting-donations',
       { migrations: DONATIONS_MIGRATIONS as never, ledgerTable: DONATIONS_LEDGER_TABLE }, { slug: 'accounting-donations', defaults });
     audit = [];
+    bumps = 0;
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide });
     donations = new DonationManager({ host, db: ownDb, ledger: ledger as never, decide, categories: () => ['4200'], formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
-      recordAudit: async (r) => { audit.push(r); } });
+      recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; } });
     ledger.registerLineDetails('donation', donationValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String, pledgeIsOpen: (id) => donations.pledgeIsOpen(id) }));
     fundId = (await ledger.createFund(actor(), { name: 'Building' })).id;
   });
@@ -88,5 +90,18 @@ describe('donations', () => {
       { value: p.id, amount: 30_000, label: 'Pat Lee · $500.00 pledged · $300.00 left' }
     ]);
     expect(await donations.toFormOptions({ list: 'open-pledges' }, { username: 'x', granted: [] })).toEqual([]);
+  });
+
+  test('every committed write refreshes the DonationManager cache topic; a refused one does not (#70)', async () => {
+    const g = await donations.recordInKind(actor(), { donorName: 'Pat Lee', date: '2026-10-20', description: 'Chairs' });
+    expect(bumps).toBe(1);
+    await donations.voidInKind(actor(), g.id, 'entered twice');
+    expect(bumps).toBe(2);
+    const p = await donations.createPledge(actor(), { donorName: 'Pat Lee', amount: 50_000, fundId, startDate: '2026-10-01' });
+    expect(bumps).toBe(3);
+    await donations.cancelPledge(actor(), p.id, 'withdrawn');
+    expect(bumps).toBe(4);
+    await expect(donations.recordInKind(actor(['ledger-read']), { donorName: 'x', date: '2026-10-20', description: 'y' })).rejects.toThrow('refused');
+    expect(bumps).toBe(4);
   });
 });
