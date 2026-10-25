@@ -441,11 +441,14 @@ export default class DonationManager {
     const familyName = text(input.familyName, 'familyName', { required: true, max: 100 }) as string;
     const name = [givenName, familyName].filter(Boolean).join(' ');
     const organization = text(input.organization, 'organization', { max: 300 });
-    let affiliation: { organization: string; role?: string }[] | undefined;
+    // An affiliation is a schema.org OrganizationRole on the identity record (ngdpbase #2039): roleName is
+    // the title, free text, and grants nothing. Core checks the organization and decides who may set it.
+    let affiliation: { '@type': 'OrganizationRole'; memberOf: { '@id': string }; roleName?: string }[] | undefined;
     if (organization) {
       const org = await this.donor(actor, organization, 'organization');
       if (org.type !== 'organization') throw new DonationError(400, 'organization: choose an organization');
-      affiliation = [{ organization: org.id, ...(text(input.role, 'role', { max: 100 }) ? { role: text(input.role, 'role', { max: 100 }) } : {}) }];
+      const roleName = text(input.role, 'role', { max: 100 });
+      affiliation = [{ '@type': 'OrganizationRole', memberOf: { '@id': org.id }, ...(roleName ? { roleName } : {}) }];
     }
     const person = await contacts.persons.create(actor.subject as never, {
       name, givenName, familyName, ...(email ? { email } : {}), ...(address ? { address } : {}), ...(affiliation ? { affiliation } : {})
