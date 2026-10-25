@@ -45,7 +45,7 @@
     {
       "id": "accounting-dues-treasurer",
       "name": "Treasurer bills dues and assessments",
-      "description": "The treasurer role issues and voids invoices. Recording payments is the accounting add-on's ledger-record.",
+      "description": "The treasurer role issues and voids invoices, reading each unit's billing parties through the accommodation add-on's own permission. Recording payments is the accounting add-on's ledger-record.",
       "priority": 90,
       "effect": "allow",
       "subjects": [
@@ -61,7 +61,8 @@
         }
       ],
       "actions": [
-        "invoice-issue"
+        "invoice-issue",
+        "accommodation-billing-read"
       ]
     },
     {
