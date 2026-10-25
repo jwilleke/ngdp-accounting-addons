@@ -16,7 +16,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
-import { billingMonth, chargeFor, lateChargesDue, partyKey, settle, splitByShare, type Assessment, type Billed, type LateChargeRule, type Payment, type ProposedLateCharge } from '../billing.js';
+import { billingMonth, chargeFor, lateChargesDue, settle, splitByShare, type Assessment, type Billed, type LateChargeRule, type Payment, type ProposedLateCharge } from '../billing.js';
 import { renderInvoice, type InvoiceWording, type PostalAddress } from './invoice.js';
 
 export type DuesHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
@@ -53,11 +53,17 @@ export interface DuesDb {
   transaction<T>(fn: () => T): () => T;
 }
 
-/** A person billed (ResidencyManager.billing): an ngdpbase user. */
-export interface AccountOwner { username: string; name: string; email: string | null }
+/** An owner as accommodation's billing() gives it (ngdpbase#2042): their identity @id and share of the unit. */
+export interface BillingOwner { '@id': string; share: number }
 
-/** One invoice's worth of an account (ResidencyManager.billing): who, where, and the percent of the charge. */
-export interface BillingParty { to: AccountOwner[]; name: string; address: PostalAddress; share: number }
+/** Where a unit's invoices go: free-text address, and that entry's percent of each charge. */
+export interface BillingEntry { address: string; share: number }
+
+/** What billing() gives: where the invoices go, and who owes them (D-047). */
+export interface Billing { billing: BillingEntry[]; owners: BillingOwner[] }
+
+/** A unit the viewer holds today, as accommodation's ownUnits() gives it. */
+export interface OwnUnit { id: string; as: string[] }
 
 /** The manager that holds the accounts billed (D-035); for a condominium, AccommodationManager. */
 export interface AccountSource {
@@ -67,12 +73,20 @@ export interface AccountSource {
   lateCharges?(): LateChargeRule[];
 }
 
-/** Who an invoice goes to: a party's people, names and address. */
-type Billee = { to: AccountOwner[]; name: string; address: PostalAddress | null };
-
-/** The manager that holds each account's billing parties on a date; for a condominium, ResidencyManager. */
+/**
+ * The manager that holds each account's billing and owners; for a condominium,
+ * ResidencyManager. billing() is read as the caller (accommodation-billing-read);
+ * ownUnits() gives the viewer's own units today (accommodation-self).
+ */
 export interface BillingSource {
-  billing(ctx: ActorContext, id: string, options?: { on?: string }): Promise<BillingParty[]>;
+  billing(ctx: ActorContext, id: string, options?: { on?: string }): Promise<Billing>;
+  ownUnits?(ctx: ActorContext): Promise<OwnUnit[]>;
+}
+
+/** core's IdentityManager, read as the caller: an owner's name and email to send to, and the viewer's own @id. */
+export interface IdentitySource {
+  getById(ctx: ActorContext, id: string): Promise<{ '@id'?: string; name?: string; email?: string } | null>;
+  getByUserIdentifier(ctx: ActorContext, username: string): Promise<{ '@id': string } | null>;
 }
 
 /** The slice of the accounting add-on's LedgerManager this one calls. */
@@ -96,8 +110,12 @@ export interface InvoiceLine {
 
 export interface Invoice {
   id: string; number: string; accountId: string; accountLabel: string; month: string; date: string; dueDate: string;
-  /** The billing party: its key (usernames), its names, and where the invoice went. */
-  party: string; partyName: string; address: PostalAddress | null;
+  /**
+   * Which billing entry it went to (entry-1, …), and where. New invoices keep the address as typed
+   * (`billingAddress`) and the owners' @ids and shares at that date (D-047); invoices issued before
+   * keep their party of usernames, names and structured address as they were.
+   */
+  party: string; partyName: string; address: PostalAddress | null; billingAddress: string | null; ownerIds: BillingOwner[];
   total: number; previous: number; owed: number; owners: { username: string; name: string }[];
   lines: InvoiceLine[]; html: string; sha256: string;
   status: 'issued' | 'voided'; voidReason: string | null; emailedTo: string | null; emailedAt: string | null;
@@ -108,12 +126,12 @@ export interface Invoice {
   paid: number; remaining: number;
 }
 
-/** One billing party's month, for the Prepare This Month's Invoices page. */
+/** One billing entry's month, for the Prepare This Month's Invoices page. */
 export interface MonthRow {
   accountId: string; label: string;
-  /** The party billed: its key, names, people and address. */
-  party: string; partyName: string; to: AccountOwner[]; address: PostalAddress | null;
-  /** Why the account cannot be billed this month (its billing parties were refused); nothing is issued for it. */
+  /** The billing entry (entry-1, …), its address as typed, its first line to show, and the unit's owners at the due date. */
+  party: string; partyName: string; address: string | null; owners: BillingOwner[];
+  /** Why the account cannot be billed this month (no billing address, no owner, …); nothing is issued for it. */
   problem: string | null;
   charge: { dueDate: string; amount: number } | null;
   lateCharges: ProposedLateCharge[];
@@ -141,6 +159,8 @@ export interface DuesOptions {
   accounts: () => AccountSource | null | undefined;
   /** The billing source; looked up when used, as the account source is. */
   billing: () => BillingSource | null | undefined;
+  /** core's IdentityManager: owners by @id, to email them, and the viewer's own @id. */
+  identities?: () => IdentitySource | null | undefined;
   recordAudit: (record: Record<string, unknown>) => Promise<void>;
   decide: (subject: ActorContext | null, request: { action: string }) => Promise<Decision>;
   /** Chart codes a payment may use; the first is the one invoices charge (configuration). */
@@ -173,10 +193,11 @@ interface InvoiceRow {
   total: number; previous: number; owed: number; owners: string; html: string; sha256: string; status: 'issued' | 'voided';
   void_reason: string | null; emailed_to: string | null; emailed_at: string | null; created_by: string; created_at: string;
   party: string; party_name: string; address: string | null; pdf_sha256: string | null;
+  billing_address: string | null; owner_ids: string | null;
 }
 interface LineRow { invoice_id: string; position: number; kind: 'charge' | 'late-charge'; description: string; amount: number; category: string; rule_id: string | null; applies_to: string | null; charge_key: string | null }
 
-/** What a party's money on an account looks like: its issued invoices, what payments settled, and the balance. */
+/** What a unit's money looks like (D-047): its issued invoices, what payments settled, and the balance. */
 interface AccountState { invoices: Billed[]; paid: Map<string, number>; credit: number; invoiced: number; payments: number }
 
 export default class DuesManager {
@@ -191,11 +212,12 @@ export default class DuesManager {
   // ── The month ──────────────────────────────────────────────────────────
 
   /**
-   * What each billing party would be invoiced for a month, without issuing:
-   * its share of the account's charge, the late charges due on its earlier
-   * invoices (as of the 1st of the month), its balance brought forward and the
-   * amount owed. Parties are the account's on the charge's due date. An account
-   * whose parties are refused is shown with the reason, and not billed.
+   * What each of a unit's billing entries would be invoiced for a month, without
+   * issuing (D-047): its share of the unit's charge and of the unit's balance
+   * brought forward, the late charges due on the unit's earlier invoices (as of
+   * the 1st of the month, on the first entry), and the amount owed. Entries and
+   * owners are the unit's on the charge's due date. A unit that cannot be billed
+   * (no billing address, no owner, …) is shown with the reason, and not billed.
    * Needs ledger-read.
    */
   async prepareMonth(actor: DuesActor, month: string): Promise<MonthRow[]> {
@@ -209,60 +231,59 @@ export default class DuesManager {
     for (const unit of source.list()) {
       const label = accountLabel(unit);
       const charge = chargeFor(source.assessment(unit.id), m);
-      const billed = new Map<string, { party: Billee; amount: number }>();
-      if (charge) {
-        let parties: BillingParty[];
-        try {
-          // Read as the caller (treasurer or job), so the read is attributed (ngdpbase-addons#11).
-          parties = await this.billingSource().billing(actor.subject as ActorContext, unit.id, { on: charge.dueDate });
-        } catch (err) {
-          if (err instanceof DuesError) throw err;
-          rows.push({ accountId: unit.id, label, party: '', partyName: '', to: [], address: null, problem: (err as Error).message,
-            charge, lateCharges: [], previous: 0, total: 0, owed: 0, invoiced: null });
-          continue;
-        }
-        const parts = splitByShare(charge.amount, parties);
-        parties.forEach((p, i) => billed.set(partyKey(p.to.map(o => o.username)), { party: p, amount: parts[i] ?? 0 }));
+      const existing = this.monthRows(unit.id, m);
+      if (existing.length) {
+        // Already invoiced: the invoices' own figures, as issued.
+        for (const r of existing) rows.push({ accountId: unit.id, label, party: r.party, partyName: r.party_name, address: r.billing_address,
+          owners: ownersOf(r), problem: null, charge: charge ? { dueDate: charge.dueDate, amount: r.total } : null, lateCharges: [],
+          previous: r.previous, total: r.total, owed: r.owed, invoiced: r.number });
+        continue;
       }
-      // A party billed before, and not this month, may still owe late charges on its earlier invoices.
-      for (const key of this.partiesOf(unit.id)) if (!billed.has(key)) billed.set(key, { party: this.lastBilled(unit.id, key), amount: 0 });
-      const existing = this.monthInvoices(unit.id, m);
-      for (const [key, { party, amount }] of billed) {
-        const base = { accountId: unit.id, label, party: key, partyName: party.name, to: party.to, address: party.address, problem: null };
-        const partyCharge = charge && amount > 0 ? { dueDate: charge.dueDate, amount } : null;
-        const invoice = existing.get(key);
-        if (invoice) {
-          // Already invoiced: the invoice's own figures, as issued.
-          rows.push({ ...base, charge: partyCharge, lateCharges: [], previous: invoice.previous, total: invoice.total, owed: invoice.owed, invoiced: invoice.number });
-          continue;
-        }
-        const state = states.get(stateKey(unit.id, key)) ?? emptyState();
-        const lateCharges = lateChargesDue(state.invoices, state.paid, rules, `${m}-01`, made);
-        if (!partyCharge && !lateCharges.length) continue;
-        const previous = state.invoiced - state.payments;
-        const total = (partyCharge?.amount ?? 0) + lateCharges.reduce((t, l) => t + l.amount, 0);
-        rows.push({ ...base, charge: partyCharge, lateCharges, previous, total, owed: Math.max(0, previous + total), invoiced: null });
+      const state = states.get(unit.id) ?? emptyState();
+      const lateCharges = lateChargesDue(state.invoices, state.paid, rules, `${m}-01`, made);
+      if (!charge && !lateCharges.length) continue;
+      let billing: Billing;
+      try {
+        // Read as the caller (treasurer or job), so the read is attributed and decided (accommodation-billing-read).
+        billing = await this.billingSource().billing(actor.subject as ActorContext, unit.id, { on: charge?.dueDate ?? `${m}-01` });
+      } catch (err) {
+        if (err instanceof DuesError) throw err;
+        rows.push({ accountId: unit.id, label, party: '', partyName: '', address: null, owners: [], problem: (err as Error).message,
+          charge, lateCharges: [], previous: 0, total: 0, owed: 0, invoiced: null });
+        continue;
       }
+      const charges = splitByShare(charge?.amount ?? 0, billing.billing);
+      const brought = splitByShare(state.invoiced - state.payments, billing.billing);
+      billing.billing.forEach((entry, i) => {
+        const late = i === 0 ? lateCharges : [];
+        const amount = charges[i] ?? 0;
+        const previous = brought[i] ?? 0;
+        const total = amount + late.reduce((t, l) => t + l.amount, 0);
+        rows.push({ accountId: unit.id, label, party: `entry-${i + 1}`, partyName: firstLine(entry.address), address: entry.address, owners: billing.owners,
+          problem: null, charge: charge && amount > 0 ? { dueDate: charge.dueDate, amount } : null, lateCharges: late,
+          previous, total, owed: Math.max(0, previous + total), invoiced: null });
+      });
     }
-    return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }) || a.partyName.localeCompare(b.partyName));
+    return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }) || a.party.localeCompare(b.party, undefined, { numeric: true }));
   }
 
   /**
-   * Issue a month's invoices: one per billing party with something charged
-   * that has none for the month yet, or one account's. Each is stored exactly
-   * as issued. Late charges are added only when the treasurer says so
+   * Issue a month's invoices: one per billing entry of each unit with something
+   * charged and no invoice for the month yet, or one unit's. Each is stored
+   * exactly as issued. Late charges are added only when the treasurer says so
    * (`lateCharges`), having seen them on the Prepare page. With `email`, an
-   * invoice with something owed is sent to each person on its party with an
-   * email on file; one fully paid by credit is kept, and not sent.
+   * invoice with something owed is sent to each of the unit's owners with an
+   * email on file; one fully paid by credit is kept, and not sent. A unit that
+   * cannot be billed is skipped and named in `skipped`, never billed to a
+   * guessed address (D-047).
    */
-  async issueMonth(actor: DuesActor, input: { month: string; account?: string; lateCharges?: boolean; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean }> {
+  async issueMonth(actor: DuesActor, input: { month: string; account?: string; lateCharges?: boolean; email?: boolean }): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean; skipped: string[] }> {
     await this.authorize(actor, 'invoice-issue');
     const month = this.month(input.month);
-    let rows = (await this.prepareMonth(actor, month)).filter(r => !r.invoiced && !r.problem);
-    if (input.account) {
-      rows = rows.filter(r => r.accountId === input.account);
-      if (!rows.length) throw new DuesError(409, `account: nothing to invoice for ${month}, or it is already invoiced`);
-    }
+    const prepared = (await this.prepareMonth(actor, month)).filter(r => !input.account || r.accountId === input.account);
+    const skipped = prepared.filter(r => r.problem).map(r => `${r.label}: ${r.problem}`);
+    const rows = prepared.filter(r => !r.invoiced && !r.problem);
+    if (input.account && !rows.length) throw new DuesError(409, `account: nothing to invoice for ${month}, or it is already invoiced${skipped.length ? ` (${skipped.join('; ')})` : ''}`);
     const pending: { row: MonthRow; late: ProposedLateCharge[] }[] = [];
     for (const row of rows) {
       const late = input.lateCharges ? row.lateCharges : [];
@@ -270,20 +291,27 @@ export default class DuesManager {
       pending.push({ row, late });
     }
     await this.audit(actor, { action: 'invoice-issue', severity: 'high', resource: `invoices:${month}`, resourceType: 'dues-invoice',
-      metadata: { month, count: pending.length, accounts: pending.map(p => p.row.accountId), parties: pending.map(p => p.row.party),
+      metadata: { month, count: pending.length, accounts: pending.map(p => p.row.accountId), entries: pending.map(p => p.row.party), skipped,
         lateCharges: input.lateCharges === true, email: input.email === true } });
     let emailed = 0;
     // Nothing goes to owners while send-to-owners is off (D-035): the invoices are kept, not sent.
     const held = input.email === true && !(this.options.sendToOwners?.() ?? false);
     const notEmailed: string[] = [];
+    // Each owner is looked up once per run, as the caller, and nothing of them is copied onto an invoice.
+    const people = new Map<string, Promise<{ name?: string; email?: string } | null>>();
+    const person = (id: string) => {
+      if (!people.has(id)) people.set(id, this.identitySource()?.getById(actor.subject as ActorContext, id).catch(() => null) ?? Promise.resolve(null));
+      return people.get(id) as Promise<{ name?: string; email?: string } | null>;
+    };
     for (const p of pending) {
       const id = this.insertInvoice(actor, month, p.row, p.late);
       if (input.email && !held && this.row(id).owed > 0) {
-        if (await this.sendInvoice(actor, id, p.row.to)) emailed++; else notEmailed.push(`${p.row.label} · ${p.row.partyName}`);
+        const to = (await Promise.all(p.row.owners.map(o => person(o['@id'])))).map(o => o?.email).filter((e): e is string => typeof e === 'string' && e !== '');
+        if (await this.sendInvoice(actor, id, to)) emailed++; else notEmailed.push(`${p.row.label} · ${p.row.partyName}`);
       }
     }
     if (pending.length) await this.options.changed?.();
-    return { issued: pending.length, emailed, notEmailed, held };
+    return { issued: pending.length, emailed, notEmailed, held, skipped };
   }
 
   /**
@@ -297,9 +325,10 @@ export default class DuesManager {
     const result = await this.issueMonth(actor, { month, lateCharges: true, email: true });
     const sent = result.held ? 'nothing sent to owners: sending to owners is off on this site'
       : `${result.emailed} emailed${result.notEmailed.length ? `; not emailed: ${result.notEmailed.join(', ')}` : ''}`;
-    const summary = `${month}: ${result.issued} issued, ${sent}`;
-    // While nothing goes to owners, the people who issue invoices are told instead (D-035).
-    if (result.held && result.issued) await this.options.notifyIssuers?.(`Invoices issued for ${month}`, summary);
+    const summary = `${month}: ${result.issued} issued, ${sent}${result.skipped.length ? `; not invoiced: ${result.skipped.join('; ')}` : ''}`;
+    // While nothing goes to owners, the people who issue invoices are told instead (D-035); and a unit
+    // left unbilled is always told, never left silently (D-047).
+    if ((result.held && result.issued) || result.skipped.length) await this.options.notifyIssuers?.(`Invoices issued for ${month}`, summary);
     return { success: true, summary };
   }
 
@@ -320,16 +349,16 @@ export default class DuesManager {
 
   // ── Reading ────────────────────────────────────────────────────────────
 
-  /** An invoice, exactly as issued, with what has been paid of it. Needs ledger-read. */
+  /** An invoice, exactly as issued, with what has been paid of it. Needs ledger-read, or account-read (the board, D-047). */
   async getInvoice(actor: DuesActor, invoiceId: string): Promise<Invoice> {
-    await this.authorize(actor, 'ledger-read');
+    await this.authorizeAny(actor, ['account-read', 'ledger-read']);
     const row = this.row(invoiceId);
-    return this.toInvoice(row, this.states().get(stateKey(row.account_id, row.party)) ?? emptyState());
+    return this.toInvoice(row, this.states().get(row.account_id) ?? emptyState());
   }
 
-  /** Invoices, newest first; one account's, or one month's; voided ones only when asked. Needs ledger-read. */
+  /** Invoices, newest first; one account's, or one month's; voided ones only when asked. Needs ledger-read, or account-read. */
   async listInvoices(actor: DuesActor, filter: { accountId?: string; month?: string; includeVoided?: boolean } = {}): Promise<Invoice[]> {
-    await this.authorize(actor, 'ledger-read');
+    await this.authorizeAny(actor, ['account-read', 'ledger-read']);
     const where: string[] = [];
     const params: unknown[] = [];
     if (!filter.includeVoided) where.push("status = 'issued'");
@@ -338,79 +367,81 @@ export default class DuesManager {
     const rows = this.options.db.prepare(`SELECT * FROM accounting_dues_invoices ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY month DESC, number DESC`).all(...params) as InvoiceRow[];
     const states = this.states();
-    return rows.map(r => this.toInvoice(r, states.get(stateKey(r.account_id, r.party)) ?? emptyState()));
+    return rows.map(r => this.toInvoice(r, states.get(r.account_id) ?? emptyState()));
   }
 
-  /** Each account: what was invoiced, what was paid, and the balance (negative is a credit), summed over its parties. Needs ledger-read. */
+  /** Each unit: what was invoiced, what was paid, and the balance (negative is a credit). Needs ledger-read, or account-read. */
   async balances(actor: DuesActor): Promise<AccountBalance[]> {
-    await this.authorize(actor, 'ledger-read');
-    const totals = new Map<string, { invoiced: number; payments: number }>();
-    for (const [key, s] of this.states()) {
-      const account = accountOfKey(key);
-      const t = totals.get(account) ?? { invoiced: 0, payments: 0 };
-      totals.set(account, { invoiced: t.invoiced + s.invoiced, payments: t.payments + s.payments });
-    }
+    await this.authorizeAny(actor, ['account-read', 'ledger-read']);
+    const states = this.states();
     return this.source().list().map(unit => {
-      const s = totals.get(unit.id) ?? { invoiced: 0, payments: 0 };
+      const s = states.get(unit.id) ?? emptyState();
       return { accountId: unit.id, label: accountLabel(unit), invoiced: s.invoiced, paid: s.payments, balance: s.invoiced - s.payments };
     }).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
 
-  // ── An owner's own view (D-037, D-038) ──────────────────────────────────
+  // ── An owner's own view (D-037, D-047) ──────────────────────────────────
 
   /**
-   * The signed-in person's own bills: for each billing party they are on, its
-   * invoices with what is paid and left, and the party's balance (negative is
-   * a credit). Everyone on a party sees the same. Needs ledger-self, which
+   * The signed-in person's own bills (D-047). For each unit they own today,
+   * decided now through accommodation (ownUnits, by the viewer's own context),
+   * the unit's whole account: every invoice of every billing entry, what is paid
+   * and left, and the unit's balance. For a unit they no longer own, only the
+   * invoices issued while they did (those naming their identity @id, or their
+   * username on invoices from before), and no balance. Needs ledger-self, which
    * every signed-in person holds.
    */
-  async myDues(actor: DuesActor): Promise<{ accountId: string; label: string; party: string; partyName: string; balance: number;
-    invoices: { id: string; number: string; month: string; dueDate: string; total: number; paid: number; remaining: number }[] }[]> {
+  async myDues(actor: DuesActor): Promise<{ accountId: string; label: string; current: boolean; balance: number | null;
+    invoices: { id: string; number: string; month: string; dueDate: string; billedTo: string; total: number; paid: number; remaining: number }[] }[]> {
     await this.authorize(actor, 'ledger-self');
-    const rows = this.ownRows(actor.actingUsername());
+    const { current, rows } = await this.ownRows(actor);
     if (!rows.length) return [];
     const states = this.states();
-    const parties = new Map<string, InvoiceRow[]>();
-    for (const r of rows) parties.set(stateKey(r.account_id, r.party), [...(parties.get(stateKey(r.account_id, r.party)) ?? []), r]);
-    return [...parties.entries()].map(([key, invoices]) => {
-      const state = states.get(key) ?? emptyState();
-      const first = invoices[0] as InvoiceRow;
+    const units = new Map<string, InvoiceRow[]>();
+    for (const r of rows) units.set(r.account_id, [...(units.get(r.account_id) ?? []), r]);
+    return [...units.entries()].map(([unitId, invoices]) => {
+      const state = states.get(unitId) ?? emptyState();
+      const owns = current.has(unitId);
       return {
-        accountId: first.account_id, label: first.account_label, party: first.party, partyName: first.party_name,
-        balance: state.invoiced - state.payments,
+        accountId: unitId, label: (invoices[0] as InvoiceRow).account_label, current: owns,
+        balance: owns ? state.invoiced - state.payments : null,
         invoices: invoices.map(r => {
           const paid = state.paid.get(r.id) ?? 0;
-          return { id: r.id, number: r.number, month: r.month, dueDate: r.due_date, total: r.total, paid, remaining: r.total - paid };
+          return { id: r.id, number: r.number, month: r.month, dueDate: r.due_date, billedTo: r.party_name, total: r.total, paid, remaining: r.total - paid };
         })
       };
     }).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
 
-  /** One of the signed-in person's own invoices, exactly as issued; another party's is not found. Needs ledger-self. */
+  /** One of the signed-in person's own invoices (as myDues decides), exactly as issued; any other is not found. Needs ledger-self. */
   async myInvoice(actor: DuesActor, invoiceId: string): Promise<Invoice> {
     await this.authorize(actor, 'ledger-self');
-    const row = this.ownRows(actor.actingUsername()).find(r => r.id === invoiceId);
+    const row = (await this.ownRows(actor)).rows.find(r => r.id === invoiceId);
     if (!row) throw new DuesError(404, 'invoiceId: unknown invoice');
-    return this.toInvoice(row, this.states().get(stateKey(row.account_id, row.party)) ?? emptyState());
+    return this.toInvoice(row, this.states().get(row.account_id) ?? emptyState());
   }
 
-  /** Issued invoices of every party a person is on (a party is its people's usernames), newest first. */
-  private ownRows(username: string): InvoiceRow[] {
-    return (this.options.db.prepare("SELECT * FROM accounting_dues_invoices WHERE status = 'issued' ORDER BY month DESC, number DESC").all() as InvoiceRow[])
-      .filter(r => r.party.split(',').includes(username));
+  /**
+   * The invoices a person may see as their own, newest first, and the units they own today: every
+   * invoice of a unit they own now (accommodation, as the viewer), and any other naming them, by
+   * identity @id, or by username on invoices issued before identities (D-045, D-047).
+   */
+  private async ownRows(actor: DuesActor): Promise<{ current: Set<string>; rows: InvoiceRow[] }> {
+    const ctx = actor.subject as ActorContext;
+    const username = actor.actingUsername();
+    const units = await this.billingSource().ownUnits?.(ctx).catch(() => []) ?? [];
+    const current = new Set(units.filter(u => u.as.includes('owner')).map(u => u.id));
+    const me = (await this.identitySource()?.getByUserIdentifier(ctx, username).catch(() => null))?.['@id'];
+    const rows = (this.options.db.prepare("SELECT * FROM accounting_dues_invoices WHERE status = 'issued' ORDER BY month DESC, number DESC").all() as InvoiceRow[])
+      .filter(r => current.has(r.account_id) || (me && ownersOf(r).some(o => o['@id'] === me)) || (!r.owner_ids && r.party.split(',').includes(username)));
+    return { current, rows };
   }
 
-  /** An invoice's account, party and status, for the `dues` line kind's validator. */
-  invoiceOf(invoiceId: string): { accountId: string; party: string; status: string } | null {
-    const row = this.options.db.prepare('SELECT account_id, party, status FROM accounting_dues_invoices WHERE id = ?').get(invoiceId) as
-      { account_id: string; party: string; status: string } | undefined;
-    return row ? { accountId: row.account_id, party: row.party, status: row.status } : null;
-  }
-
-  /** The parties an account's issued invoices were billed to, first billed first. */
-  partiesOf(accountId: string): string[] {
-    return (this.options.db.prepare(`SELECT party FROM accounting_dues_invoices WHERE account_id = ? AND status = 'issued'
-      GROUP BY party ORDER BY MIN(due_date), MIN(number)`).all(accountId) as { party: string }[]).map(r => r.party);
+  /** An invoice's account and status, for the `dues` line kind's validator. */
+  invoiceOf(invoiceId: string): { accountId: string; status: string } | null {
+    const row = this.options.db.prepare('SELECT account_id, status FROM accounting_dues_invoices WHERE id = ?').get(invoiceId) as
+      { account_id: string; status: string } | undefined;
+    return row ? { accountId: row.account_id, status: row.status } : null;
   }
 
   /** The manager holding the accounts, so a page showing them depends on its cache topic too. */
@@ -427,7 +458,6 @@ export default class DuesManager {
 
   /**
    *   accounts         every account, by label           (none: no account source)
-   *   parties          each party billed, by account     ledger-read
    *   dues-categories  the chart's dues categories       ledger-record (through LedgerManager)
    *   months           last month, this month, next month
    *   open-invoices    issued invoices with money owed   ledger-read
@@ -446,17 +476,6 @@ export default class DuesManager {
       const d = this.now();
       const at = (offset: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + offset, 1)).toISOString().slice(0, 7);
       return [at(0), at(1), at(-1)].map(m => ({ value: m, label: m }));
-    }
-    if (options.list === 'parties') {
-      try {
-        await this.authorize(viewerActor(viewer), 'ledger-read');
-      } catch {
-        return [];
-      }
-      const rows = this.options.db.prepare(`SELECT account_label, party, party_name FROM accounting_dues_invoices WHERE status = 'issued'
-        GROUP BY account_id, party`).all() as { account_label: string; party: string; party_name: string }[];
-      return rows.map(r => ({ value: r.party, label: `${r.account_label} · ${r.party_name}` }))
-        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
     }
     if (options.list === 'open-invoices' || options.list === 'invoices') {
       try {
@@ -480,6 +499,10 @@ export default class DuesManager {
     return source;
   }
 
+  private identitySource(): IdentitySource | null | undefined {
+    return this.options.identities?.();
+  }
+
   private billingSource(): BillingSource {
     const source = this.options.billing();
     if (!source) throw new DuesError(409, 'the billing parties are not available on this site (ngdpbase.addons.accounting-dues.billing-manager)');
@@ -491,35 +514,29 @@ export default class DuesManager {
   }
 
   /**
-   * Every party's issued invoices and payments, read once, by account and party:
-   * payments are posted dues lines, less refunds, bounced checks left out. A
-   * payment settles its own party's invoices (D-038); one recorded before
-   * parties, naming none, settles the party its invoice names, else the
-   * account's first party.
+   * Every unit's issued invoices and payments, read once, by unit (D-047):
+   * payments are posted dues lines, less refunds, bounced checks left out, and
+   * settle the unit's invoices oldest first, or the one they name first.
+   * Invoices issued to billing parties before (D-038) count in their unit too.
    */
   private states(): Map<string, AccountState> {
     const invoices = new Map<string, Billed[]>();
-    const partyOfInvoice = new Map<string, string>();
-    for (const r of this.options.db.prepare("SELECT id, number, account_id, party, due_date, total FROM accounting_dues_invoices WHERE status = 'issued'").all() as
-      { id: string; number: string; account_id: string; party: string; due_date: string; total: number }[]) {
-      const key = stateKey(r.account_id, r.party);
-      invoices.set(key, [...(invoices.get(key) ?? []), { id: r.id, number: r.number, dueDate: r.due_date, total: r.total }]);
-      partyOfInvoice.set(r.id, r.party);
+    for (const r of this.options.db.prepare("SELECT id, number, account_id, due_date, total FROM accounting_dues_invoices WHERE status = 'issued'").all() as
+      { id: string; number: string; account_id: string; due_date: string; total: number }[]) {
+      invoices.set(r.account_id, [...(invoices.get(r.account_id) ?? []), { id: r.id, number: r.number, dueDate: r.due_date, total: r.total }]);
     }
     const payments = new Map<string, Payment[]>();
     for (const { amount, details } of this.options.payments()) {
-      const dues = details as { account?: string; party?: string | null; invoiceId?: string | null };
+      const dues = details as { account?: string; invoiceId?: string | null };
       if (!dues.account) continue;
-      const party = dues.party ?? (dues.invoiceId ? partyOfInvoice.get(dues.invoiceId) : undefined) ?? this.partiesOf(dues.account)[0] ?? '';
-      const key = stateKey(dues.account, party);
-      payments.set(key, [...(payments.get(key) ?? []), { amount, invoiceId: dues.invoiceId ?? null }]);
+      payments.set(dues.account, [...(payments.get(dues.account) ?? []), { amount, invoiceId: dues.invoiceId ?? null }]);
     }
     const states = new Map<string, AccountState>();
-    for (const key of new Set([...payments.keys(), ...invoices.keys()])) {
-      const inv = invoices.get(key) ?? [];
-      const pay = payments.get(key) ?? [];
+    for (const unit of new Set([...payments.keys(), ...invoices.keys()])) {
+      const inv = invoices.get(unit) ?? [];
+      const pay = payments.get(unit) ?? [];
       const { paid, credit } = settle(inv, pay);
-      states.set(key, { invoices: inv, paid, credit, invoiced: inv.reduce((t, i) => t + i.total, 0), payments: pay.reduce((t, p) => t + p.amount, 0) });
+      states.set(unit, { invoices: inv, paid, credit, invoiced: inv.reduce((t, i) => t + i.total, 0), payments: pay.reduce((t, p) => t + p.amount, 0) });
     }
     return states;
   }
@@ -530,19 +547,10 @@ export default class DuesManager {
       WHERE i.status = 'issued' AND l.charge_key IS NOT NULL`).all() as { charge_key: string }[]).map(r => r.charge_key));
   }
 
-  /** An account's issued invoices for a month, by party. */
-  private monthInvoices(accountId: string, month: string): Map<string, { number: string; previous: number; total: number; owed: number }> {
-    const rows = this.options.db.prepare("SELECT party, number, previous, total, owed FROM accounting_dues_invoices WHERE account_id = ? AND month = ? AND status = 'issued'")
-      .all(accountId, month) as { party: string; number: string; previous: number; total: number; owed: number }[];
-    return new Map(rows.map(r => [r.party, r]));
-  }
-
-  /** A party as it was last billed on an account, for late charges on its earlier invoices once it is billed no more. */
-  private lastBilled(accountId: string, party: string): Billee {
-    const r = this.options.db.prepare(`SELECT owners, party_name, address FROM accounting_dues_invoices WHERE account_id = ? AND party = ? AND status = 'issued'
-      ORDER BY due_date DESC, number DESC LIMIT 1`).get(accountId, party) as { owners: string; party_name: string; address: string | null };
-    const owners = JSON.parse(r.owners) as { username: string; name: string }[];
-    return { to: owners.map(o => ({ ...o, email: null })), name: r.party_name, address: r.address ? JSON.parse(r.address) as PostalAddress : null };
+  /** A unit's issued invoices for a month. */
+  private monthRows(accountId: string, month: string): InvoiceRow[] {
+    return this.options.db.prepare("SELECT * FROM accounting_dues_invoices WHERE account_id = ? AND month = ? AND status = 'issued' ORDER BY number")
+      .all(accountId, month) as InvoiceRow[];
   }
 
   private insertInvoice(actor: DuesActor, month: string, row: MonthRow, late: ProposedLateCharge[]): string {
@@ -559,18 +567,20 @@ export default class DuesManager {
     const id = this.newId();
     const date = this.stamp().slice(0, 10);
     const dueDate = row.charge?.dueDate ?? `${month}-01`;
-    const owned = row.to.map(o => ({ username: o.username, name: o.name }));
+
     this.options.db.transaction(() => {
       const seq = this.options.db.prepare("SELECT next FROM accounting_dues_sequence WHERE name = 'invoice'").get() as { next: number };
       this.options.db.prepare("UPDATE accounting_dues_sequence SET next = next + 1 WHERE name = 'invoice'").run();
       const number = `I-${String(seq.next).padStart(4, '0')}`;
       const html = renderInvoice({ number, accountLabel: row.label, month, date, dueDate, lines, previous: row.previous, total, owed,
-        billTo: { name: row.partyName, address: row.address }, label: label.singular },
+        billTo: row.address ?? '', label: label.singular },
         this.wording(), this.options.formatMoney);
+      // Where it went as typed, and the owners by @id and share at that date: no names (D-047).
       this.options.db.prepare(`INSERT INTO accounting_dues_invoices (id, number, account_id, account_label, month, date, due_date, total, previous, owed, owners,
-          party, party_name, address, html, sha256, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`).run(
-        id, number, row.accountId, row.label, month, date, dueDate, total, row.previous, owed, JSON.stringify(owned),
-        row.party, row.partyName, row.address ? JSON.stringify(row.address) : null,
+          party, party_name, address, billing_address, owner_ids, html, sha256, status, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, NULL, ?, ?, ?, ?, 'issued', ?, ?)`).run(
+        id, number, row.accountId, row.label, month, date, dueDate, total, row.previous, owed,
+        row.party, row.partyName, row.address, JSON.stringify(row.owners),
         html, createHash('sha256').update(html).digest('hex'), actor.actingUsername(), this.stamp());
       lines.forEach((l, position) => this.options.db.prepare(`INSERT INTO accounting_dues_invoice_lines (id, invoice_id, position, kind, description, amount, category,
           rule_id, applies_to, charge_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(this.newId(), id, position, l.kind, l.description, l.amount, l.category, l.ruleId, l.appliesTo, l.key));
@@ -579,15 +589,14 @@ export default class DuesManager {
   }
 
   /**
-   * Email a stored invoice to each person on its party with an email, as the
-   * caller, with the invoice attached as a PDF when the site makes PDFs (else
+   * Email a stored invoice to the unit's owners (their emails, looked up as the
+   * caller), with the invoice attached as a PDF when the site makes PDFs (else
    * the page alone); false when none could be sent.
    */
-  private async sendInvoice(actor: DuesActor, id: string, owners: AccountOwner[]): Promise<boolean> {
+  private async sendInvoice(actor: DuesActor, id: string, to: string[]): Promise<boolean> {
     const row = this.row(id);
     const mailer = this.options.email?.();
     const ctx = actor.subject;
-    const to = owners.map(o => o.email).filter((e): e is string => typeof e === 'string' && e !== '');
     if (!mailer || !ctx || !to.length) return false;
     let pdf: Buffer | null;
     try {
@@ -630,6 +639,7 @@ export default class DuesManager {
     return {
       id: r.id, number: r.number, accountId: r.account_id, accountLabel: r.account_label, month: r.month, date: r.date, dueDate: r.due_date,
       party: r.party, partyName: r.party_name, address: r.address ? JSON.parse(r.address) as PostalAddress : null,
+      billingAddress: r.billing_address, ownerIds: ownersOf(r),
       total: r.total, previous: r.previous, owed: r.owed, owners: JSON.parse(r.owners) as Invoice['owners'], lines, html: r.html, sha256: r.sha256,
       status: r.status, voidReason: r.void_reason, emailedTo: r.emailed_to, emailedAt: r.emailed_at, pdfSha256: r.pdf_sha256, createdBy: r.created_by, createdAt: r.created_at,
       paid, remaining: r.status === 'issued' ? r.total - paid : 0
@@ -639,6 +649,16 @@ export default class DuesManager {
   private async authorize(actor: DuesActor, action: string): Promise<void> {
     const decision = await this.options.decide(actor.subject, { action });
     if (!decision.permit) await actor.enforceDeny(action, decision);
+  }
+
+  /** Allowed when any of the actions is; refused naming the last. */
+  private async authorizeAny(actor: DuesActor, actions: string[]): Promise<void> {
+    let last: Decision | null = null;
+    for (const action of actions) {
+      last = await this.options.decide(actor.subject, { action });
+      if (last.permit) return;
+    }
+    await actor.enforceDeny(actions[actions.length - 1] as string, last as Decision);
   }
 
   private async audit(actor: DuesActor, record: { action: string; severity: string; resource: string; resourceType: string; reason?: string; metadata: Record<string, unknown> }): Promise<void> {
@@ -657,9 +677,11 @@ export default class DuesManager {
 
 const emptyState = (): AccountState => ({ invoices: [], paid: new Map(), credit: 0, invoiced: 0, payments: 0 });
 
-/** A party's money is kept by account and party: a key for both. */
-const stateKey = (accountId: string, party: string): string => `${accountId}\n${party}`;
-const accountOfKey = (key: string): string => key.slice(0, key.indexOf('\n'));
+/** The owners an invoice names, by @id and share (D-047); none on an invoice issued before identities. */
+const ownersOf = (r: { owner_ids: string | null }): BillingOwner[] => (r.owner_ids ? JSON.parse(r.owner_ids) as BillingOwner[] : []);
+
+/** The first line of an address as typed, to name a billing entry on screens. */
+const firstLine = (address: string): string => address.split(/\r?\n/)[0]?.trim() ?? '';
 
 /** How an account is named on screens and invoices: its unit number, else its address, else its id. */
 export function accountLabel(unit: { id: string } & Record<string, unknown>): string {

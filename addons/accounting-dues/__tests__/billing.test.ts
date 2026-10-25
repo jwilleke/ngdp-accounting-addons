@@ -1,9 +1,9 @@
 /**
  * The billing rules (D-035), on their own: a month's charge, how payments settle
- * invoices, late charges, and parties' shares.
+ * invoices, late charges, and billing entries' shares.
  */
 import { describe, expect, test } from 'vitest';
-import { billingMonth, chargeFor, daysBetween, lateChargesDue, partyKey, settle, splitByShare, type LateChargeRule } from '../billing.js';
+import { billingMonth, chargeFor, daysBetween, lateChargesDue, settle, splitByShare, type LateChargeRule } from '../billing.js';
 
 const RULES: LateChargeRule[] = [
   { id: 'late-10', daysLate: 10, amount: 1000, annualPercent: null, repeat: 'once' },
@@ -46,9 +46,8 @@ describe('billing', () => {
     expect(lateChargesDue([{ ...invoices[0]!, dueDate: '2026-09-21' }], new Map(), RULES, '2026-10-01', new Set())).toEqual([]);
   });
 
-  test('parties split a charge by share, to the cent; a party is its people, sorted', () => {
+  test('billing entries split a charge by share, to the cent', () => {
     expect(splitByShare(41001, [{ share: 60 }, { share: 40 }])).toEqual([24601, 16400]);
     expect(splitByShare(100, [{ share: 100 / 3 }, { share: 100 / 3 }, { share: 100 / 3 }])).toEqual([34, 33, 33]);
-    expect(partyKey(['molly.willeke', 'jim.willeke'])).toBe('jim.willeke,molly.willeke');
   });
 });

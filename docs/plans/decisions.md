@@ -1521,7 +1521,7 @@ per-party balance.
   the owners' `@id`s and shares at that date, no names.
 - __Who sees it:__ a current owner, decided when they look, sees the unit's whole account. A past
   owner keeps seeing the invoices issued while they owned it (D-045), not the unit's later account.
-  The board sees every unit's under a new permission, `dues-read`, which a site grants to its board.
+  The board sees every unit's under a new permission, `account-read`, which a site grants to its board.
 - __A unit with no billing address is never invoiced to a guessed address:__ the run reports and
   skips it, naming it in the run's result and in the treasurer's notice.
 - Invoices issued in the old shape are read as they are and never rewritten.

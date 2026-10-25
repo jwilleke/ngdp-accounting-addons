@@ -18,7 +18,7 @@
 import type { ActorContext, AddonHost, BackgroundJobManager, Decision, PluginFormatters } from '@jwilleke/ngdpbase-types';
 import { duesValidator } from './billing.js';
 import { registerDuesForms } from './forms.js';
-import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type DuesOptions, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
+import DuesManager, { accountLabel, type AccountSource, type BillingSource, type DuesDb, type DuesOptions, type IdentitySource, type LedgerLike as DuesLedger } from './managers/DuesManager.js';
 import { DUES_LEDGER_TABLE, DUES_MIGRATIONS } from './managers/migrations.js';
 import DuesPlugin from './plugins/DuesPlugin.js';
 import duesRoutes from './routes/api.js';
@@ -78,7 +78,7 @@ let profile: { dues: DuesManager; f: PluginFormatters; money(minor: number): str
 
 const AccountingDuesAddon = {
   name: 'accounting-dues',
-  version: '0.2.0',
+  version: '0.3.0',
   description: 'Dues and assessments: monthly invoices, payments, credits and late charges',
   author: 'jwilleke',
   dependencies: ['accounting'],
@@ -122,7 +122,8 @@ const AccountingDuesAddon = {
     // The ledger's reader of this add-on's own `dues` lines, handed over when the kind is registered below.
     let duesLines: { lines(): { amount: number; details: Record<string, unknown> }[] } | null = null;
     const dues = new DuesManager({
-      host, db, ledger, accounts, billing, categories, payments: () => duesLines?.lines() ?? [], accountsManager: sourceName,
+      host, db, ledger, accounts, billing, categories, payments: () => duesLines?.lines() ?? [],
+      identities: () => engine.getManager<IdentitySource>('IdentityManager'), accountsManager: sourceName,
       changed: async () => { await cache?.bump('DuesManager'); },
       sendToOwners: () => setting('send-to-owners', false) === true,
       label,
@@ -144,7 +145,7 @@ const AccountingDuesAddon = {
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
       decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
     });
-    duesLines = ledger.registerLineDetails('dues', duesValidator({ categories, accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id), partiesOf: (id) => dues.partiesOf(id) }));
+    duesLines = ledger.registerLineDetails('dues', duesValidator({ categories, accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
     engine.registerManager('DuesManager', dues);
     await engine.getManager<{ registerPlugin(name: string, plugin: unknown): Promise<void> }>('PluginManager')?.registerPlugin('Dues', DuesPlugin);
     engine.app?.use('/api/accounting-dues', duesRoutes(engine, host));
@@ -163,9 +164,10 @@ const AccountingDuesAddon = {
   },
 
   /**
-   * The signed-in owner's own bills on their profile (D-037, D-038): for each
-   * billing party they are on, its invoices, what is paid and left, and the
-   * balance. Nothing for someone who is billed nothing.
+   * The signed-in owner's own bills on their profile (D-044, D-047): for each
+   * unit they own today, its whole account, every billing entry's invoices with
+   * what is paid and left, and the unit's balance; for a unit they no longer
+   * own, the invoices issued while they did. Nothing for someone never billed.
    */
   async profileSection(user: { username: string }, ctx: ActorContext): Promise<{ title: string; html: string } | null> {
     if (!profile) return null;
@@ -174,21 +176,21 @@ const AccountingDuesAddon = {
       ipAddress: undefined, actingUsername: () => user.username, subject: ctx,
       enforceDeny: async (permission: string): Promise<never> => { throw Object.assign(new Error(`not permitted: ${permission}`), { status: 403 }); }
     };
-    let parties;
-    try { parties = await profile.dues.myDues(actor); } catch { return null; }
-    if (!parties.length) return null;
+    let units;
+    try { units = await profile.dues.myDues(actor); } catch { return null; }
+    if (!units.length) return null;
     const { f, money } = profile;
     const esc = (s: string) => f.escapeHtml(s);
     const balance = (m: number) => esc(m < 0 ? `${money(-m)} credit` : money(m));
-    const html = parties.map(p => `<p><strong>${esc(p.label)}</strong> · ${esc(p.partyName)} · balance <strong>${balance(p.balance)}</strong></p>`
-      + f.formatAsTable(['Invoice', 'Month', 'Due', 'Charged', 'Paid', 'Left to pay'],
-        p.invoices.map(i => [`<a href="/api/accounting-dues/my-invoices/${encodeURIComponent(i.id)}">${esc(i.number)}</a>`, esc(i.month), esc(i.dueDate),
+    const html = units.map(u => `<p><strong>${esc(u.label)}</strong>${u.balance === null ? ' · no longer yours: the invoices from when it was' : ` · balance <strong>${balance(u.balance)}</strong>`}</p>`
+      + f.formatAsTable(['Invoice', 'Month', 'Due', 'Billed to', 'Charged', 'Paid', 'Left to pay'],
+        u.invoices.map(i => [`<a href="/api/accounting-dues/my-invoices/${encodeURIComponent(i.id)}">${esc(i.number)}</a>`, esc(i.month), esc(i.dueDate), esc(i.billedTo),
           esc(money(i.total)), esc(money(i.paid)), esc(money(i.remaining))]))).join('');
     return { title: profile.title(), html };
   },
 
   status(): { healthy: boolean; message: string } {
-    return unavailable ? { healthy: false, message: `Dues are off: ${unavailable}` } : { healthy: true, message: 'Invoices ready' };
+    return unavailable ? { healthy: false, message: `Invoices are off: ${unavailable}` } : { healthy: true, message: 'Invoices ready' };
   }
 };
 
