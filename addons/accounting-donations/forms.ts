@@ -13,7 +13,7 @@ interface FormsAddonLike {
   registerHandler(formId: string, handler: (submission: { data: Data }, context: { engine: unknown; req: unknown }) => Promise<HandlerResult>): void;
 }
 /** ngdpbase's forms add-on (v5.22.0, #1880, #1918): a shipped form is registered on every start. */
-interface FormsDataManagerLike { registerShippedForm(addon: string, definition: unknown, options?: { required?: boolean }): Promise<unknown> }
+interface FormsDataManagerLike { registerShippedForm(addon: string, definition: unknown, ctx: unknown): Promise<unknown> }
 
 /** The slice of the accounting add-on's ReceiptManager this add-on calls. */
 export interface ReceiptManagerLike {
@@ -165,7 +165,7 @@ export async function registerGiftForms(engine: Engine, host: AddonHost): Promis
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
   if (!forms || !definitions) { host.logger.info('[accounting-donations] Forms add-on not enabled: the gift screen is off'); return; }
-  await definitions.registerShippedForm('accounting-donations', GIFT_FORM);
+  await definitions.registerShippedForm('accounting-donations', GIFT_FORM, host.systemContext(`accounting-donations: shipped form ${GIFT_FORM.id}`));
   for (const [definition, run] of [
     [INKIND_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.recordInKind(ctx, { ...await donorOf(d, ctx, data), date: data.date, description: data.description })],
     [PLEDGE_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) => d.createPledge(ctx, {
@@ -179,7 +179,7 @@ export async function registerGiftForms(engine: Engine, host: AddonHost): Promis
     [STATEMENT_REISSUE_FORM, async (d: DonationManagerLike, ctx: ApiContext, data: Data) =>
       d.reissueStatement(ctx, data.statementId as string, data.reason as string, { email: checked(data.email) })]
   ] as const) {
-    await definitions.registerShippedForm('accounting-donations', definition);
+    await definitions.registerShippedForm('accounting-donations', definition, host.systemContext(`accounting-donations: shipped form ${definition.id}`));
     forms.registerHandler(definition.id, async (submission, { req }) => {
       const donations = engine.getManager<DonationManagerLike>('DonationManager');
       if (!donations) return { ok: false, error: 'Donations are not running on this site' };

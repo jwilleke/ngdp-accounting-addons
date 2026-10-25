@@ -118,4 +118,28 @@ const BILLING_PARTIES: DuesMigration = {
   }
 };
 
-export const DUES_MIGRATIONS: DuesMigration[] = [INVOICES, BILLING_PARTIES];
+const INVOICE_PDF: DuesMigration = {
+  id: '20261025090000',
+  description: "the fingerprint of the PDF an invoice was emailed as (#51)",
+  up: (db) => {
+    db.exec(`
+      -- The SHA-256 of the PDF attached when the invoice was emailed; null when it went as the page alone.
+      ALTER TABLE accounting_dues_invoices ADD COLUMN pdf_sha256 TEXT;
+      DROP TRIGGER accounting_dues_invoices_fixed;
+      CREATE TRIGGER accounting_dues_invoices_fixed BEFORE UPDATE ON accounting_dues_invoices
+      WHEN NEW.id IS NOT OLD.id OR NEW.number IS NOT OLD.number OR NEW.account_id IS NOT OLD.account_id
+        OR NEW.account_label IS NOT OLD.account_label OR NEW.month IS NOT OLD.month OR NEW.date IS NOT OLD.date
+        OR NEW.due_date IS NOT OLD.due_date OR NEW.total IS NOT OLD.total OR NEW.previous IS NOT OLD.previous
+        OR NEW.owed IS NOT OLD.owed OR NEW.owners IS NOT OLD.owners OR NEW.html IS NOT OLD.html OR NEW.sha256 IS NOT OLD.sha256
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NEW.party IS NOT OLD.party OR NEW.party_name IS NOT OLD.party_name OR NEW.address IS NOT OLD.address
+        OR (NEW.status IS NOT OLD.status AND NOT (OLD.status = 'issued' AND NEW.status = 'voided'
+              AND NEW.void_reason IS NOT NULL AND NEW.void_reason <> ''))
+        OR (NEW.emailed_at IS NOT OLD.emailed_at AND OLD.emailed_at IS NOT NULL)
+        OR (NEW.pdf_sha256 IS NOT OLD.pdf_sha256 AND OLD.emailed_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'dues: an issued invoice never changes; void it and issue it again'); END;
+    `);
+  }
+};
+
+export const DUES_MIGRATIONS: DuesMigration[] = [INVOICES, BILLING_PARTIES, INVOICE_PDF];

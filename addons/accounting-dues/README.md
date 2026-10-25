@@ -78,8 +78,11 @@ A condominium, with the accommodation add-on enabled and 4100 renamed in the cha
   [D-045](../../docs/plans/decisions.md#d-045-the-dues-card-shows-whoever-was-billed)). It needs
   `ledger-self`, which every account holds.
 
-Not yet: sending by each user's communication preference (ngdpbase #1969), PDF attachments
-(ngdpbase #1974), and a scheduled send.
+- __PDF:__ an emailed invoice carries a PDF of itself, made by ngdpbase's export, when the site has a
+  PDF provider (`ngdpbase.export.pdf.provider`), and the PDF's SHA-256 is kept with the invoice.
+  Without one, the email carries the page alone.
+
+Not yet: sending by each user's communication preference (ngdpbase #1969), and a scheduled send.
 
 ## Develop
 

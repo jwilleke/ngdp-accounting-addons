@@ -26,15 +26,9 @@ interface FormsAddonLike {
 }
 /** ngdpbase's forms add-on (v5.22.0, #1880, #1918): a shipped form is registered on every start. */
 interface FormsDataManagerLike {
-  registerShippedForm(addon: string, definition: unknown, options?: { required?: boolean }): Promise<unknown>;
+  registerShippedForm(addon: string, definition: unknown, ctx: unknown): Promise<unknown>;
 }
 
-/**
- * Forms whose older copies no longer work with the ledger: an outdated copy of
- * one raises a critical admin notice until it is synced (#1918). Record an
- * Entry's first copies sent an In or out choice the ledger now refuses.
- */
-export const REQUIRED_FORMS: ReadonlySet<string> = new Set(['ledger-entry'])
 
 /** A row of a lines field, as the forms add-on submits it: amounts already in minor units (ngdpbase #1913). */
 type Row = Record<string, unknown>;
@@ -378,9 +372,9 @@ export async function registerForms(engine: Engine, host: AddonHost): Promise<vo
 
   for (const ledgerForm of LEDGER_FORMS) {
     const { id } = ledgerForm.definition;
-    // Registered on every start (#1880): a missing form is saved; an outdated copy shows on the
-    // forms admin as an update to Sync, and a copy edited on the site is kept.
-    await definitions.registerShippedForm('accounting', ledgerForm.definition, { required: REQUIRED_FORMS.has(id) });
+    // Registered on every start, as the system (ngdpbase #1973): the site's copy is replaced when this
+    // add-on's version is newer, and is read-only on the site.
+    await definitions.registerShippedForm('accounting', ledgerForm.definition, host.systemContext(`accounting: shipped form ${id}`));
 
     forms.registerHandler(id, async (submission, { req }) => {
       const ledger = engine.getManager<LedgerManager>('LedgerManager');

@@ -4,6 +4,7 @@
  * kept exactly as issued; reissued with the old one superseded; emailed to the
  * donor's address on file.
  */
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildAddonHost, openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
@@ -29,7 +30,8 @@ describe('giving statements', () => {
   let ownDb: DonationsDb & { close(): void };
   let ledger: LedgerManager;
   let donations: DonationManager;
-  let sent: { to: string; subject: string; html?: string }[];
+  let sent: { ctx: unknown; to: string; subject: string; html?: string; attachments?: { filename: string; content: Buffer }[] }[];
+  let pdfMode: 'none' | 'unavailable' | 'made';
   let audit: Record<string, unknown>[];
   let fundId: string;
   const people = new Map<string, Record<string, unknown>>([
@@ -43,7 +45,7 @@ describe('giving statements', () => {
     ledgerDb = openTestLedgerDatabase();
     ownDb = openAddonTestDatabase<DonationsDb & { close(): void }>('accounting-donations',
       { migrations: DONATIONS_MIGRATIONS as never, ledgerTable: DONATIONS_LEDGER_TABLE }, { slug: 'accounting-donations', defaults });
-    sent = []; audit = [];
+    sent = []; audit = []; pdfMode = 'none';
     ledger = new LedgerManager({ ...testLedgerParts, db: ledgerDb.handle as LedgerDb, currency: 'USD', recordAudit: () => Promise.resolve(), decide,
       personOf: async (a) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[a.actingUsername()] ?? null,
       categories: () => ({ '4200': 'Donations and gifts', '6100': { name: 'Bank Charges', type: 'expense' }, '8900': { name: 'Other Miscellaneous Income', type: 'other-income' } }),
@@ -52,7 +54,12 @@ describe('giving statements', () => {
     donations = new DonationManager({ host, db: ownDb, ledger: ledger as never, decide, categories: () => ['4200'], formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, contacts: () => ({ persons: door, organizations: door }) as never,
       wording: () => ({ organization: { name: 'Fairways Fund', taxId: '12-3456789', address: '1 Fairway Dr' }, intro: DEFAULT_WORDING.intro, noGoods: DEFAULT_WORDING.noGoods, goodsNote: DEFAULT_WORDING.goodsNote, taxIdNote: DEFAULT_WORDING.taxIdNote }),
-      email: () => ({ sendTo: async (to: string, subject: string, _text: string, html?: string) => { sent.push({ to, subject, html }); } }),
+      email: () => ({ sendTo: async (ctx: unknown, to: string, subject: string, _text: string, html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }) => {
+        sent.push({ ctx, to, subject, html, attachments: options?.attachments }); } }),
+      pdf: () => (pdfMode === 'none' ? null : { htmlToPdf: async () => {
+        if (pdfMode === 'unavailable') throw Object.assign(new Error('no PDF provider'), { code: 'PDF_UNAVAILABLE' });
+        return Buffer.from('%PDF-statement');
+      } }),
       personOf: async (a) => ({ jane: jane.id, bo: bo.id } as Record<string, string>)[a.actingUsername()] ?? null,
       now: () => new Date('2027-01-15T12:00:00Z') });
     ledger.registerLineDetails('gift', giftValidator({ categories: () => ['4200'], quidProQuo: () => '', formatMoney: String }));
@@ -133,5 +140,24 @@ describe('giving statements', () => {
     await expect(donations.myStatement(self('jane'), bos.id)).rejects.toThrow('unknown statement');
     await expect(donations.myGiving(self('jane', []))).rejects.toThrow('refused: ledger-self');
     expect(await donations.myGiving(self('nobody'))).toEqual([]);
+  });
+
+  test('a statement is emailed as the caller, with its PDF attached when the site makes PDFs, else the page alone (#51)', async () => {
+    await gift(jane, 5_000, '2026-03-01');
+    pdfMode = 'unavailable';
+    await donations.issueStatements(actor(), { year: 2026, email: true });
+    expect(sent.map(s => [s.to, s.attachments])).toEqual([['jane@example.com', undefined]]);
+    expect((sent[0]!.ctx as { username: string }).username).toBe('tess');
+    const [plain] = await donations.listStatements(actor(), { year: 2026 });
+    expect(ownDb.prepare('SELECT pdf_sha256 FROM accounting_donations_statements WHERE id = ?').get(plain!.id)).toEqual({ pdf_sha256: null });
+    // The next year's statement, with a PDF provider.
+    await gift(jane, 6_000, '2027-01-02');
+    pdfMode = 'made';
+    sent = [];
+    await donations.issueStatements(actor(), { year: 2027, email: true });
+    expect(sent[0]!.attachments?.map(a => [a.filename, a.content.toString()])).toEqual([['2027 giving statement.pdf', '%PDF-statement']]);
+    const [stored] = await donations.listStatements(actor(), { year: 2027 });
+    expect(ownDb.prepare('SELECT pdf_sha256 FROM accounting_donations_statements WHERE id = ?').get(stored!.id)).toEqual({
+      pdf_sha256: createHash('sha256').update('%PDF-statement').digest('hex') });
   });
 });

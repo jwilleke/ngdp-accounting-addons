@@ -4,6 +4,7 @@
  * details, prepayment as credit, late charges proposed and added only when
  * asked. Money goes through the accounting add-on's ledger.
  */
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildAddonHost, openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
@@ -64,7 +65,8 @@ describe('dues', () => {
   let ledger: LedgerManager;
   let dues: DuesManager;
   let audit: Record<string, unknown>[];
-  let sent: { to: string; subject: string }[];
+  let sent: { ctx: unknown; to: string; subject: string; attachments?: { filename: string; content: Buffer }[] }[];
+  let pdfMode: 'none' | 'unavailable' | 'made';
   let fundId: string;
   let today: string;
   let bumps: number;
@@ -78,6 +80,7 @@ describe('dues', () => {
     sent = [];
     bumps = 0;
     sending = true;
+    pdfMode = 'none';
     billingAsked.length = 0;
     p1 = 'joint';
     today = '2026-09-01';
@@ -87,7 +90,12 @@ describe('dues', () => {
       host, db: ownDb, ledger: ledger as never, decide, payments: () => duesLines?.lines() ?? [], accounts: () => units, billing: () => residents, categories: () => ['4100'],
       label: () => ({ singular: 'Assessment', plural: 'Assessments' }), formatMoney: (m) => `$${(m / 100).toFixed(2)}`,
       recordAudit: async (r) => { audit.push(r); }, changed: async () => { bumps++; }, now: () => new Date(`${today}T12:00:00Z`),
-      email: () => ({ sendTo: async (to: string, subject: string) => { sent.push({ to, subject }); } }), sendToOwners: () => sending
+      email: () => ({ sendTo: async (ctx: unknown, to: string, subject: string, _text: string, _html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }) => {
+        sent.push({ ctx, to, subject, attachments: options?.attachments }); } }), sendToOwners: () => sending,
+      pdf: () => (pdfMode === 'none' ? null : { htmlToPdf: async () => {
+        if (pdfMode === 'unavailable') throw Object.assign(new Error('no PDF provider'), { code: 'PDF_UNAVAILABLE' });
+        return Buffer.from('%PDF-invoice');
+      } })
     });
     duesLines = ledger.registerLineDetails('dues', duesValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id), partiesOf: (id) => dues.partiesOf(id) }));
     fundId = (await ledger.createFund(actor(), { name: 'Operating' })).id;
@@ -242,5 +250,17 @@ describe('dues', () => {
     await expect(dues.myDues(owner('pat', []))).rejects.toThrow('refused: ledger-self');
     // ledger-self opens nothing of the treasurer's.
     await expect(dues.listInvoices(owner('pat'))).rejects.toThrow('refused: ledger-read');
+  });
+
+  test('an invoice is emailed as the caller, with its PDF attached when the site makes PDFs, else the page alone (#51)', async () => {
+    pdfMode = 'unavailable';
+    await dues.issueMonth(actor(), { month: '2026-09', account: 'P-2', email: true });
+    expect(sent.map(s => [s.to, s.attachments])).toEqual([['jo@example.org', undefined]]);
+    expect((sent[0]!.ctx as { username: string }).username).toBe('tess');
+    expect((await dues.listInvoices(actor(), { accountId: 'P-2' }))[0]!.pdfSha256).toBeNull();
+    pdfMode = 'made';
+    await dues.issueMonth(actor(), { month: '2026-09', account: 'P-1', email: true });
+    expect(sent.at(-1)!.attachments?.map(a => [a.filename, a.content.toString()])).toEqual([['Invoice I-0002.pdf', '%PDF-invoice']]);
+    expect((await dues.listInvoices(actor(), { accountId: 'P-1' }))[0]!.pdfSha256).toBe(createHash('sha256').update('%PDF-invoice').digest('hex'));
   });
 });

@@ -11,6 +11,21 @@ import { createHash, randomUUID } from 'node:crypto';
 import { giftsFor, renderStatement, type StatementContent, type StatementWording } from './statement.js';
 import type { ActorContext, AddonHost, Decision, OrganizationManager, PersonManager } from '@jwilleke/ngdpbase-types';
 
+/**
+ * A stored page as a PDF (ngdpbase ExportManager.htmlToPdf), or null when the
+ * site has no PDF provider (`PDF_UNAVAILABLE`): then the email carries the page
+ * alone. Any other failure is thrown.
+ */
+export async function pdfOf(exporter: { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined, ctx: ActorContext, html: string): Promise<Buffer | null> {
+  if (!exporter) return null;
+  try {
+    return await exporter.htmlToPdf(ctx, html);
+  } catch (err) {
+    if ((err as { code?: string }).code === 'PDF_UNAVAILABLE') return null;
+    throw err;
+  }
+}
+
 export type DonationsHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
 
 /** The caller: ngdpbase's ApiContext satisfies this, as it does LedgerManager's. */
@@ -109,8 +124,10 @@ export interface DonationOptions {
   contacts?: () => Contacts;
   /** The statement's organization and wording (configuration). */
   wording?: () => StatementWording;
-  /** ngdpbase's EmailManager, to send statements. */
-  email?: () => { sendTo(to: string, subject: string, text: string, html?: string): Promise<void> } | null | undefined;
+  /** ngdpbase's EmailManager, to send statements, as the caller. */
+  email?: () => { sendTo(ctx: ActorContext, to: string, subject: string, text: string, html?: string, options?: { attachments?: { filename: string; contentType: string; content: Buffer }[] }): Promise<void> } | null | undefined;
+  /** ngdpbase's ExportManager, to send each statement as a PDF (#51). */
+  pdf?: () => { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined;
   /** The caller's own ngdpbase person, as its `@id`, for a donor's own view (D-037); read as the caller (PersonManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage). */
   personOf?: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;
   now?: () => Date;
@@ -524,14 +541,24 @@ export default class DonationManager {
     const door = row.donor_type === 'person' ? contacts.persons : contacts.organizations;
     const contact = door ? await door.get(actor.subject as never, row.donor_id).catch(() => null) as { email?: string } | null : null;
     const mailer = this.options.email?.();
-    if (!contact?.email || !mailer) return false;
+    const ctx = actor.subject;
+    if (!contact?.email || !mailer || !ctx) return false;
+    let pdf: Buffer | null;
+    try {
+      pdf = await pdfOf(this.options.pdf?.(), ctx, row.html);
+    } catch {
+      return false; // a PDF provider that fails is reported by ExportManager; nothing is sent half-made
+    }
     try {
       const org = this.wording().organization.name;
-      await mailer.sendTo(contact.email, `${row.year} giving statement from ${org}`, `Your ${row.year} giving statement from ${org} is below.`, row.html);
+      const options = pdf ? { attachments: [{ filename: `${row.year} giving statement.pdf`, contentType: 'application/pdf', content: pdf }] } : {};
+      await mailer.sendTo(ctx, contact.email, `${row.year} giving statement from ${org}`,
+        `Your ${row.year} giving statement from ${org} is ${pdf ? 'attached, and below' : 'below'}.`, row.html, options);
     } catch {
       return false; // EmailManager reports the failure to administrators itself (#1916)
     }
-    this.options.db.prepare('UPDATE accounting_donations_statements SET emailed_to = ?, emailed_at = ? WHERE id = ? AND emailed_at IS NULL').run(contact.email, this.stamp(), id);
+    this.options.db.prepare('UPDATE accounting_donations_statements SET emailed_to = ?, emailed_at = ?, pdf_sha256 = ? WHERE id = ? AND emailed_at IS NULL')
+      .run(contact.email, this.stamp(), pdf ? createHash('sha256').update(pdf).digest('hex') : null, id);
     return true;
   }
 
