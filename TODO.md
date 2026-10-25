@@ -38,7 +38,7 @@ last_updated: "2026-10-24"
 
 ## 🟡 P2
 
-- [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
+*None.*
 
 ## 🔵 In review
 
@@ -51,6 +51,7 @@ last_updated: "2026-10-24"
 - [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 - [#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49) — [FEATURE] Stripe online payments: cards, ACH and recurring donations
 - [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21) — [FEATURE] Board report: large or unusual items, and printable / PDF / wiki-page output
+- [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
 - [#9](https://github.com/jwilleke/ngdp-accounting-addons/issues/9) — Treasurer handover record tied to board memory
 - [#8](https://github.com/jwilleke/ngdp-accounting-addons/issues/8) — Expense reimbursement requests with treasurer approval
