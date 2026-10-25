@@ -1495,3 +1495,33 @@ add-on data. Add-ons register named data sources (`host.registerDataSource('<slu
 table, list, count or card, on any page and on `/profile`. Until it ships, accounting builds no new
 HTML views; the profile cards use core's formatters (`formatAsTable`, `formatMoney`, `escapeHtml`)
 rather than hand-built tables. When it ships, the cards become data sources.
+
+## D-047: One balance per unit; billing entries are only where invoices go
+
+- __Status:__ Accepted
+- __Date:__ 2026-10-25
+- __Links:__ [ngdpbase#2042](https://github.com/jwilleke/ngdpbase/issues/2042),
+  [D-038](#d-038-one-invoice-per-billing-party-each-with-its-own-balance),
+  [D-040](#d-040-dues-bills-exactly-as-the-billing-array-says),
+  [D-045](#d-045-the-dues-card-shows-whoever-was-billed)
+
+__Context:__ The accommodation add-on's billing changed (operator, 2026-10-25, ngdpbase#2042): who
+owes is always the unit's owners at invoice time, each with a share, every owner an account and
+referred to by identity `@id`. The billing array is only where invoices go: free-text addresses typed
+by the treasurer or the owners, with shares totalling 100%. Every unit must have one; there is no
+fallback to the unit's own address. Any current owner may see the unit's whole account, and the board
+every unit's.
+
+__Decision (operator via ngdpbase core, and accounting's own choices, 2026-10-25):__ supersedes D-038's
+per-party balance.
+
+- __One balance per unit.__ The owners owe it jointly; a payment settles the unit's oldest invoice.
+- __One invoice per billing entry__, for its share of the month's charge and of the balance brought
+  forward, sent to its address and emailed to every owner. The invoice records the address text and
+  the owners' `@id`s and shares at that date, no names.
+- __Who sees it:__ a current owner, decided when they look, sees the unit's whole account. A past
+  owner keeps seeing the invoices issued while they owned it (D-045), not the unit's later account.
+  The board sees every unit's under a new permission, `dues-read`, which a site grants to its board.
+- __A unit with no billing address is never invoiced to a guessed address:__ the run reports and
+  skips it, naming it in the run's result and in the treasurer's notice.
+- Invoices issued in the old shape are read as they are and never rewritten.
