@@ -1,7 +1,7 @@
 ---
 title: TODO
 description: Priority bands and resume pointer for this repo.
-last_updated: "2026-10-24"
+last_updated: "2026-10-26"
 ---
 
 # TODO
@@ -48,14 +48,14 @@ last_updated: "2026-10-24"
 
 ## ⏸ Deferred
 
-- [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 - [#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49) — [FEATURE] Stripe online payments: cards, ACH and recurring donations
 - [#21](https://github.com/jwilleke/ngdp-accounting-addons/issues/21) — [FEATURE] Board report: large or unusual items, and printable / PDF / wiki-page output
-- [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#20](https://github.com/jwilleke/ngdp-accounting-addons/issues/20) — [FEATURE] QuickBooks and Wave export formats
+- [#18](https://github.com/jwilleke/ngdp-accounting-addons/issues/18) — Loyalty module: members and gift cards (accounting-loyalty)
 - [#9](https://github.com/jwilleke/ngdp-accounting-addons/issues/9) — Treasurer handover record tied to board memory
 - [#8](https://github.com/jwilleke/ngdp-accounting-addons/issues/8) — Expense reimbursement requests with treasurer approval
 - [#6](https://github.com/jwilleke/ngdp-accounting-addons/issues/6) — Event fees and registrations
+- [#2](https://github.com/jwilleke/ngdp-accounting-addons/issues/2) — Dues and invoicing: tiers, renewals, reminders, paid and lapsed status
 
 ## ❓ Needs triage
 
