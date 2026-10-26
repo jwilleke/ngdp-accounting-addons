@@ -146,7 +146,7 @@ use the word). Rename 4100 and drop what does not apply:
 }
 ```
 
-Every invoice, receipt, statement and report then says "Assessments". The dues module's own screens
+Every invoice, receipt, statement and report then says "Assessments". The invoice add-on's own screens
 and emails use its label setting for the same word
 ([D-035](../plans/decisions.md#d-035-dues-and-assessments-flexible-accounts-and-charges)).
 

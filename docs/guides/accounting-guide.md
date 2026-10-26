@@ -16,7 +16,7 @@ books of record stay in QuickBooks or Wave, and accounting hands them a CSV.
 
 ## Before you start
 
-- ngdpbase __5.22.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
+- ngdpbase __5.31.0 or later__. The add-on declares this as its `minVersion`; an older core refuses
   to load it.
 - The site's database on: `ngdpbase.database.provider` set to `sqlite`.
 - The __forms__ add-on enabled. The treasurer's screens are forms; without it the ledger still works
@@ -187,11 +187,15 @@ older one.
 
 ## Known gaps
 
-- __Backups__ do not cover the ledger's database yet (ngdpbase #1723).
 - No QuickBooks or Wave formats yet (#20); use the CSV.
-- No online receipts yet (Stripe cards and ACH, #3); receipts are recorded by hand.
-- No events module yet. Donations are the `accounting-donations` add-on
-  ([Donations guide](donations-guide.md)); invoices for assessments, rent or dues are the
-  `accounting-receivables` add-on ([its README](../../addons/accounting-receivables/README.md)), whose accounts come from another add-on,
-  such as the accommodation add-on's units.
-- Changing the database key, or encrypting a ledger that was started without one, is not built (#14).
+- No online receipts yet (Stripe cards and ACH, #49, deferred); receipts are recorded by hand.
+- No events module or membership tiers yet (#6, #2, deferred). Donations are the
+  `accounting-donations` add-on ([Donations guide](donations-guide.md)); invoices for assessments,
+  rent or dues are the `accounting-receivables` add-on
+  ([its README](../../addons/accounting-receivables/README.md)), whose units, owners and billing
+  addresses come from the accommodation add-on.
+- Changing the database key, or encrypting a ledger that was started without one, is not built; it is
+  ngdpbase core's ([ngdpbase#2078](https://github.com/jwilleke/ngdpbase/issues/2078)).
+
+The add-ons' databases are in every site backup: ngdpbase's DatabaseManager backs up each declared
+add-on database with the site.

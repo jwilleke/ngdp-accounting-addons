@@ -26,7 +26,7 @@ Each provider declares what it can do (D-004): `manualEntry`, `checkout`, `sync`
 | Provider | Can | Status |
 | --- | --- | --- |
 | `manual` | `manualEntry`, `refund` | Always enabled: money the treasurer records by hand |
-| `stripe` | — | Not built yet (#3) |
+| `stripe` | — | Not built yet ([#49](https://github.com/jwilleke/ngdp-accounting-addons/issues/49), deferred) |
 
 Configuration, a list merged by `id` (D-017):
 

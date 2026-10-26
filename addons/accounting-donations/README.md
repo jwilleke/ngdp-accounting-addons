@@ -14,7 +14,12 @@ the receipt slip's quid pro quo disclosure, in-kind donations and pledges, and y
 - __Permissions:__ its own `donation-record` (in-kind donations, pledges) and `statement-issue` (issue,
   reissue and email donation statements); and core's `identity-read` (the donor list) and
   `identity-manage` (Add a Donor). The add-on's policy grants all four to the treasurer role. Donors are ngdpbase contacts (persons and organizations, ngdpbase #1930); a donation
-  keeps the donor's `@id` and name.
+  keeps the donor's `@id` and name. A donor who gives for an organization carries that affiliation
+  on their identity record, as a schema.org `OrganizationRole` (`memberOf`, `roleName`).
+- __Statements:__ stored exactly as issued, with their fingerprint; emailed with a PDF attached when the
+  site has a PDF provider (`ngdpbase.export.pdf.provider`), else the page alone.
+- __A donor's own view:__ "Your donations" on their profile: each year's donations and statements,
+  under `ledger-self`, which every account holds.
 
 How donations work, and what the IRS asks for: [docs/guides/donations-guide.md](../../docs/guides/donations-guide.md),
 the source of truth. Why: [D-036](../../docs/plans/decisions.md#d-036-donations-follow-the-donations-guide).

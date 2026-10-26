@@ -115,7 +115,7 @@ whose reference is `bounced-check` and the bounce's id.
 ### Seventh migration: line details
 
 [D-036](decisions.md#d-036-donations-follow-the-donations-guide) adds `accounting_line_details`: what a
-module adds to a receipt line, by kind (`gift`), as JSON the module validated. Written with the line,
+module adds to a receipt line, by kind (`gift` at the time, `donation` since D-042), as JSON the module validated. Written with the line,
 never changed or deleted.
 
 ### Eighth migration: period locks

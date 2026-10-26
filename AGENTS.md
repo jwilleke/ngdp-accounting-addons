@@ -145,7 +145,7 @@ Add-ons live under `addons/<slug>/` and load into a local ngdpbase as a drop-in.
   instance runs on port 3003 with its own `data/` folder; its `.env` (git-ignored) holds
   `PROJECT_NAME=ngdpbase-accounting`, `NGDPBASE_SYSTEM_USER`, `PUID` and `PGID` (the user and group the
   server runs as; required by ngdpbase), the admin password and `NGDPBASE_DATABASE_KEY`. Its pm2 app is
-  `ngdp-instance`. Its `data/config/app-custom-config.json` sets the base URL, turns the
+  `accounting` (the name `ngdp-instance` is another instance on this machine). Its `data/config/app-custom-config.json` sets the base URL, turns the
   database on (`sqlite`), adds this repository's `addons/` to `addons-path`, and enables the add-ons.
   Read the guides from the main checkout, as [Platform guides](#platform-guides) says. Do not start,
   configure, or restart it, and never run a pm2 command on `all`: the operator runs several

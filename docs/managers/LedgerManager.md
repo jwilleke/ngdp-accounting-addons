@@ -118,7 +118,7 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   For the manual provider the ledger numbers it, `R-0001` onwards, in the same database transaction:
   one sequence per site, never reused (a voided receipt keeps its number). Another provider passes
   its own `confirmationNumber`; `provider` plus number is unique, so the same receipt never posts
-  twice. `reference: { type, id }` records what it pays for (e.g. a dues invoice). Called by
+  twice. `reference: { type, id }` records what it pays for (e.g. an invoice). Called by
   `ReceiptManager`, not by other add-ons directly.
 - `refundReceipt(actor, receiptId, { lines? | amount?, date, memo, paymentMethod?, paymentMethodId?, accountId? })` →
   `Refund`, numbered `RF-0001` onwards. Its `lines` (`{ receiptLineId, amount }`) each give back part
@@ -132,12 +132,22 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
   refunds is not voided until its refunds are, nor one in a standing deposit until it is undone. The
   original stays visible, marked voided.
 - __What modules add__ (D-036): `registerLineDetails(kind, { validate(data, line) })` lets a module
-  (accounting-donations: `gift`) put its own details on receipt lines, sent as `lines[].details` and
+  (accounting-donations: `donation`; accounting-receivables: `receivable`) put its own details on receipt lines, sent as `lines[].details` and
   stored by the ledger in the same transaction; a line's `details` reads them back. A validator throws
   an Error naming the field; the ledger refuses it as a 400. `registerSlipNotes(receipt => string[])`
   adds notes to the printable slip; `receiptSlip(actor, id)` (`ledger-read`) returns the receipt and
   its notes, and `GET /api/accounting/receipts/:id/slip` renders it as a page to print. Modules call
   these managers, never the accounting database.
+- __A module's own lines:__ `registerLineDetails` returns that module's reader, handed to it alone:
+  `lines()` gives every posted receipt line carrying its kind, net of refunds, bounced checks left
+  out. accounting-receivables works out which invoices are paid from it, so no person is granted more
+  of the ledger.
+- __A person's own receipts__ ([D-037](../plans/decisions.md#d-037-people-see-their-own-money-through-one-ledger-door),
+  [D-043](../plans/decisions.md#d-043-every-signed-in-user-holds-ledger-self)):
+  `ownDocuments(actor, 'receipt' | 'refund')` under `ledger-self`, which every account holds through
+  `vault-owner`: the receipts whose payer is the caller's own identity record, and refunds of them.
+  The caller's record is read as the caller (`IdentityManager.getByUserIdentifier(ctx, username)`,
+  their own under `profile-manage`).
 - __Period locks__ ([#19](https://github.com/jwilleke/ngdp-accounting-addons/issues/19)):
   `setLockSettings(actor, { period, fiscalStartMonth })` (the treasurer's choice: `month`, `quarter`,
   `half-year` or `year`), `lockPeriod(actor, throughDate)` (a period end that has passed, after the
