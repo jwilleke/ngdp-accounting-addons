@@ -47,7 +47,7 @@ All modules share one small, single-entry, fund-tagged transaction ledger with a
 ## Non-goals
 
 - Payroll
-- Accounts payable
+- Accounts payable in Phase 1 (vendor bills come later, outside the ledger: [D-049](docs/plans/decisions.md#d-049-accounts-payable-outside-the-ledger))
 - A full double-entry general ledger (use QuickBooks or Wave for that)
 - Storing card or bank account numbers (Stripe holds them)
 

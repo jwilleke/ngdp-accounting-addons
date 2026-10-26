@@ -19,7 +19,7 @@ Decisions made since this draft are recorded in [docs/plans/decisions.md](plans/
 ### Non-goals (Phase 1)
 
 - Payroll.
-- Accounts payable (bills, vendors, scheduled payments).
+- Accounts payable (bills, vendors, scheduled payments) in Phase 1. Reversed for later by [D-049](plans/decisions.md#d-049-accounts-payable-outside-the-ledger): vendor bills in a payables module, outside the ledger.
 - A double-entry general ledger, chart of accounts, balance sheet or trial balance.
 - Bank feeds or automatic bank reconciliation.
 - Storing card numbers or bank account numbers.

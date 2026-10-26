@@ -851,7 +851,7 @@ __Decision (operator, 2026-10-25, relayed by ngdpbase core):__ core provides one
 
 ## D-047: One balance per unit; billing entries are only where invoices go
 
-- __Status:__ Accepted
+- __Status:__ Accepted; its one balance per unit superseded by [D-048](#d-048-a-unit-is-billed-through-folios-each-folio-keeps-its-own-balance)
 - __Date:__ 2026-10-25
 - __Links:__ [ngdpbase#2042](https://github.com/jwilleke/ngdpbase/issues/2042), [D-038](#d-038-one-invoice-per-billing-party-each-with-its-own-balance), [D-040](#d-040-dues-bills-exactly-as-the-billing-array-says), [D-045](#d-045-the-dues-card-shows-whoever-was-billed)
 
@@ -864,3 +864,37 @@ __Decision (operator via ngdpbase core, and accounting's own choices, 2026-10-25
 - __Who sees it:__ a current owner, decided when they look, sees the unit's whole account. A past owner keeps seeing the invoices issued while they owned it (D-045), not the unit's later account. The board sees every unit's under a new permission, `account-read`, which a site grants to its board.
 - __A unit with no billing address is never invoiced to a guessed address:__ the run reports and skips it, naming it in the run's result and in the treasurer's notice.
 - Invoices issued in the old shape are read as they are and never rewritten.
+
+## D-048: A unit is billed through folios; each folio keeps its own balance
+
+- __Status:__ Accepted (to build when accommodation's ownership periods ship)
+- __Date:__ 2026-10-26
+- __Links:__ [ngdpbase#2042](https://github.com/jwilleke/ngdpbase/issues/2042), [D-047](#d-047-one-balance-per-unit-billing-entries-are-only-where-invoices-go), [D-045](#d-045-the-dues-card-shows-whoever-was-billed)
+
+__Context:__ When a unit is sold, or its owners or their shares change, the earlier owners may still owe money (an estate, a bankruptcy), and the new owners must never carry that debt. One balance per unit (D-047) cannot keep the two apart.
+
+__Decision (operator, 2026-10-26, recorded on ngdpbase#2042; supersedes D-047's one balance per unit):__
+
+- __The folio is the account that is billed; the unit is what is charged for.__ A unit always has exactly one assigned folio, and new invoices go on it.
+- __A new folio starts whenever the owners or their shares change__: a sale, an owner added or removed, a transfer on death, a change of shares. A share is a legal condition of ownership, so the record shows who owned what share when. A corrected date does not start one.
+- __The accommodation add-on keeps the ownership periods__ (id, from, through, owners with shares). Owners' requests to change them wait for Board approval; the treasurer or an admin may edit directly, choosing "correcting a mistake" (same period) or "ownership really changed" (new period). Accounting maps each period id to its folio, numbered per unit (`<unit>/F01`, `/F02`, …).
+- __Each folio keeps its own balance.__ A folio no longer assigned stays open as a debtor while it has a balance; payments, a claim or a write-off can still be recorded on it. The unit's total is its folios added together.
+- A payment naming only the unit goes on the assigned folio; a payment on an older folio names it or one of its invoices.
+- Owners see their folio: current owners the assigned one, a past owner their own with its balance (which changes D-045's "no balance" for past owners). The board sees every folio under `account-read`.
+- Each unit starts with one period, its current owners, and every folio starts at $0. The treasurer can later enter a one-time balance brought forward on a folio: owed money, not money that moved, so it stays outside the ledger, audited and corrected by voiding.
+- A monthly invoice carries the charge lines accommodation gives (for The Fairways: Reserve Contribution 61.49%, rounded to the cent, and Operating Contribution, the rest), then the billing entry's share. Late charges stay accommodation's rules.
+
+## D-049: Accounts payable, outside the ledger
+
+- __Status:__ Accepted (to build later)
+- __Date:__ 2026-10-26
+- __Links:__ [ngdpbase#2042](https://github.com/jwilleke/ngdpbase/issues/2042)
+
+__Context:__ Accounts payable was a Phase 1 non-goal (requirements §1). The association's maintenance, run through a new work-orders add-on, needs vendor bills and the unit's maintenance history.
+
+__Decision (operator, 2026-10-26, recorded on ngdpbase#2042; reverses the non-goal):__
+
+- A vendor's bill, when received, goes into a __payables__ module with its own store. It is owed, not money that moved, so it stays outside the ledger, as invoices do.
+- When it is paid, it leaves payables, and the money going out of the bank account is an ordinary money-out ledger entry naming the bill.
+- Vendors are core organizations with a Vendor affiliation.
+- A unit's maintenance is recorded on the date of service, from the work order, whenever the bill arrives or is paid. Money-out entries gain module line details, as receipts have, so the work-orders add-on can tag a payment `{ unit, job }` and list a unit's spending across every folio.
