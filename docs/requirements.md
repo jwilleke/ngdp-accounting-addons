@@ -68,8 +68,7 @@ Where a published standard names a thing, these add-ons use its name and codes r
 
 ### Add-on layout ([D-016](plans/decisions.md#d-016-one-repository-a-base-accounting-add-on-and-optional-module-add-ons))
 
-One repository with a required base add-on and optional module add-ons. Each module depends on
-`accounting`; a site enables only what it needs.
+One repository with a required base add-on and optional module add-ons. Each module depends on `accounting`; a site enables only what it needs.
 
 | Add-on | Phase | Contents | Depends on |
 | --- | --- | --- | --- |

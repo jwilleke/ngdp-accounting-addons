@@ -15,9 +15,7 @@ lastModified: '2026-10-18T00:00:00.000Z'
 ---
 # Undo a Deposit
 
-Undo a deposit entered wrongly, with the reason. Its entries are voided and its receipts are back
-in Cash on Hand, ready for a new deposit. The deposit stays on [Deposits], marked undone, and its
-number is not reused.
+Undo a deposit entered wrongly, with the reason. Its entries are voided and its receipts are back in Cash on Hand, ready for a new deposit. The deposit stays on [Deposits], marked undone, and its number is not reused.
 
 [{Form id='deposit-undo'}]
 

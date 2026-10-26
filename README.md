@@ -10,17 +10,13 @@ __Status:__ three add-ons are built and published to npm:
 | [`accounting-receivables`](addons/accounting-receivables/README.md) | `@jwilleke/accounting-receivables-addon` | Invoices for each unit's charge (a condominium's assessments, a landlord's rent, a club's dues): one per billing address, payments, credits, late charges, a monthly scheduled run, PDF invoices, and each owner's own account on their profile |
 | [`accounting-donations`](addons/accounting-donations/README.md) | `@jwilleke/accounting-donations-addon` | Donations on receipts with the quid pro quo disclosure, in-kind donations, pledges, donors as ngdpbase contacts, year-end donation statements (PDF), and each donor's own donations on their profile |
 
-Not built yet: online payments (Stripe), membership tiers and renewals, event fees, the board report,
-QuickBooks and Wave export, and the Phase 2 modules; see [TODO.md](TODO.md).
+Not built yet: online payments (Stripe), membership tiers and renewals, event fees, the board report, QuickBooks and Wave export, and the Phase 2 modules; see [TODO.md](TODO.md).
 
-- Setting it up on a site: [docs/guides/accounting-guide.md](docs/guides/accounting-guide.md), the
-  [donations guide](docs/guides/donations-guide.md) and the
-  [chart of accounts guide](docs/guides/chart-of-accounts-guide.md)
+- Setting it up on a site: [docs/guides/accounting-guide.md](docs/guides/accounting-guide.md), the [donations guide](docs/guides/donations-guide.md) and the [chart of accounts guide](docs/guides/chart-of-accounts-guide.md)
 - The ledger's API for other add-ons: [docs/managers/LedgerManager.md](docs/managers/LedgerManager.md)
 - Every decision and why: [docs/plans/decisions.md](docs/plans/decisions.md)
 
-__Requires:__ ngdpbase v5.31.0 or later. The invoices read units, owners and billing addresses from
-the `accommodation` add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)).
+__Requires:__ ngdpbase v5.31.0 or later. The invoices read units, owners and billing addresses from the `accommodation` add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)).
 
 ## Who it is for
 

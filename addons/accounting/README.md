@@ -1,19 +1,12 @@
 # Accounting
 
-The base accounting add-on for [ngdpbase](https://github.com/jwilleke/ngdpbase): funds, a
-single-entry ledger with voids and transfers, the treasurer's screens, the `[{Ledger}]` plugin, a
-monthly summary and a CSV export.
+The base accounting add-on for [ngdpbase](https://github.com/jwilleke/ngdpbase): funds, a single-entry ledger with voids and transfers, the treasurer's screens, the `[{Ledger}]` plugin, a monthly summary and a CSV export.
 
-- __Slug:__ `accounting`. It is the registry key and the config key, and equals the `name` exported
-  from `index.ts`.
+- __Slug:__ `accounting`. It is the registry key and the config key, and equals the `name` exported from `index.ts`.
 - __Type:__ `additive`.
-- __Requires:__ ngdpbase 5.31.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on
-  for the screens (`optionalDependencies: ['forms']`).
+- __Requires:__ ngdpbase 5.31.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on for the screens (`optionalDependencies: ['forms']`).
 
-Turning it on for a site: [docs/guides/accounting-guide.md](../../docs/guides/accounting-guide.md).
-The ledger's API for other add-ons: [docs/managers/LedgerManager.md](../../docs/managers/LedgerManager.md).
-Why it is built this way: [docs/plans/ledger-design.md](../../docs/plans/ledger-design.md) and
-[docs/plans/decisions.md](../../docs/plans/decisions.md).
+Turning it on for a site: [docs/guides/accounting-guide.md](../../docs/guides/accounting-guide.md). The ledger's API for other add-ons: [docs/managers/LedgerManager.md](../../docs/managers/LedgerManager.md). Why it is built this way: [docs/plans/ledger-design.md](../../docs/plans/ledger-design.md) and [docs/plans/decisions.md](../../docs/plans/decisions.md).
 
 ## Contents
 
@@ -34,23 +27,14 @@ Why it is built this way: [docs/plans/ledger-design.md](../../docs/plans/ledger-
 
 One path for each thing, never a local copy:
 
-- __Core values__ (`ApiContext`, `ApiError`, `sendApiError`, `recordAuditEvent`,
-  `addonAuditEventName`, `actorOf`, `logger`) come from the `host` passed to `register()`
-  (ngdpbase #1813) and are handed down to the manager, routes and forms.
-- __Shared capabilities belong to their manager__: the CSV writer is `ExportManager.toCsv`, the money
-  formatter `PluginManager.formatters.formatMoney`; the plugin gets the formatters as
-  `context.formatters`.
-- __Routes__ use `engine.createRouter()`, core's own Express; the add-on never imports express at
-  runtime.
-- __The database__ is opened with `DatabaseManager.openAddonDatabase` and declared as
-  `ngdpbase.addons.accounting.database`.
-- __Access__: `LedgerManager` asks `PolicyDecisionPoint.decide(subject, { action })` and turns a deny
-  into ngdpbase's refusal with `ctx.enforceDeny` (D-025). No role names in code.
+- __Core values__ (`ApiContext`, `ApiError`, `sendApiError`, `recordAuditEvent`, `addonAuditEventName`, `actorOf`, `logger`) come from the `host` passed to `register()` (ngdpbase #1813) and are handed down to the manager, routes and forms.
+- __Shared capabilities belong to their manager__: the CSV writer is `ExportManager.toCsv`, the money formatter `PluginManager.formatters.formatMoney`; the plugin gets the formatters as `context.formatters`.
+- __Routes__ use `engine.createRouter()`, core's own Express; the add-on never imports express at runtime.
+- __The database__ is opened with `DatabaseManager.openAddonDatabase` and declared as `ngdpbase.addons.accounting.database`.
+- __Access__: `LedgerManager` asks `PolicyDecisionPoint.decide(subject, { action })` and turns a deny into ngdpbase's refusal with `ctx.enforceDeny` (D-025). No role names in code.
 - __Caching__: after each write the manager bumps the `LedgerManager` topic in `CacheManager`.
 
-Types come from `@jwilleke/ngdpbase-types` (a dev dependency, published with each ngdpbase
-release); the tests use its `/testing` kit (the host builder, an in-memory add-on database checked
-against our declaration, the CSV writer, the plugin formatters). Nothing imports ngdpbase's files.
+Types come from `@jwilleke/ngdpbase-types` (a dev dependency, published with each ngdpbase release); the tests use its `/testing` kit (the host builder, an in-memory add-on database checked against our declaration, the CSV writer, the plugin formatters). Nothing imports ngdpbase's files.
 
 ## Develop
 
@@ -62,5 +46,4 @@ npm install
 npm test                        # builds (tsc) first, then runs vitest
 ```
 
-To run it, point an ngdpbase instance's add-ons path at this repository's `addons/` folder, enable
-`accounting` (and `forms`), and restart. `scripts/smoke.sh` checks a running site end to end.
+To run it, point an ngdpbase instance's add-ons path at this repository's `addons/` folder, enable `accounting` (and `forms`), and restart. `scripts/smoke.sh` checks a running site end to end.
