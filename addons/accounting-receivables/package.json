@@ -1,6 +1,6 @@
 {
   "name": "@jwilleke/accounting-receivables-addon",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Receivables for the ngdpbase accounting add-on: invoices for assessments, rent or dues; payments, credits and late charges",
   "license": "Apache-2.0",
   "repository": {

@@ -26,6 +26,10 @@ export interface ReceiptManagerLike {
 export interface ReceivablesManagerLike {
   issueMonth(actor: ApiContext, input: Record<string, unknown>): Promise<{ issued: number; emailed: number; notEmailed: string[]; held: boolean }>;
   voidInvoice(actor: ApiContext, id: string, reason: string): Promise<{ id: string; number: string }>;
+  setOpeningBalance(actor: ApiContext, input: { folio: string; amount: number; date: string; reason: string }): Promise<{ folio: string }>;
+  writeOff(actor: ApiContext, input: { folio: string; amount: number; date: string; reason: string }): Promise<{ folio: string }>;
+  fileLien(actor: ApiContext, input: { folio: string; amount: number; date: string; reference: string; reason?: string }): Promise<{ folio: string }>;
+  voidFolioItem(actor: ApiContext, itemId: string, reason: string): Promise<{ folio: string }>;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() !== '' ? v : undefined);
@@ -43,6 +47,7 @@ export const PAYMENT_FORM = {
     { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
     { name: 'fundId', type: 'dropdown', label: 'Fund', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=funds)' },
     { name: 'category', type: 'dropdown', label: 'Category', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=receivable-categories)' },
+    { name: 'folio', type: 'dropdown', label: 'On an earlier owners\' folio (blank: the unit\'s current folio)', required: false, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=folios)' },
     { name: 'invoiceId', type: 'dropdown', label: 'Pays this invoice first (optional)', required: false, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=open-invoices)' },
     { name: 'memo', type: 'textarea', label: 'Note', required: false }
   ]
@@ -73,13 +78,13 @@ export function paymentFromForm(data: Data, accountLabel: string): Record<string
   return {
     date: data.date, partyName: str(data.partyName) ?? accountLabel, paymentMethod: data.paymentMethod, paymentMethodId: str(data.paymentMethodId),
     memo: str(data.memo) ?? `Payment on ${accountLabel}`,
-    lines: [{ amount: data.amount, fundId: data.fundId, category: data.category, details: { receivable: { account: data.account, invoiceId: str(data.invoiceId) } } }]
+    lines: [{ amount: data.amount, fundId: data.fundId, category: data.category, details: { receivable: { account: data.account, folio: str(data.folio), invoiceId: str(data.invoiceId) } } }]
   };
 }
 
 /** The form field a refusal is about, from the ledger's message ("lines[0].details.receivable.account …"). */
 export function paymentField(message: string): string | undefined {
-  const m = /(account|invoiceId|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
+  const m = /(account|folio|invoiceId|category|fundId|amount|partyName|paymentMethod|memo|date)\b/.exec(message);
   return m?.[1];
 }
 
@@ -90,12 +95,54 @@ const refusal = (err: unknown, fieldOf: (message: string) => string | undefined)
   return { ok: false, error: message, ...(field ? { fields: { [field]: message } } : {}) };
 };
 
+const folioField = { name: 'folio', type: 'dropdown', label: 'Folio', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=folios)' };
+
+export const FOLIO_OPENING_FORM = {
+  id: 'folio-opening', title: 'Enter a balance brought forward', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'What a folio owed, or had as credit, before these books: once per folio. It is kept as entered; a mistake is voided and entered again.',
+  fields: [folioField,
+    { name: 'amount', type: 'amount', label: 'Amount', required: true },
+    { name: 'credit', type: 'checkbox', label: 'It is a credit (paid ahead), not money owed', required: false },
+    { name: 'date', type: 'date', label: 'As of', required: true },
+    { name: 'reason', type: 'textarea', label: 'Where the figure comes from', required: true }]
+};
+
+export const FOLIO_WRITE_OFF_FORM = {
+  id: 'folio-write-off', title: 'Write off a folio\'s debt', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'An amount the association gives up on a folio. No money moves; the folio\'s balance drops by it.',
+  fields: [folioField,
+    { name: 'amount', type: 'amount', label: 'Amount written off', required: true },
+    { name: 'date', type: 'date', label: 'Date', required: true },
+    { name: 'reason', type: 'textarea', label: 'Reason', required: true }]
+};
+
+export const FOLIO_LIEN_FORM = {
+  id: 'folio-lien', title: 'Record a lien', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'A lien filed with the county on a folio whose debt is judged uncollectable. It does not change the balance; money recovered later is an ordinary payment on the folio.',
+  fields: [folioField,
+    { name: 'amount', type: 'amount', label: 'Amount of the lien', required: true },
+    { name: 'date', type: 'date', label: 'Date filed', required: true },
+    { name: 'reference', type: 'text', label: 'County recording number or instrument', required: true },
+    { name: 'reason', type: 'textarea', label: 'Note (optional)', required: false }]
+};
+
+export const FOLIO_ITEM_VOID_FORM = {
+  id: 'folio-item-void', title: 'Void a folio entry', handler: 'accounting-receivables', store: false, proxySubmission: false, notifyRole: 'admin',
+  description: 'A balance brought forward, write-off or lien entered by mistake. It is kept, marked voided with the reason.',
+  fields: [
+    { name: 'item', type: 'dropdown', label: 'Entry', required: true, optionsSource: 'fetch:ReceivablesManager.toFormOptions(list=folio-items)' },
+    { name: 'reason', type: 'textarea', label: 'Reason', required: true }]
+};
+
+/** A form's amount field, in cents, as the forms add-on hands it over (as the payment form passes it on). */
+const cents = (v: unknown): number => Number(v);
+
 export async function registerReceivableForms(engine: Engine, host: AddonHost, accountLabel: (id: string) => string): Promise<void> {
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');
   if (!forms || !definitions) { host.logger.info('[accounting-receivables] Forms add-on not enabled: the invoice screens are off'); return; }
   // Registered on every start, as the system (ngdpbase #1973): replaced when this add-on's version is newer.
-  for (const definition of [PAYMENT_FORM, ISSUE_FORM, VOID_FORM]) await definitions.registerShippedForm('accounting-receivables', definition, host.systemContext(`accounting-receivables: shipped form ${definition.id}`));
+  for (const definition of [PAYMENT_FORM, ISSUE_FORM, VOID_FORM, FOLIO_OPENING_FORM, FOLIO_WRITE_OFF_FORM, FOLIO_LIEN_FORM, FOLIO_ITEM_VOID_FORM]) await definitions.registerShippedForm('accounting-receivables', definition, host.systemContext(`accounting-receivables: shipped form ${definition.id}`));
 
   forms.registerHandler(PAYMENT_FORM.id, async (submission, { req }) => {
     const receipts = engine.getManager<ReceiptManagerLike>('ReceiptManager');
@@ -138,4 +185,20 @@ export async function registerReceivableForms(engine: Engine, host: AddonHost, a
       return refusal(err, fieldIn(VOID_FORM));
     }
   });
+
+  const folioHandler = (definition: { id: string; fields: { name: string }[] }, run: (r: ReceivablesManagerLike, ctx: ApiContext, d: Record<string, unknown>) => Promise<{ folio: string }>) =>
+    forms.registerHandler(definition.id, async (submission, { req }) => {
+      const receivables = engine.getManager<ReceivablesManagerLike>('ReceivablesManager');
+      if (!receivables) return { ok: false, error: 'Invoices are not running on this site' };
+      try {
+        const ctx = host.ApiContext.from(req as never, engine as never);
+        return { ok: true, id: (await run(receivables, ctx, submission.data)).folio };
+      } catch (err) {
+        return refusal(err, fieldIn(definition));
+      }
+    });
+  folioHandler(FOLIO_OPENING_FORM, (r, ctx, d) => r.setOpeningBalance(ctx, { folio: String(d.folio ?? ''), amount: cents(d.amount) * (checked(d.credit) ? -1 : 1), date: String(d.date ?? ''), reason: String(d.reason ?? '') }));
+  folioHandler(FOLIO_WRITE_OFF_FORM, (r, ctx, d) => r.writeOff(ctx, { folio: String(d.folio ?? ''), amount: cents(d.amount), date: String(d.date ?? ''), reason: String(d.reason ?? '') }));
+  folioHandler(FOLIO_LIEN_FORM, (r, ctx, d) => r.fileLien(ctx, { folio: String(d.folio ?? ''), amount: cents(d.amount), date: String(d.date ?? ''), reference: String(d.reference ?? ''), reason: str(d.reason) }));
+  folioHandler(FOLIO_ITEM_VOID_FORM, (r, ctx, d) => r.voidFolioItem(ctx, String(d.item ?? ''), String(d.reason ?? '')));
 }
