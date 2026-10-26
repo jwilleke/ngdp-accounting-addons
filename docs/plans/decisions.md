@@ -898,3 +898,5 @@ __Decision (operator, 2026-10-26, recorded on ngdpbase#2042; reverses the non-go
 - When it is paid, it leaves payables, and the money going out of the bank account is an ordinary money-out ledger entry naming the bill.
 - Vendors are core organizations with a Vendor affiliation.
 - A unit's maintenance is recorded on the date of service, from the work order, whenever the bill arrives or is paid. Money-out entries gain module line details, as receipts have, so the work-orders add-on can tag a payment `{ unit, job }` and list a unit's spending across every folio.
+- __The maintenance flow__ (operator, 2026-10-26, ngdpbase-addons#19): a request (owner or association); a work order to a vendor; the vendor fixes it and the work order closes with its date of service, into the unit's history; the vendor's bill goes into payables; the association pays it, a money-out entry.
+- __Work the owners pay for__ is invoiced to the unit's assigned folio only after the vendor has billed, for the vendor's amount: a one-off folio invoice that the work-orders add-on hands to accounting when it happens. Monthly charges stay as they are, issued each month.
