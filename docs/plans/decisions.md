@@ -912,6 +912,6 @@ __Context:__ The board answers for everything the organization does, but nothing
 __Decision (operator, 2026-10-26, through the ngdpbase session):__
 
 - A core role, `executive`, reads everything the organization keeps, nothing hidden: the ledger, deposits, donor names and amounts, every unit's account, folios, liens and write-offs, and the treasurer's pages read-only.
-- These add-ons grant their reads (`ledger-summary-read`, `ledger-read`, `account-read`) to `executive` in their own policies, and contribute cards to core's `/executive` page: funds, cash not yet deposited, receivables outstanding, units owing, liens, write-offs, donation totals with names, and pending items.
+- These add-ons grant their reads (`ledger-summary-read`, `ledger-read`, `account-read`, `ledger-export`) to `executive` in their own policies, and contribute cards to core's `/executive` page: funds, cash not yet deposited, receivables outstanding, units owing, liens, write-offs, donation totals with names, and pending items.
 - The executive's only action is deciding board reviews. Write-offs, liens and unlocking a period stay the treasurer's alone, as today ("not for now").
-- Whether `executive` gets the CSV export (`ledger-export`) is still open.
+- `executive` also gets the CSV downloads (`ledger-export`): a read-only download, and the board answers for the books (operator, 2026-10-26).
