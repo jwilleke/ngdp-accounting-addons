@@ -900,3 +900,18 @@ __Decision (operator, 2026-10-26, recorded on ngdpbase#2042; reverses the non-go
 - A unit's maintenance is recorded on the date of service, from the work order, whenever the bill arrives or is paid. Money-out entries gain module line details, as receipts have, so the work-orders add-on can tag a payment `{ unit, job }` and list a unit's spending across every folio.
 - __The maintenance flow__ (operator, 2026-10-26, ngdpbase-addons#19): a request (owner or association); a work order to a vendor; the vendor fixes it and the work order closes with its date of service, into the unit's history; the vendor's bill goes into payables; the association pays it, a money-out entry.
 - __Work the owners pay for__ is invoiced to the unit's assigned folio only after the vendor has billed, for the vendor's amount: a one-off folio invoice that the work-orders add-on hands to accounting when it happens. Monthly charges stay as they are, issued each month.
+
+## D-050: The executive role reads all of accounting; actions stay the treasurer's
+
+- __Status:__ Accepted (to build after ngdpbase#2093)
+- __Date:__ 2026-10-26
+- __Links:__ [ngdpbase#2092](https://github.com/jwilleke/ngdpbase/issues/2092), [ngdpbase#2094](https://github.com/jwilleke/ngdpbase/issues/2094), design in ngdpbase `docs/planning/executive-hub.md`
+
+__Context:__ The board answers for everything the organization does, but nothing in these add-ons was for the board: all pages are the treasurer's, and the board saw money only through plugin views a site placed itself.
+
+__Decision (operator, 2026-10-26, through the ngdpbase session):__
+
+- A core role, `executive`, reads everything the organization keeps, nothing hidden: the ledger, deposits, donor names and amounts, every unit's account, folios, liens and write-offs, and the treasurer's pages read-only.
+- These add-ons grant their reads (`ledger-summary-read`, `ledger-read`, `account-read`) to `executive` in their own policies, and contribute cards to core's `/executive` page: funds, cash not yet deposited, receivables outstanding, units owing, liens, write-offs, donation totals with names, and pending items.
+- The executive's only action is deciding board reviews. Write-offs, liens and unlocking a period stay the treasurer's alone, as today ("not for now").
+- Whether `executive` gets the CSV export (`ledger-export`) is still open.
