@@ -29,7 +29,9 @@ const actor = (granted: string[] = ALL): LedgerActor => ({
 const units: AccountSource = {
   list: () => [{ id: 'P-1', unitNumber: '1' }, { id: 'P-2', unitNumber: '2' }],
   get: (id) => units.list().find(u => u.id === id),
-  assessment: (id) => (id === 'P-1' ? { amount: 41000, period: 'monthly', datedue: 1 } : { amount: 30000, period: 'monthly', datedue: 1 }),
+  assessment: (id) => (id === 'P-1'
+    ? { amount: 41000, period: 'monthly', datedue: 1, lines: [{ description: 'Reserve Contribution', amount: 25211 }, { description: 'Operating Contribution', amount: 15789 }] }
+    : { amount: 30000, period: 'monthly', datedue: 1 }),
   lateCharges: () => [
     { id: 'late-10', daysLate: 10, amount: 1000, annualPercent: null, repeat: 'once' },
     { id: 'late-60', daysLate: 60, amount: 5000, annualPercent: 8, repeat: 'monthly' }
@@ -135,6 +137,10 @@ describe('dues', () => {
     expect(one).toMatchObject({ party: 'entry-1', partyName: 'Pat Lee & Sam Lee', billingAddress: 'Pat Lee & Sam Lee\n1 Fairway Dr\nMount Vernon, OH 43050',
       ownerIds: [{ '@id': 'urn:pat', share: 50 }, { '@id': 'urn:sam', share: 50 }], owners: [] });
     expect(one!.html).toContain('Pat Lee &amp; Sam Lee<br>1 Fairway Dr<br>Mount Vernon, OH 43050');
+    // The charge shows its lines; one address billed for the whole unit has no share line. P-2 names no lines.
+    expect(one!.html).toMatch(/Reserve Contribution<\/td><td class="amount">\$252\.11<.*Operating Contribution<\/td><td class="amount">\$157\.89</s);
+    expect(one!.html).not.toContain('Your share');
+    expect(two!.html).not.toContain('Contribution');
     // Billing is the unit's on the charge's due date.
     expect(new Set(billingAsked)).toEqual(new Set(['2026-09-01']));
     expect(audit.at(-1)).toMatchObject({ action: 'invoice-issue', resource: 'invoices:2026-09' });
@@ -229,6 +235,8 @@ describe('dues', () => {
     const [first, second] = (await dues.listInvoices(actor(), { accountId: 'P-1' })).sort((a, b) => a.number.localeCompare(b.number));
     expect([first!.total, second!.total]).toEqual([24600, 16400]);
     expect(second!.html).toContain('Sam Lee<br>9 Elm St');
+    // The unit's charge lines at their full amounts, then this address's share: what it owes.
+    expect(second!.html).toMatch(/Reserve Contribution<\/td><td class="amount">\$252\.11<.*Operating Contribution<\/td><td class="amount">\$157\.89<.*Your share: 40%<\/td><td class="amount">\$164\.00</s);
     // A payment names only the unit: it settles the unit's oldest invoice, then the next.
     await pay('P-1', 30000, '2026-09-03');
     expect((await dues.listInvoices(actor(), { accountId: 'P-1' })).sort((a, b) => a.number.localeCompare(b.number)).map(i => i.remaining)).toEqual([0, 11000]);

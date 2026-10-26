@@ -15,7 +15,13 @@
  */
 
 /** What an account is charged and when it falls due (AccommodationManager.assessment). */
-export interface Assessment { amount: number; period: 'monthly' | 'annual'; datedue: number | string }
+/** A part of a unit's charge, e.g. Reserve Contribution; the parts add up to the charge exactly. */
+export interface ChargeLine { description: string; amount: number }
+
+export interface Assessment { amount: number; period: 'monthly' | 'annual'; datedue: number | string; lines?: ChargeLine[] }
+
+/** A month's charge for a unit: when it is due, the amount, and its parts (none when the site names none). */
+export interface Charge { dueDate: string; amount: number; lines: ChargeLine[] }
 
 /** A late-charge rule (AccommodationManager.lateCharges). */
 export interface LateChargeRule { id: string; daysLate: number; amount: number | null; annualPercent: number | null; repeat: 'once' | 'monthly' }
@@ -39,11 +45,12 @@ export function billingMonth(value: unknown, field = 'month'): string {
 }
 
 /** The month's charge for an account, or null when nothing falls due in it. */
-export function chargeFor(assessment: Assessment | null, month: string): { dueDate: string; amount: number } | null {
+export function chargeFor(assessment: Assessment | null, month: string): Charge | null {
   if (!assessment || assessment.amount <= 0) return null;
-  if (assessment.period === 'monthly') return { dueDate: `${month}-${String(assessment.datedue).padStart(2, '0')}`, amount: assessment.amount };
+  const lines = assessment.lines ?? [];
+  if (assessment.period === 'monthly') return { dueDate: `${month}-${String(assessment.datedue).padStart(2, '0')}`, amount: assessment.amount, lines };
   const [mm, dd] = String(assessment.datedue).split('-');
-  return month.slice(5) === mm ? { dueDate: `${month}-${dd}`, amount: assessment.amount } : null;
+  return month.slice(5) === mm ? { dueDate: `${month}-${dd}`, amount: assessment.amount, lines } : null;
 }
 
 /** How payments settle invoices: what each has been paid, and the credit left over. */

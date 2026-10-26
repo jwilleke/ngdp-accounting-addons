@@ -12,8 +12,10 @@ const RULES: LateChargeRule[] = [
 
 describe('billing', () => {
   test('a monthly charge falls due every month; an annual one only in its month', () => {
-    expect(chargeFor({ amount: 41000, period: 'monthly', datedue: 1 }, '2026-10')).toEqual({ dueDate: '2026-10-01', amount: 41000 });
-    expect(chargeFor({ amount: 120000, period: 'annual', datedue: '06-01' }, '2026-06')).toEqual({ dueDate: '2026-06-01', amount: 120000 });
+    expect(chargeFor({ amount: 41000, period: 'monthly', datedue: 1 }, '2026-10')).toEqual({ dueDate: '2026-10-01', amount: 41000, lines: [] });
+    const lines = [{ description: 'Reserve Contribution', amount: 25211 }, { description: 'Operating Contribution', amount: 15789 }];
+    expect(chargeFor({ amount: 41000, period: 'monthly', datedue: 1, lines }, '2026-10')).toEqual({ dueDate: '2026-10-01', amount: 41000, lines });
+    expect(chargeFor({ amount: 120000, period: 'annual', datedue: '06-01' }, '2026-06')).toEqual({ dueDate: '2026-06-01', amount: 120000, lines: [] });
     expect(chargeFor({ amount: 120000, period: 'annual', datedue: '06-01' }, '2026-07')).toBeNull();
     expect(chargeFor(null, '2026-07')).toBeNull();
     expect(() => billingMonth('2026-13')).toThrow('month must be a month as YYYY-MM');

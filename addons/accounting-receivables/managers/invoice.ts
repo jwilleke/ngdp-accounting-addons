@@ -11,7 +11,11 @@ export interface InvoiceContent {
   month: string;
   date: string;
   dueDate: string;
-  lines: { description: string; amount: number }[];
+  lines: { description: string; amount: number; kind?: string }[];
+  /** The unit's charge lines at their full amounts, shown under the charge (none: the charge alone). */
+  chargeLines?: { description: string; amount: number }[];
+  /** The billing entry's share of the unit's charge, in percent; below 100 it is shown as "Your share". */
+  share?: number;
   /** Owed before this invoice; negative is a credit. */
   previous: number;
   total: number;
@@ -31,7 +35,14 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '
 
 export function renderInvoice(c: InvoiceContent, w: InvoiceWording, formatMoney: (minor: number) => string): string {
   const money = (m: number) => esc(formatMoney(m));
-  const rows = c.lines.map(l => `<tr><td>${esc(l.description)}</td><td class="amount">${money(l.amount)}</td></tr>`).join('');
+  const row = (l: { description: string; amount: number }, cls = '') => `<tr><td${cls}>${esc(l.description)}</td><td class="amount">${money(l.amount)}</td></tr>`;
+  const share = c.share ?? 100;
+  // The charge's parts at their full amounts, then, for a party paying part of the unit, its share: the amount it owes.
+  const charge = (l: { description: string; amount: number }) => !c.chargeLines?.length ? row(l)
+    : `<tr><td colspan="2">${esc(l.description)}</td></tr>`
+      + c.chargeLines.map(p => row(p, ' class="part"')).join('')
+      + (share < 100 ? row({ description: `Your share: ${share}%`, amount: l.amount }) : '');
+  const rows = c.lines.map(l => l.kind === 'charge' ? charge(l) : row(l)).join('');
   const brought = c.previous === 0 ? ''
     : `<tr><td>${c.previous > 0 ? 'Balance brought forward' : 'Credit brought forward'}</td><td class="amount">${c.previous > 0 ? '' : '−'}${money(Math.abs(c.previous))}</td></tr>`;
   return `<!doctype html>
@@ -41,7 +52,7 @@ export function renderInvoice(c: InvoiceContent, w: InvoiceWording, formatMoney:
   body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; color: #111; }
   h1 { font-size: 1.4rem; margin-bottom: 0.2rem; } h2 { font-size: 1.1rem; margin-top: 1.5rem; } .muted { color: #555; }
   table { width: 100%; border-collapse: collapse; margin: 1rem 0; } td, th { padding: 0.35rem 0.25rem; border-bottom: 1px solid #ddd; text-align: left; }
-  .amount { text-align: right; } tfoot td { font-weight: 600; border-bottom: none; }
+  .amount { text-align: right; } .part { padding-left: 1.25rem; } tfoot td { font-weight: 600; border-bottom: none; }
   @media print { body { margin: 0; } }
 </style></head><body>
 <h1>Invoice ${esc(c.number)}</h1>
