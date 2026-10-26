@@ -185,4 +185,80 @@ const RENAMED: ReceivablesMigration = {
   }
 };
 
-export const RECEIVABLES_MIGRATIONS: ReceivablesMigration[] = [INVOICES, BILLING_PARTIES, INVOICE_PDF, IDENTITY_BILLING, RENAMED];
+const FOLIOS: ReceivablesMigration = {
+  id: '20261026120000',
+  description: 'a unit is billed through folios, each with its own balance (D-048, #75)',
+  up: (db) => {
+    db.exec(`
+      -- A folio: one stretch of the same owners with the same shares on a unit (accommodation's ownership
+      -- period), numbered per unit F01, F02, … . Never changed or deleted.
+      CREATE TABLE accounting_receivables_folios (
+        id          TEXT PRIMARY KEY,
+        account_id  TEXT NOT NULL,
+        number      INTEGER NOT NULL CHECK (number >= 1),
+        period_id   TEXT UNIQUE,
+        period_from TEXT,
+        owner_ids   TEXT NOT NULL,
+        created_by  TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        UNIQUE (account_id, number)
+      );
+      CREATE TRIGGER accounting_receivables_folios_fixed BEFORE UPDATE ON accounting_receivables_folios
+      BEGIN SELECT RAISE(ABORT, 'receivables: a folio never changes'); END;
+      CREATE TRIGGER accounting_receivables_folios_no_delete BEFORE DELETE ON accounting_receivables_folios
+      BEGIN SELECT RAISE(ABORT, 'receivables: a folio is never deleted'); END;
+
+      -- Which folio an invoice is on. Null on invoices issued before folios: they count on the unit's first folio.
+      ALTER TABLE accounting_receivables_invoices ADD COLUMN folio_id TEXT;
+      -- One invoice a month per billing entry of each folio: an earlier owners' folio and the current one are
+      -- both invoiced in the same month (D-048).
+      DROP INDEX accounting_dues_invoices_month;
+      CREATE UNIQUE INDEX accounting_receivables_invoices_month ON accounting_receivables_invoices (account_id, COALESCE(folio_id, ''), party, month)
+        WHERE status = 'issued';
+      DROP TRIGGER accounting_dues_invoices_fixed;
+      CREATE TRIGGER accounting_receivables_invoices_fixed BEFORE UPDATE ON accounting_receivables_invoices
+      WHEN NEW.id IS NOT OLD.id OR NEW.number IS NOT OLD.number OR NEW.account_id IS NOT OLD.account_id
+        OR NEW.account_label IS NOT OLD.account_label OR NEW.month IS NOT OLD.month OR NEW.date IS NOT OLD.date
+        OR NEW.due_date IS NOT OLD.due_date OR NEW.total IS NOT OLD.total OR NEW.previous IS NOT OLD.previous
+        OR NEW.owed IS NOT OLD.owed OR NEW.owners IS NOT OLD.owners OR NEW.html IS NOT OLD.html OR NEW.sha256 IS NOT OLD.sha256
+        OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NEW.party IS NOT OLD.party OR NEW.party_name IS NOT OLD.party_name OR NEW.address IS NOT OLD.address
+        OR NEW.billing_address IS NOT OLD.billing_address OR NEW.owner_ids IS NOT OLD.owner_ids OR NEW.folio_id IS NOT OLD.folio_id
+        OR (NEW.status IS NOT OLD.status AND NOT (OLD.status = 'issued' AND NEW.status = 'voided'
+              AND NEW.void_reason IS NOT NULL AND NEW.void_reason <> ''))
+        OR (NEW.emailed_at IS NOT OLD.emailed_at AND OLD.emailed_at IS NOT NULL)
+        OR (NEW.pdf_sha256 IS NOT OLD.pdf_sha256 AND OLD.emailed_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'receivables: an issued invoice never changes; void it and issue it again'); END;
+
+      -- What the treasurer records on a folio that is not an invoice and not money that moved: a balance
+      -- brought forward (owed when positive, a credit when negative; one standing per folio), a
+      -- write-off, and a lien filed with the county (its amount and the county's reference; it does not
+      -- change the balance). Kept as entered; a mistake is voided, once, with a reason.
+      CREATE TABLE accounting_receivables_folio_items (
+        id          TEXT PRIMARY KEY,
+        folio_id    TEXT NOT NULL REFERENCES accounting_receivables_folios (id),
+        kind        TEXT NOT NULL CHECK (kind IN ('opening', 'write-off', 'lien')),
+        amount      INTEGER NOT NULL CHECK (amount <> 0 AND (kind = 'opening' OR amount > 0)),
+        reference   TEXT CHECK (kind <> 'lien' OR (reference IS NOT NULL AND reference <> '')),
+        date        TEXT NOT NULL,
+        reason      TEXT NOT NULL CHECK (reason <> ''),
+        status      TEXT NOT NULL CHECK (status IN ('recorded', 'voided')),
+        void_reason TEXT,
+        created_by  TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        CHECK (status <> 'voided' OR (void_reason IS NOT NULL AND void_reason <> ''))
+      );
+      CREATE UNIQUE INDEX accounting_receivables_folio_items_one_opening ON accounting_receivables_folio_items (folio_id)
+        WHERE kind = 'opening' AND status = 'recorded';
+      CREATE TRIGGER accounting_receivables_folio_items_no_delete BEFORE DELETE ON accounting_receivables_folio_items
+      BEGIN SELECT RAISE(ABORT, 'receivables: a folio item is voided, never deleted'); END;
+      CREATE TRIGGER accounting_receivables_folio_items_fixed BEFORE UPDATE ON accounting_receivables_folio_items
+      WHEN NEW.id IS NOT OLD.id OR NEW.folio_id IS NOT OLD.folio_id OR NEW.kind IS NOT OLD.kind OR NEW.amount IS NOT OLD.amount
+        OR NEW.date IS NOT OLD.date OR NEW.reason IS NOT OLD.reason OR NEW.reference IS NOT OLD.reference OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
+        OR NOT (OLD.status = 'recorded' AND NEW.status = 'voided' AND NEW.void_reason IS NOT NULL AND NEW.void_reason <> '')
+      BEGIN SELECT RAISE(ABORT, 'receivables: a folio item never changes; void it, once, with a reason'); END;
+    `);
+  }
+};
+
+export const RECEIVABLES_MIGRATIONS: ReceivablesMigration[] = [INVOICES, BILLING_PARTIES, INVOICE_PDF, IDENTITY_BILLING, RENAMED, FOLIOS];

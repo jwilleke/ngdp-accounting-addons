@@ -101,29 +101,39 @@ export function splitByShare(amount: number, parties: { share: number }[]): numb
   return raw;
 }
 
-/** What is stored on a payment line: the unit it pays (D-047: one balance per unit), and the invoice it names, if any. */
-export interface ReceivableDetails { account: string; invoiceId: string | null }
+/** What is stored on a payment line: the unit it pays, the folio whose balance it settles (D-048), and the invoice it names, if any. */
+export interface ReceivableDetails { account: string; folio: string | null; invoiceId: string | null }
 
 /** The `receivable` kind of receipt-line details: checks what a caller sends and returns what is stored. */
 export function receivableValidator(settings: {
   categories: () => string[];
   accountExists: (id: string) => boolean;
-  invoiceOf: (invoiceId: string) => { accountId: string; status: string } | null;
+  invoiceOf: (invoiceId: string) => { accountId: string; folio: string | null; status: string } | null;
+  /** The unit's assigned folio, where a payment naming no folio goes (D-048). */
+  assignedFolioId: (account: string) => string | null;
+  /** Whether a folio is the unit's. */
+  folioOfAccount: (account: string, folio: string) => boolean;
 }) {
   return {
     validate(data: unknown, line: { category: string }): Record<string, unknown> {
       if (typeof data !== 'object' || data === null || Array.isArray(data)) throw new Error('details.receivable must be an object');
-      const d = data as { account?: unknown; invoiceId?: unknown };
+      const d = data as { account?: unknown; folio?: unknown; invoiceId?: unknown };
       const allowed = settings.categories();
       if (!allowed.includes(line.category)) throw new Error(`category: ${line.category} is not a category these payments may use (${allowed.join(', ') || 'none set'})`);
       if (typeof d.account !== 'string' || d.account === '' || !settings.accountExists(d.account)) throw new Error('details.receivable.account names no account');
       const invoiceId = typeof d.invoiceId === 'string' && d.invoiceId !== '' ? d.invoiceId : null;
+      let folio = typeof d.folio === 'string' && d.folio !== '' ? d.folio : null;
+      if (folio && !settings.folioOfAccount(d.account, folio)) throw new Error('details.receivable.folio is not a folio of that account');
       if (invoiceId) {
         const invoice = settings.invoiceOf(invoiceId);
         if (!invoice || invoice.status !== 'issued') throw new Error('details.receivable.invoiceId names no issued invoice');
         if (invoice.accountId !== d.account) throw new Error('details.receivable.invoiceId is an invoice of another account');
+        if (folio && invoice.folio && folio !== invoice.folio) throw new Error('details.receivable.folio is not the folio of that invoice');
+        folio = folio ?? invoice.folio;
       }
-      const details: ReceivableDetails = { account: d.account, invoiceId };
+      // A payment naming neither goes on the unit's assigned folio, as recorded now (D-048): the new owners
+      // never pay an earlier folio's debt by accident.
+      const details: ReceivableDetails = { account: d.account, folio: folio ?? settings.assignedFolioId(d.account), invoiceId };
       return details as unknown as Record<string, unknown>;
     }
   };

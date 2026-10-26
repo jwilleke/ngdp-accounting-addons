@@ -5,6 +5,7 @@
  *   [{Receivables view='prepare' month='next'}]     current (the default), next, previous, or YYYY-MM
  *   [{Receivables view='invoices' month='2026-10'}] invoices, newest first (blank month: all; voided='true' adds voided ones)
  *   [{Receivables view='balances'}]                each account: invoiced, paid, balance or credit
+ *   [{Receivables view='folios'}]                  each folio (D-048): owners' stretch, current or earlier, balance, and what is recorded on it
  *
  * Every read goes through ReceivablesManager as the viewer, so its permissions decide
  * (ledger-read: these name accounts and what they owe).
@@ -36,7 +37,7 @@ export async function renderReceivablesView(f: PluginFormatters, dues: Receivabl
       const month = monthParam(params.month, today);
       const rows = await dues.prepareMonth(actor, month);
       const totals = rows.filter(r => !r.invoiced && !r.problem);
-      const who = (r: { label: string; partyName: string }) => `${escapeHtml(r.label)}${r.partyName ? `<br><small>${escapeHtml(r.partyName)}</small>` : ''}`;
+      const who = (r: { label: string; partyName: string; folio: string }) => `${escapeHtml(r.label)}${r.folio ? ` · ${escapeHtml(r.folio)}` : ''}${r.partyName ? `<br><small>${escapeHtml(r.partyName)}</small>` : ''}`;
       return `<p class="text-muted">${escapeHtml(month)}: ${totals.length} to invoice, ${money(totals.reduce((t, r) => t + r.owed, 0))} owed</p>`
         + formatAsTable(['Account', 'Charge', 'Due', 'Late charges', 'Brought forward', 'Amount owed', 'Invoice'],
           rows.map(r => r.problem ? [who(r), '', '', '', '', '', `not billable: ${escapeHtml(r.problem)}`] : [who(r), r.charge ? money(r.charge.amount) : '', escapeHtml(r.charge?.dueDate ?? ''),
@@ -53,13 +54,22 @@ export async function renderReceivablesView(f: PluginFormatters, dues: Receivabl
           i.status === 'voided' ? `voided: ${escapeHtml(i.voidReason ?? '')}` : (i.emailedTo ? 'issued · emailed' : 'issued')]),
         { sortable: true, emptyMessage: 'No invoices.' });
     }
+    if (view === 'folios') {
+      const folios = await dues.folios(actor);
+      const kind = { opening: 'balance brought forward', 'write-off': 'written off', lien: 'lien' } as const;
+      return formatAsTable(['Account', 'Folio', 'From', 'State', 'Invoiced', 'Paid', 'Balance', 'Recorded on it'],
+        folios.map(f => [escapeHtml(f.label), escapeHtml(f.folio), escapeHtml(f.from ?? ''), f.assigned ? 'current' : f.open ? 'earlier owners, open' : 'closed',
+          money(f.invoiced), money(f.paid), `<strong>${balance(f.balance)}</strong>`,
+          f.items.map(i => `${kind[i.kind]} ${money(i.amount)} ${escapeHtml(i.date)}${i.reference ? ` (${escapeHtml(i.reference)})` : ''}`).join('<br>')]),
+        { sortable: true, emptyMessage: 'No folios yet: a unit gets its first when it is first invoiced.' });
+    }
     if (view === 'balances') {
       const rows = await dues.balances(actor);
       return formatAsTable(['Account', 'Invoiced', 'Paid', 'Balance'],
         rows.map(r => [escapeHtml(r.label), money(r.invoiced), money(r.paid), `<strong>${balance(r.balance)}</strong>`]),
         { sortable: true, emptyMessage: 'No accounts.' });
     }
-    return note(f, `Unknown view '${view}'; use prepare, invoices or balances.`);
+    return note(f, `Unknown view '${view}'; use prepare, invoices, balances or folios.`);
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status === 401 || status === 403) return note(f, 'You may not see the accounts.');

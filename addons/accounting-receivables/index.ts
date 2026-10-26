@@ -78,7 +78,7 @@ let profile: { dues: ReceivablesManager; f: PluginFormatters; money(minor: numbe
 
 const AccountingReceivablesAddon = {
   name: 'accounting-receivables',
-  version: '0.4.0',
+  version: '0.5.0',
   description: 'Receivables: monthly invoices for assessments, rent or dues; payments, credits and late charges',
   author: 'jwilleke',
   dependencies: ['accounting'],
@@ -146,7 +146,8 @@ const AccountingReceivablesAddon = {
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
       decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
     });
-    receivableLines = ledger.registerLineDetails('receivable', receivableValidator({ categories, accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
+    receivableLines = ledger.registerLineDetails('receivable', receivableValidator({ categories, accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id),
+      assignedFolioId: (account) => dues.assignedFolioId(account), folioOfAccount: (account, folio) => dues.folioOfAccount(account, folio) }));
     // Payments recorded before the rename: read as they are, never rewritten; no new ones (ngdpbase#2042).
     retiredLines = ledger.registerLineDetails(RETIRED_KIND, retiredKind);
     engine.registerManager('ReceivablesManager', dues);
@@ -185,7 +186,7 @@ const AccountingReceivablesAddon = {
     const { f, money } = profile;
     const esc = (s: string) => f.escapeHtml(s);
     const balance = (m: number) => esc(m < 0 ? `${money(-m)} credit` : money(m));
-    const html = units.map(u => `<p><strong>${esc(u.label)}</strong>${u.balance === null ? ' · no longer yours: the invoices from when it was' : ` · balance <strong>${balance(u.balance)}</strong>`}</p>`
+    const html = units.map(u => `<p><strong>${esc(u.label)}</strong> · ${esc(u.folio)}${u.current ? '' : ' · from when you were an owner'} · balance <strong>${balance(u.balance)}</strong></p>`
       + f.formatAsTable(['Invoice', 'Month', 'Due', 'Billed to', 'Charged', 'Paid', 'Left to pay'],
         u.invoices.map(i => [`<a href="/api/accounting-receivables/my-invoices/${encodeURIComponent(i.id)}">${esc(i.number)}</a>`, esc(i.month), esc(i.dueDate), esc(i.billedTo),
           esc(money(i.total)), esc(money(i.paid)), esc(money(i.remaining))]))).join('');

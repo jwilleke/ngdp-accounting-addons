@@ -56,13 +56,15 @@ let owning: Record<string, string[]> = {};
 const residents: BillingSource = {
   billing: async (_ctx, id, options) => {
     billingAsked.push(options?.on);
-    if (id === 'P-2') return { billing: [{ address: 'Jo Park\n2 Fairway Dr', share: 100 }], owners: [{ '@id': 'urn:jo', share: 100 }] };
+    if (id === 'P-2') return { period: { id: 'period-P-2-jo', from: '2020-01-01' }, billing: [{ address: 'Jo Park\n2 Fairway Dr', share: 100 }], owners: [{ '@id': 'urn:jo', share: 100 }] };
     if (p1 === 'no-address') throw new Error('unit P-1: no billing address; an owner or the treasurer sets one');
     const holders = Object.keys(owning).filter(u => owning[u]!.includes('P-1')).sort();
     const owners = holders.map(u => ({ '@id': `urn:${u}`, share: 100 / holders.length }));
+    // The ownership period changes when the owners change (D-048).
+    const period = { id: `period-P-1-${holders.join('-')}`, from: holders.includes('kim') ? '2026-09-15' : '2020-01-01' };
     return p1 === 'joint'
-      ? { billing: [{ address: 'Pat Lee & Sam Lee\n1 Fairway Dr\nMount Vernon, OH 43050', share: 100 }], owners }
-      : { billing: [{ address: 'Pat Lee\n1 Fairway Dr', share: 60 }, { address: 'Sam Lee\n9 Elm St', share: 40 }], owners };
+      ? { period, billing: [{ address: 'Pat Lee & Sam Lee\n1 Fairway Dr\nMount Vernon, OH 43050', share: 100 }], owners }
+      : { period, billing: [{ address: 'Pat Lee\n1 Fairway Dr', share: 60 }, { address: 'Sam Lee\n9 Elm St', share: 40 }], owners };
   },
   ownUnits: async (ctx) => (owning[(ctx as { username: string }).username] ?? []).map(id => ({ id, as: ['owner'] }))
 };
@@ -109,7 +111,8 @@ describe('dues', () => {
         return Buffer.from('%PDF-invoice');
       } })
     });
-    receivableLines = ledger.registerLineDetails('receivable', receivableValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id) }));
+    receivableLines = ledger.registerLineDetails('receivable', receivableValidator({ categories: () => ['4100'], accountExists: (id) => dues.accountExists(id), invoiceOf: (id) => dues.invoiceOf(id),
+      assignedFolioId: (account) => dues.assignedFolioId(account), folioOfAccount: (account, folio) => dues.folioOfAccount(account, folio) }));
     retiredLines = ledger.registerLineDetails(RETIRED_KIND, retiredKind);
     fundId = (await ledger.createFund(actor(), { name: 'Operating' })).id;
   });
@@ -245,34 +248,77 @@ describe('dues', () => {
     expect((await dues.listInvoices(actor(), { accountId: 'P-1' }))).toEqual([]);
   });
 
-  test("a current owner sees the unit's whole account; a past owner only what was billed while they owned it; the board all (D-047)", async () => {
+  test("a change of owners starts a new folio; the earlier owners' folio keeps its balance, and each owner sees their own (D-048)", async () => {
     p1 = 'split';
     await dues.issueMonth(actor(), { month: '2026-09' });
-    // Someone pays: the receipt names the unit, not an owner.
+    // Someone pays, naming only the unit: it goes on the unit's current folio.
     await ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'Lee Lee', paymentMethod: '20', memo: 'assessment',
       lines: [{ amount: 10000, fundId, category: '4100', details: { receivable: { account: 'P-1' } } }] }, { provider: 'manual' });
     const person = (username: string, granted = ['ledger-self']) => ({ ...actor(granted), actingUsername: () => username, subject: { username, granted } as never });
     const [pat] = await dues.myAccounts(person('pat'));
-    expect(pat).toMatchObject({ accountId: 'P-1', current: true, balance: 41000 - 10000 });
+    expect(pat).toMatchObject({ accountId: 'P-1', folio: 'P-1/F01', current: true, balance: 41000 - 10000 });
     expect(pat!.invoices.map(i => [i.billedTo, i.total, i.paid])).toEqual([['Sam Lee', 16400, 0], ['Pat Lee', 24600, 10000]]);
-    // Sam sees the same account: both entries, not only the one addressed to him.
     expect((await dues.myAccounts(person('sam')))[0]!.invoices).toHaveLength(2);
     expect(await dues.myAccounts(person('kim'))).toEqual([]);
-    // Sam sells: a new owner sees the unit's account at once; Sam keeps the invoices that named him, without the balance.
+    // Sam sells to Kim: a new ownership period. Until its first invoice Kim sees none of the earlier owners' folio.
     owning = { pat: ['P-1'], kim: ['P-1'], jo: ['P-2'] };
-    expect((await dues.myAccounts(person('kim')))[0]).toMatchObject({ current: true, balance: 31000 });
+    expect(await dues.myAccounts(person('kim'))).toEqual([]);
     today = '2026-10-01';
+    const oct = (await dues.prepareMonth(actor(), '2026-10')).filter(r => r.accountId === 'P-1');
+    // The new folio starts at $0 and takes no late charge from the old one; the old folio, still owing, gets
+    // only its own late charge, to its last billing address.
+    expect(oct.map(r => [r.folio, r.folioId === null, r.charge?.amount ?? null, r.previous, r.lateCharges.map(l => l.ruleId)])).toEqual([
+      ['P-1/F01', false, null, 31000, ['late-10', 'late-10']], ['P-1/F02', true, 24600, 0, []], ['P-1/F02', true, 16400, 0, []]]);
     await dues.issueMonth(actor(), { month: '2026-10', account: 'P-1' });
-    const [sam] = await dues.myAccounts(person('sam'));
-    expect(sam).toMatchObject({ current: false, balance: null });
-    expect(sam!.invoices.every(i => i.number <= 'I-0003')).toBe(true);
-    expect((await dues.myInvoice(person('pat'), pat!.invoices[0]!.id)).number).toBe(pat!.invoices[0]!.number);
-    await expect(dues.myInvoice(person('jo'), pat!.invoices[0]!.id)).rejects.toThrow('unknown invoice');
-    await expect(dues.myAccounts(person('pat', []))).rejects.toThrow('refused: ledger-self');
-    // ledger-self opens nothing of the treasurer's; the board reads every unit's account under account-read.
+    const folios = await dues.folios(actor(), { accountId: 'P-1' });
+    expect(folios.map(f => [f.folio, f.assigned, f.open, f.balance])).toEqual([['P-1/F01', false, true, 31000], ['P-1/F02', true, true, 41000]]);
+    // With late charges asked for, the old folio is invoiced its late charges only: no new assessment.
+    await dues.issueMonth(actor(), { month: '2026-10', account: 'P-1', lateCharges: true });
+    const lateOnly = (await dues.listInvoices(actor(), { accountId: 'P-1', month: '2026-10' })).find(i => i.folio === 'P-1/F01')!;
+    expect(lateOnly.lines.map(l => l.kind)).toEqual(['late-charge', 'late-charge']);
+    expect(lateOnly).toMatchObject({ total: 2000, previous: 31000 });
+    const folioBalances = (await dues.folios(actor(), { accountId: 'P-1' })).map(f => f.balance);
+    expect(folioBalances).toEqual([33000, 41000]);
+    // Sam keeps seeing his folio, with what it still owes; Kim sees only the new one; Pat both.
+    expect((await dues.myAccounts(person('sam'))).map(a => [a.folio, a.current, a.balance])).toEqual([['P-1/F01', false, 33000]]);
+    expect((await dues.myAccounts(person('kim'))).map(a => [a.folio, a.current, a.balance])).toEqual([['P-1/F02', true, 41000]]);
+    expect((await dues.myAccounts(person('pat'))).map(a => a.folio)).toEqual(['P-1/F01', 'P-1/F02']);
+    // A payment naming only the unit now goes on the new folio; one on the old folio names it.
+    await ledger.postReceipt(actor(), { date: '2026-10-02', partyName: 'Kim', paymentMethod: '20', memo: 'assessment',
+      lines: [{ amount: 41000, fundId, category: '4100', details: { receivable: { account: 'P-1' } } }] }, { provider: 'manual' });
+    await ledger.postReceipt(actor(), { date: '2026-10-03', partyName: 'Sam', paymentMethod: '20', memo: 'old debt',
+      lines: [{ amount: 1000, fundId, category: '4100', details: { receivable: { account: 'P-1', folio: folios[0]!.id } } }] }, { provider: 'manual' });
+    expect((await dues.folios(actor(), { accountId: 'P-1' })).map(f => [f.folio, f.balance])).toEqual([['P-1/F01', 32000], ['P-1/F02', 0]]);
+    await expect(ledger.postReceipt(actor(), { date: '2026-10-03', partyName: 'x', paymentMethod: '20', memo: 'x',
+      lines: [{ amount: 100, fundId, category: '4100', details: { receivable: { account: 'P-2', folio: folios[0]!.id } } }] }, { provider: 'manual' })).rejects.toThrow('not a folio of that account');
+    // The unit's total is its folios added together; the board reads every folio under account-read.
+    expect((await dues.balances(actor())).find(b => b.accountId === 'P-1')!.balance).toBe(32000);
+    expect((await dues.folios(person('board', ['account-read']))).length).toBe(3);
+    await expect(dues.myInvoice(person('kim'), pat!.invoices[0]!.id)).rejects.toThrow('unknown invoice');
     await expect(dues.listInvoices(person('pat'))).rejects.toThrow('refused: ledger-read');
-    expect((await dues.balances(person('board', ['account-read']))).map(b => b.accountId)).toEqual(['P-1', 'P-2']);
-    expect((await dues.listInvoices(person('board', ['account-read']))).length).toBeGreaterThan(0);
+  });
+
+  test('a folio takes a balance brought forward (once), write-offs and liens; each is voided to correct, and a lien leaves the balance (D-048)', async () => {
+    await dues.issueMonth(actor(), { month: '2026-09', account: 'P-2' });
+    const [f] = await dues.folios(actor(), { accountId: 'P-2' });
+    expect(f).toMatchObject({ folio: 'P-2/F01', balance: 30000 });
+    const opened = await dues.setOpeningBalance(actor(), { folio: f!.id, amount: 5000, date: '2026-08-31', reason: 'From the old spreadsheet' });
+    expect(opened.balance).toBe(35000);
+    await expect(dues.setOpeningBalance(actor(), { folio: f!.id, amount: 100, date: '2026-08-31', reason: 'again' })).rejects.toThrow('already has a balance brought forward');
+    expect((await dues.writeOff(actor(), { folio: f!.id, amount: 2000, date: '2026-10-01', reason: 'Board forgave the fee' })).balance).toBe(33000);
+    const liened = await dues.fileLien(actor(), { folio: f!.id, amount: 33000, date: '2026-10-05', reference: 'Knox County 2026-012345' });
+    expect(liened.balance).toBe(33000);
+    expect(liened.items.map(i => [i.kind, i.amount, i.reference])).toEqual([['opening', 5000, null], ['write-off', 2000, null], ['lien', 33000, 'Knox County 2026-012345']]);
+    await expect(dues.fileLien(actor(), { folio: f!.id, amount: 100, date: '2026-10-05', reference: '' })).rejects.toThrow('reference is required');
+    const writeOff = liened.items.find(i => i.kind === 'write-off')!;
+    expect((await dues.voidFolioItem(actor(), writeOff.id, 'entered on the wrong folio')).balance).toBe(35000);
+    await expect(dues.voidFolioItem(actor(), writeOff.id, 'twice')).rejects.toThrow('already voided');
+    // A credit brought forward settles like a payment.
+    const opening = (await dues.folios(actor(), { accountId: 'P-2' }))[0]!.items.find(i => i.kind === 'opening')!;
+    await dues.voidFolioItem(actor(), opening.id, 'wrong sign');
+    expect((await dues.setOpeningBalance(actor(), { folio: f!.id, amount: -5000, date: '2026-08-31', reason: 'Paid ahead' })).balance).toBe(25000);
+    await expect(dues.writeOff(actor(['ledger-read']), { folio: f!.id, amount: 1, date: '2026-10-01', reason: 'x' })).rejects.toThrow('refused: invoice-issue');
+    expect(audit.filter(a => String(a.action).startsWith('folio-')).map(a => a.action)).toEqual(['folio-opening', 'folio-write-off', 'folio-lien', 'folio-item-void', 'folio-item-void', 'folio-opening']);
   });
 
   test('an invoice is emailed as the caller, with its PDF attached when the site makes PDFs, else the page alone (#51)', async () => {
@@ -325,6 +371,6 @@ describe('dues', () => {
 
   test('the tables carry the new name; none keeps the old one (ngdpbase#2042)', () => {
     const tables = (ownDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map(t => t.name);
-    expect(tables.filter(t => t.startsWith('accounting_'))).toEqual(['accounting_receivables_invoice_lines', 'accounting_receivables_invoices', 'accounting_receivables_schema_migrations', 'accounting_receivables_sequence']);
+    expect(tables.filter(t => t.startsWith('accounting_'))).toEqual(['accounting_receivables_folio_items', 'accounting_receivables_folios', 'accounting_receivables_invoice_lines', 'accounting_receivables_invoices', 'accounting_receivables_schema_migrations', 'accounting_receivables_sequence']);
   });
 });

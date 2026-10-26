@@ -59,8 +59,11 @@ export interface BillingOwner { '@id': string; share: number }
 /** Where a unit's invoices go: free-text address, and that entry's percent of each charge. */
 export interface BillingEntry { address: string; share: number }
 
-/** What billing() gives: where the invoices go, and who owes them (D-047). */
-export interface Billing { billing: BillingEntry[]; owners: BillingOwner[] }
+/** An ownership period: the same owners with the same shares (D-048); its id is a folio's key. */
+export interface OwnershipPeriod { id: string; from: string; through?: string }
+
+/** What billing() gives: the ownership period, where the invoices go, and who owes them (D-047, D-048). */
+export interface Billing { period: OwnershipPeriod; billing: BillingEntry[]; owners: BillingOwner[] }
 
 /** A unit the viewer holds today, as accommodation's ownUnits() gives it. */
 export interface OwnUnit { id: string; as: string[] }
@@ -116,6 +119,8 @@ export interface Invoice {
    * keep their party of usernames, names and structured address as they were.
    */
   party: string; partyName: string; address: PostalAddress | null; billingAddress: string | null; ownerIds: BillingOwner[];
+  /** The folio it is on (D-048): its id and its number, e.g. P-1/F02. */
+  folioId: string | null; folio: string;
   total: number; previous: number; owed: number; owners: { username: string; name: string }[];
   lines: InvoiceLine[]; html: string; sha256: string;
   status: 'issued' | 'voided'; voidReason: string | null; emailedTo: string | null; emailedAt: string | null;
@@ -131,6 +136,11 @@ export interface MonthRow {
   accountId: string; label: string;
   /** The billing entry (entry-1, …), its address as typed, its first line to show, and the unit's owners at the due date. */
   party: string; partyName: string; address: string | null; owners: BillingOwner[];
+  /**
+   * The folio the invoice goes on (D-048): the unit's assigned folio for this ownership period, or a
+   * new one when the period is new (`folioId` null until it is issued); its number, e.g. P-1/F02.
+   */
+  folioId: string | null; folio: string; periodId: string | null; periodFrom: string | null;
   /** Why the account cannot be billed this month (no billing address, no owner, …); nothing is issued for it. */
   problem: string | null;
   charge: { dueDate: string; amount: number } | null;
@@ -144,6 +154,15 @@ export interface MonthRow {
 }
 
 export interface AccountBalance { accountId: string; label: string; invoiced: number; paid: number; balance: number }
+
+/** A folio and its money (D-048). */
+export interface FolioView {
+  id: string; accountId: string; label: string; folio: string; from: string | null; owners: BillingOwner[];
+  /** Whether new invoices go on it; open while assigned or while it has a balance. */
+  assigned: boolean; open: boolean;
+  invoiced: number; paid: number; balance: number;
+  items: { id: string; kind: 'opening' | 'write-off' | 'lien'; amount: number; date: string; reason: string; reference: string | null }[];
+}
 
 export interface ReceivablesOptions {
   host: ReceivablesHost;
@@ -193,11 +212,13 @@ interface InvoiceRow {
   total: number; previous: number; owed: number; owners: string; html: string; sha256: string; status: 'issued' | 'voided';
   void_reason: string | null; emailed_to: string | null; emailed_at: string | null; created_by: string; created_at: string;
   party: string; party_name: string; address: string | null; pdf_sha256: string | null;
-  billing_address: string | null; owner_ids: string | null;
+  billing_address: string | null; owner_ids: string | null; folio_id: string | null;
 }
+interface FolioRow { id: string; account_id: string; number: number; period_id: string | null; period_from: string | null; owner_ids: string; created_by: string; created_at: string }
+interface FolioItemRow { id: string; folio_id: string; kind: 'opening' | 'write-off' | 'lien'; amount: number; date: string; reason: string; reference: string | null; status: 'recorded' | 'voided'; void_reason: string | null; created_by: string; created_at: string }
 interface LineRow { invoice_id: string; position: number; kind: 'charge' | 'late-charge'; description: string; amount: number; category: string; rule_id: string | null; applies_to: string | null; charge_key: string | null }
 
-/** What a unit's money looks like (D-047): its issued invoices, what payments settled, and the balance. */
+/** What a folio's money looks like (D-048): its invoices and balance brought forward, what payments and write-offs settled, and the balance. */
 interface AccountState { invoices: Billed[]; paid: Map<string, number>; credit: number; invoiced: number; payments: number }
 
 export default class ReceivablesManager {
@@ -212,13 +233,15 @@ export default class ReceivablesManager {
   // ── The month ──────────────────────────────────────────────────────────
 
   /**
-   * What each of a unit's billing entries would be invoiced for a month, without
-   * issuing (D-047): its share of the unit's charge and of the unit's balance
-   * brought forward, the late charges due on the unit's earlier invoices (as of
-   * the 1st of the month, on the first entry), and the amount owed. Entries and
-   * owners are the unit's on the charge's due date. A unit that cannot be billed
-   * (no billing address, no owner, …) is shown with the reason, and not billed.
-   * Needs ledger-read.
+   * What each folio of each unit would be invoiced for a month, without issuing
+   * (D-047, D-048). The current ownership period's folio: one row per billing
+   * entry, its share of the unit's charge and of that folio's balance brought
+   * forward, and the late charges due on that folio (on the first entry); a new
+   * period means a new folio, which starts at $0. Every earlier folio that still
+   * owes: no charge, only the late charges due on its unpaid invoices, to its last
+   * billing address, until it is paid or written off. Late charges are as of the
+   * 1st of the month. A unit whose billing is refused is shown with the reason,
+   * and its current folio is not billed. Needs ledger-read.
    */
   async prepareMonth(actor: ReceivablesActor, month: string): Promise<MonthRow[]> {
     await this.authorize(actor, 'ledger-read');
@@ -231,40 +254,80 @@ export default class ReceivablesManager {
     for (const unit of source.list()) {
       const label = accountLabel(unit);
       const charge = chargeFor(source.assessment(unit.id), m);
-      const existing = this.monthRows(unit.id, m);
-      if (existing.length) {
-        // Already invoiced: the invoices' own figures, as issued.
-        for (const r of existing) rows.push({ accountId: unit.id, label, party: r.party, partyName: r.party_name, address: r.billing_address,
-          owners: ownersOf(r), problem: null, charge: charge ? { dueDate: charge.dueDate, amount: r.total } : null, lateCharges: [],
-          previous: r.previous, total: r.total, owed: r.owed, invoiced: r.number });
-        continue;
-      }
-      const state = states.get(unit.id) ?? emptyState();
-      const lateCharges = lateChargesDue(state.invoices, state.paid, rules, `${m}-01`, made);
-      if (!charge && !lateCharges.length) continue;
-      let billing: Billing;
-      try {
-        // Read as the caller (treasurer or job), so the read is attributed and decided (accommodation-billing-read).
-        billing = await this.billingSource().billing(actor.subject as ActorContext, unit.id, { on: charge?.dueDate ?? `${m}-01` });
-      } catch (err) {
-        if (err instanceof ReceivablesError) throw err;
-        rows.push({ accountId: unit.id, label, party: '', partyName: '', address: null, owners: [], problem: (err as Error).message,
-          charge, lateCharges: [], previous: 0, total: 0, owed: 0, invoiced: null });
-        continue;
-      }
-      const charges = splitByShare(charge?.amount ?? 0, billing.billing);
-      const brought = splitByShare(state.invoiced - state.payments, billing.billing);
-      billing.billing.forEach((entry, i) => {
-        const late = i === 0 ? lateCharges : [];
-        const amount = charges[i] ?? 0;
-        const previous = brought[i] ?? 0;
-        const total = amount + late.reduce((t, l) => t + l.amount, 0);
-        rows.push({ accountId: unit.id, label, party: `entry-${i + 1}`, partyName: firstLine(entry.address), address: entry.address, owners: billing.owners,
-          problem: null, charge: charge && amount > 0 ? { dueDate: charge.dueDate, amount } : null, lateCharges: late,
-          previous, total, owed: Math.max(0, previous + total), invoiced: null });
+      const existing = new Map<string, InvoiceRow[]>();
+      for (const r of this.monthRows(unit.id, m)) existing.set(this.folioKeyOf(r), [...(existing.get(this.folioKeyOf(r)) ?? []), r]);
+      const issuedRows = (list: InvoiceRow[]) => list.map(r => {
+        const folio = this.folioOfInvoice(r);
+        return { accountId: unit.id, label, party: r.party, partyName: r.party_name, address: r.billing_address, owners: ownersOf(r),
+          folioId: folio?.id ?? null, folio: folio ? folioNumber(folio) : '', periodId: folio?.period_id ?? null, periodFrom: folio?.period_from ?? null,
+          problem: null, charge: charge ? { dueDate: charge.dueDate, amount: r.total } : null, lateCharges: [],
+          previous: r.previous, total: r.total, owed: r.owed, invoiced: r.number } satisfies MonthRow;
       });
+      const lateOn = (key: string) => {
+        const st = states.get(key) ?? emptyState();
+        return { state: st, late: lateChargesDue(st.invoices, st.paid, rules, `${m}-01`, made) };
+      };
+      const folios = this.options.db.prepare('SELECT * FROM accounting_receivables_folios WHERE account_id = ? ORDER BY number').all(unit.id) as FolioRow[];
+      const assigned = folios[folios.length - 1] ?? null;
+      // The current ownership period's folio.
+      let currentKey: string | null = null;
+      const assignedLate = lateOn(assigned?.id ?? legacyKey(unit.id)).late;
+      if (charge || assignedLate.length) {
+        let billing: Billing | null = null;
+        try {
+          // Read as the caller (treasurer or job), so the read is attributed and decided (accommodation-billing-read).
+          billing = await this.billingSource().billing(actor.subject as ActorContext, unit.id, { on: charge?.dueDate ?? `${m}-01` });
+        } catch (err) {
+          if (err instanceof ReceivablesError) throw err;
+          rows.push({ accountId: unit.id, label, party: '', partyName: '', address: null, owners: [], folioId: null, folio: '', periodId: null, periodFrom: null,
+            problem: (err as Error).message, charge, lateCharges: [], previous: 0, total: 0, owed: 0, invoiced: null });
+          currentKey = assigned?.id ?? legacyKey(unit.id); // its own late charges wait for its billing to be fixed
+        }
+        if (billing) {
+          // The folio for this period: the one keyed to it, the unit's first folio for its first period (the
+          // money from before folios counts there), or a new one, created when the invoices are issued.
+          const folio = this.folioOfPeriod(billing.period.id) ?? (assigned && !assigned.period_id ? assigned : null) ?? (!assigned ? null : undefined);
+          currentKey = folio?.id ?? (folio === null ? legacyKey(unit.id) : `new:${billing.period.id}`);
+          const done = existing.get(currentKey);
+          if (done) rows.push(...issuedRows(done));
+          else {
+            const { state, late } = folio !== undefined ? lateOn(currentKey) : { state: emptyState(), late: [] as ProposedLateCharge[] };
+            if (charge || late.length) {
+              const charges = splitByShare(charge?.amount ?? 0, billing.billing);
+              const brought = splitByShare(state.invoiced - state.payments, billing.billing);
+              const number = folio ? folioNumber(folio) : `${unit.id}/F${String(this.nextFolioNumber(unit.id)).padStart(2, '0')}`;
+              billing.billing.forEach((entry, idx) => {
+                const lines = idx === 0 ? late : [];
+                const amount = charges[idx] ?? 0;
+                const previous = brought[idx] ?? 0;
+                const total = amount + lines.reduce((t, l) => t + l.amount, 0);
+                rows.push({ accountId: unit.id, label, party: `entry-${idx + 1}`, partyName: firstLine(entry.address), address: entry.address, owners: billing.owners,
+                  folioId: folio?.id ?? null, folio: number, periodId: billing.period.id, periodFrom: billing.period.from,
+                  problem: null, charge: charge && amount > 0 ? { dueDate: charge.dueDate, amount } : null, lateCharges: lines,
+                  previous, total, owed: Math.max(0, previous + total), invoiced: null });
+              });
+            }
+          }
+        }
+      }
+      // Every earlier folio that still owes keeps its late charges, and only those, until it is paid or written
+      // off (D-048); they go to its last billing address and its owners.
+      for (const f of folios) {
+        if (f.id === currentKey) continue;
+        const done = existing.get(f.id);
+        if (done) { rows.push(...issuedRows(done)); continue; }
+        const { state, late } = lateOn(f.id);
+        if (!late.length || state.invoiced - state.payments <= 0) continue;
+        const last = this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE folio_id = ? AND status = 'issued' ORDER BY due_date DESC, number DESC LIMIT 1").get(f.id) as InvoiceRow | undefined
+          ?? (this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE account_id = ? AND folio_id IS NULL AND status = 'issued' ORDER BY due_date DESC, number DESC LIMIT 1").get(unit.id) as InvoiceRow | undefined);
+        const previous = state.invoiced - state.payments;
+        const total = late.reduce((t, l) => t + l.amount, 0);
+        rows.push({ accountId: unit.id, label, party: 'entry-1', partyName: last?.party_name ?? '', address: last?.billing_address ?? null, owners: JSON.parse(f.owner_ids) as BillingOwner[],
+          folioId: f.id, folio: folioNumber(f), periodId: f.period_id, periodFrom: f.period_from,
+          problem: null, charge: null, lateCharges: late, previous, total, owed: Math.max(0, previous + total), invoiced: null });
+      }
     }
-    return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }) || a.party.localeCompare(b.party, undefined, { numeric: true }));
+    return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }) || a.folio.localeCompare(b.folio) || a.party.localeCompare(b.party, undefined, { numeric: true }));
   }
 
   /**
@@ -304,6 +367,9 @@ export default class ReceivablesManager {
       return people.get(id) as Promise<{ name?: string; email?: string } | null>;
     };
     for (const p of pending) {
+      // A new ownership period gets its folio now, once for all of the unit's entries (D-048).
+      if (!p.row.folioId) p.row.folioId = this.folioFor(actor, p.row).id;
+      for (const other of pending) if (other.row.accountId === p.row.accountId && !other.row.folioId) other.row.folioId = p.row.folioId;
       const id = this.insertInvoice(actor, month, p.row, p.late);
       if (input.email && !held && this.row(id).owed > 0) {
         const to = (await Promise.all(p.row.owners.map(o => person(o['@id'])))).map(o => o?.email).filter((e): e is string => typeof e === 'string' && e !== '');
@@ -353,7 +419,7 @@ export default class ReceivablesManager {
   async getInvoice(actor: ReceivablesActor, invoiceId: string): Promise<Invoice> {
     await this.authorizeAny(actor, ['account-read', 'ledger-read']);
     const row = this.row(invoiceId);
-    return this.toInvoice(row, this.states().get(row.account_id) ?? emptyState());
+    return this.toInvoice(row, this.stateOf(this.states(), row));
   }
 
   /** Invoices, newest first; one account's, or one month's; voided ones only when asked. Needs ledger-read, or account-read. */
@@ -367,50 +433,101 @@ export default class ReceivablesManager {
     const rows = this.options.db.prepare(`SELECT * FROM accounting_receivables_invoices ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY month DESC, number DESC`).all(...params) as InvoiceRow[];
     const states = this.states();
-    return rows.map(r => this.toInvoice(r, states.get(r.account_id) ?? emptyState()));
+    return rows.map(r => this.toInvoice(r, this.stateOf(states, r)));
   }
 
-  /** Each unit: what was invoiced, what was paid, and the balance (negative is a credit). Needs ledger-read, or account-read. */
+  /** Each unit: what was invoiced, what was paid, and the balance (negative is a credit), all its folios together. Needs ledger-read, or account-read. */
   async balances(actor: ReceivablesActor): Promise<AccountBalance[]> {
     await this.authorizeAny(actor, ['account-read', 'ledger-read']);
-    const states = this.states();
+    const totals = new Map<string, { invoiced: number; payments: number }>();
+    for (const [key, s] of this.states()) {
+      const account = this.accountOfFolioKey(key);
+      const t = totals.get(account) ?? { invoiced: 0, payments: 0 };
+      totals.set(account, { invoiced: t.invoiced + s.invoiced, payments: t.payments + s.payments });
+    }
     return this.source().list().map(unit => {
-      const s = states.get(unit.id) ?? emptyState();
+      const s = totals.get(unit.id) ?? { invoiced: 0, payments: 0 };
       return { accountId: unit.id, label: accountLabel(unit), invoiced: s.invoiced, paid: s.payments, balance: s.invoiced - s.payments };
     }).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
 
-  // ── An owner's own view (D-037, D-047) ──────────────────────────────────
+  /**
+   * Every folio, or one unit's (D-048): its number, owners, whether new invoices go on it, whether it
+   * is open (assigned, or still owed or owing), and its money, with the balance brought forward and
+   * write-offs recorded on it. Needs ledger-read, or account-read (the board).
+   */
+  async folios(actor: ReceivablesActor, filter: { accountId?: string } = {}): Promise<FolioView[]> {
+    await this.authorizeAny(actor, ['account-read', 'ledger-read']);
+    const states = this.states();
+    const labels = new Map((this.options.accounts()?.list() ?? []).map(u => [u.id, accountLabel(u)]));
+    const rows = (filter.accountId
+      ? this.options.db.prepare('SELECT * FROM accounting_receivables_folios WHERE account_id = ? ORDER BY account_id, number').all(filter.accountId)
+      : this.options.db.prepare('SELECT * FROM accounting_receivables_folios ORDER BY account_id, number').all()) as FolioRow[];
+    return rows.map(f => this.folioView(f, states.get(f.id) ?? emptyState(), labels.get(f.account_id) ?? f.account_id))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }) || a.folio.localeCompare(b.folio));
+  }
+
+  /** A balance brought forward on a folio (D-048): owed when positive, a credit when negative; one standing per folio. Needs invoice-issue. */
+  async setOpeningBalance(actor: ReceivablesActor, input: { folio: string; amount: number; date: string; reason: string }): Promise<FolioView> {
+    return this.recordFolioItem(actor, 'opening', input);
+  }
+
+  /** A write-off on a folio (D-048): an amount the association gives up; no money moved. Needs invoice-issue. */
+  async writeOff(actor: ReceivablesActor, input: { folio: string; amount: number; date: string; reason: string }): Promise<FolioView> {
+    return this.recordFolioItem(actor, 'write-off', input);
+  }
 
   /**
-   * The signed-in person's own bills (D-047). For each unit they own today,
-   * decided now through accommodation (ownUnits, by the viewer's own context),
-   * the unit's whole account: every invoice of every billing entry, what is paid
-   * and left, and the unit's balance. For a unit they no longer own, only the
-   * invoices issued while they did (those naming their identity @id, or their
-   * username on invoices from before), and no balance. Needs ledger-self, which
-   * every signed-in person holds.
+   * A lien filed with the county on a folio whose debt is judged uncollectable (D-048): the date filed,
+   * the amount, and the county's reference (recording number or instrument). It does not change the
+   * balance; money recovered later is an ordinary payment on the folio. Needs invoice-issue.
    */
-  async myAccounts(actor: ReceivablesActor): Promise<{ accountId: string; label: string; current: boolean; balance: number | null;
+  async fileLien(actor: ReceivablesActor, input: { folio: string; amount: number; date: string; reference: string; reason?: string }): Promise<FolioView> {
+    return this.recordFolioItem(actor, 'lien', { ...input, reason: input.reason && input.reason.trim() ? input.reason : 'Lien filed with the county' });
+  }
+
+  /** Void a balance brought forward, a write-off or a lien, once, with a reason. Needs invoice-issue. */
+  async voidFolioItem(actor: ReceivablesActor, itemId: string, reason: string): Promise<FolioView> {
+    await this.authorize(actor, 'invoice-issue');
+    const why = text(reason, 'reason');
+    const item = this.options.db.prepare('SELECT * FROM accounting_receivables_folio_items WHERE id = ?').get(text(itemId, 'item')) as FolioItemRow | undefined;
+    if (!item) throw new ReceivablesError(404, 'item: unknown folio item');
+    if (item.status === 'voided') throw new ReceivablesError(409, 'item: already voided');
+    const folio = this.folioRow(item.folio_id);
+    await this.audit(actor, { action: 'folio-item-void', severity: 'high', resource: item.id, resourceType: 'receivables-folio', reason: why,
+      metadata: { folio: folioNumber(folio), kind: item.kind, amount: item.amount } });
+    this.options.db.prepare("UPDATE accounting_receivables_folio_items SET status = 'voided', void_reason = ? WHERE id = ? AND status = 'recorded'").run(why, item.id);
+    await this.options.changed?.();
+    return this.folioView(folio, this.states().get(folio.id) ?? emptyState(), this.labelOf(folio.account_id));
+  }
+
+  // ── An owner's own view (D-037, D-047, D-048) ───────────────────────────
+
+  /**
+   * The signed-in person's own bills, folio by folio (D-048). For each unit they
+   * own today (accommodation's ownUnits, as the viewer), its assigned folio: every
+   * invoice of every billing entry, what is paid and left, and the balance. For
+   * each folio they were an owner on before (its owners name their identity @id,
+   * or, on invoices from before identities, their username), that folio with its
+   * balance: they still owe it. Needs ledger-self, which every signed-in person holds.
+   */
+  async myAccounts(actor: ReceivablesActor): Promise<{ accountId: string; label: string; folio: string; current: boolean; balance: number;
     invoices: { id: string; number: string; month: string; dueDate: string; billedTo: string; total: number; paid: number; remaining: number }[] }[]> {
     await this.authorize(actor, 'ledger-self');
-    const { current, rows } = await this.ownRows(actor);
-    if (!rows.length) return [];
+    const { assigned, rows, folios } = await this.ownRows(actor);
     const states = this.states();
-    const units = new Map<string, InvoiceRow[]>();
-    for (const r of rows) units.set(r.account_id, [...(units.get(r.account_id) ?? []), r]);
-    return [...units.entries()].map(([unitId, invoices]) => {
-      const state = states.get(unitId) ?? emptyState();
-      const owns = current.has(unitId);
+    return [...folios.values()].map(f => {
+      const state = states.get(f.key) ?? emptyState();
+      const invoices = rows.filter(r => this.folioKeyOf(r) === f.key);
       return {
-        accountId: unitId, label: (invoices[0] as InvoiceRow).account_label, current: owns,
-        balance: owns ? state.invoiced - state.payments : null,
+        accountId: f.accountId, label: this.labelOf(f.accountId), folio: f.number, current: assigned.has(f.key),
+        balance: state.invoiced - state.payments,
         invoices: invoices.map(r => {
           const paid = state.paid.get(r.id) ?? 0;
           return { id: r.id, number: r.number, month: r.month, dueDate: r.due_date, billedTo: r.party_name, total: r.total, paid, remaining: r.total - paid };
         })
       };
-    }).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+    }).filter(f => f.invoices.length || f.balance !== 0).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }) || a.folio.localeCompare(b.folio));
   }
 
   /** One of the signed-in person's own invoices (as myAccounts decides), exactly as issued; any other is not found. Needs ledger-self. */
@@ -418,30 +535,55 @@ export default class ReceivablesManager {
     await this.authorize(actor, 'ledger-self');
     const row = (await this.ownRows(actor)).rows.find(r => r.id === invoiceId);
     if (!row) throw new ReceivablesError(404, 'invoiceId: unknown invoice');
-    return this.toInvoice(row, this.states().get(row.account_id) ?? emptyState());
+    return this.toInvoice(row, this.stateOf(this.states(), row));
   }
 
   /**
-   * The invoices a person may see as their own, newest first, and the units they own today: every
-   * invoice of a unit they own now (accommodation, as the viewer), and any other naming them, by
-   * identity @id, or by username on invoices issued before identities (D-045, D-047).
+   * The folios a person may see as their own, and their invoices: the assigned folio of each unit they
+   * own today, and every folio whose owners name their identity @id (or whose invoices from before
+   * identities name their username).
    */
-  private async ownRows(actor: ReceivablesActor): Promise<{ current: Set<string>; rows: InvoiceRow[] }> {
+  private async ownRows(actor: ReceivablesActor): Promise<{ assigned: Set<string>; rows: InvoiceRow[]; folios: Map<string, { key: string; accountId: string; number: string }> }> {
     const ctx = actor.subject as ActorContext;
     const username = actor.actingUsername();
     const units = await this.billingSource().ownUnits?.(ctx).catch(() => []) ?? [];
-    const current = new Set(units.filter(u => u.as.includes('owner')).map(u => u.id));
     const me = (await this.identitySource()?.getByUserIdentifier(ctx, username).catch(() => null))?.['@id'];
-    const rows = (this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE status = 'issued' ORDER BY month DESC, number DESC").all() as InvoiceRow[])
-      .filter(r => current.has(r.account_id) || (me && ownersOf(r).some(o => o['@id'] === me)) || (!r.owner_ids && r.party.split(',').includes(username)));
-    return { current, rows };
+    const folios = new Map<string, { key: string; accountId: string; number: string }>();
+    const assigned = new Set<string>();
+    const add = (key: string, accountId: string, number: string) => { if (!folios.has(key)) folios.set(key, { key, accountId, number }); };
+    for (const u of units.filter(x => x.as.includes('owner'))) {
+      // The unit's current folio, if it is this owner's: a new owner's folio starts with their first invoice,
+      // and until then they see none of the earlier owners' (D-048).
+      const f = this.assignedFolio(u.id);
+      if (f && me && !(JSON.parse(f.owner_ids) as BillingOwner[]).some(o => o['@id'] === me)) continue;
+      const key = f?.id ?? legacyKey(u.id);
+      assigned.add(key);
+      add(key, u.id, f ? folioNumber(f) : `${u.id}/F01`);
+    }
+    const all = this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE status = 'issued' ORDER BY month DESC, number DESC").all() as InvoiceRow[];
+    for (const r of all) {
+      if ((me && ownersOf(r).some(o => o['@id'] === me)) || (!r.owner_ids && r.party.split(',').includes(username))) {
+        const f = this.folioOfInvoice(r);
+        add(this.folioKeyOf(r), r.account_id, f ? folioNumber(f) : `${r.account_id}/F01`);
+      }
+    }
+    return { assigned, folios, rows: all.filter(r => folios.has(this.folioKeyOf(r))) };
   }
 
-  /** An invoice's account and status, for the `receivable` line kind's validator. */
-  invoiceOf(invoiceId: string): { accountId: string; status: string } | null {
-    const row = this.options.db.prepare('SELECT account_id, status FROM accounting_receivables_invoices WHERE id = ?').get(invoiceId) as
-      { account_id: string; status: string } | undefined;
-    return row ? { accountId: row.account_id, status: row.status } : null;
+  /** An invoice's account, folio and status, for the `receivable` line kind's validator. */
+  invoiceOf(invoiceId: string): { accountId: string; folio: string | null; status: string } | null {
+    const row = this.options.db.prepare('SELECT * FROM accounting_receivables_invoices WHERE id = ?').get(invoiceId) as InvoiceRow | undefined;
+    return row ? { accountId: row.account_id, folio: this.folioOfInvoice(row)?.id ?? null, status: row.status } : null;
+  }
+
+  /** The folio a payment on a unit goes on when it names none (D-048): the unit's assigned folio, if it has one yet. For the validator. */
+  assignedFolioId(accountId: string): string | null {
+    return this.assignedFolio(accountId)?.id ?? null;
+  }
+
+  /** Whether a folio is one of the unit's, for the validator. */
+  folioOfAccount(accountId: string, folioId: string): boolean {
+    return Boolean(this.options.db.prepare('SELECT 1 FROM accounting_receivables_folios WHERE id = ? AND account_id = ?').get(folioId, accountId));
   }
 
   /** The manager holding the accounts, so a page showing them depends on its cache topic too. */
@@ -458,6 +600,8 @@ export default class ReceivablesManager {
 
   /**
    *   accounts         every account, by label           (none: no account source)
+   *   folios           each folio, with its balance         account-read or ledger-read
+   *   folio-items      balances brought forward, write-offs and liens, for voiding
    *   receivable-categories  the chart's categories for payments ledger-record (through LedgerManager)
    *   months           last month, this month, next month
    *   open-invoices    issued invoices with money owed   ledger-read
@@ -476,6 +620,18 @@ export default class ReceivablesManager {
       const d = this.now();
       const at = (offset: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + offset, 1)).toISOString().slice(0, 7);
       return [at(0), at(1), at(-1)].map(m => ({ value: m, label: m }));
+    }
+    if (options.list === 'folios' || options.list === 'folio-items') {
+      try {
+        const folios = await this.folios(viewerActor(viewer));
+        if (options.list === 'folio-items') {
+          return folios.flatMap(f => f.items.map(i => ({ value: i.id, label: `${f.folio} · ${i.kind === 'opening' ? 'balance brought forward' : i.kind} · ${this.options.formatMoney(i.amount)} · ${i.date}` })));
+        }
+        return folios.map(f => ({ value: f.id, amount: f.balance,
+          label: `${f.label} · ${f.folio}${f.assigned ? ' (current)' : f.open ? ' (earlier owners, open)' : ' (closed)'} · ${this.options.formatMoney(f.balance)}` }));
+      } catch {
+        return [];
+      }
     }
     if (options.list === 'open-invoices' || options.list === 'invoices') {
       try {
@@ -514,31 +670,139 @@ export default class ReceivablesManager {
   }
 
   /**
-   * Every unit's issued invoices and payments, read once, by unit (D-047):
-   * payments are posted receivable lines, less refunds, bounced checks left out, and
-   * settle the unit's invoices oldest first, or the one they name first.
-   * Invoices issued to billing parties before (D-038) count in their unit too.
+   * Every folio's invoices, balance brought forward, payments and write-offs, read
+   * once, by folio (D-048): payments are posted receivable lines, less refunds,
+   * bounced checks left out, and settle their folio's invoices oldest first, or
+   * the one they name first. A payment names its folio when recorded (the one
+   * chosen, its invoice's, or the unit's assigned one); invoices and payments from
+   * before folios count on the unit's first folio.
    */
   private states(): Map<string, AccountState> {
     const invoices = new Map<string, Billed[]>();
-    for (const r of this.options.db.prepare("SELECT id, number, account_id, due_date, total FROM accounting_receivables_invoices WHERE status = 'issued'").all() as
-      { id: string; number: string; account_id: string; due_date: string; total: number }[]) {
-      invoices.set(r.account_id, [...(invoices.get(r.account_id) ?? []), { id: r.id, number: r.number, dueDate: r.due_date, total: r.total }]);
+    const folioOfInvoice = new Map<string, string>();
+    const add = <T>(map: Map<string, T[]>, key: string, value: T) => map.set(key, [...(map.get(key) ?? []), value]);
+    for (const r of this.options.db.prepare("SELECT * FROM accounting_receivables_invoices WHERE status = 'issued'").all() as InvoiceRow[]) {
+      const key = this.folioKeyOf(r);
+      add(invoices, key, { id: r.id, number: r.number, dueDate: r.due_date, total: r.total });
+      folioOfInvoice.set(r.id, key);
     }
     const payments = new Map<string, Payment[]>();
+    for (const item of this.options.db.prepare("SELECT * FROM accounting_receivables_folio_items WHERE status = 'recorded'").all() as FolioItemRow[]) {
+      // A balance brought forward is owed like an invoice (a credit when negative); a write-off settles like a payment.
+      if (item.kind === 'lien') continue; // a lien records a claim filed with the county; the balance stays as it is
+      if (item.kind === 'opening' && item.amount > 0) add(invoices, item.folio_id, { id: `opening:${item.id}`, number: 'Balance brought forward', dueDate: item.date, total: item.amount });
+      else add(payments, item.folio_id, { amount: item.kind === 'opening' ? -item.amount : item.amount, invoiceId: null });
+    }
     for (const { amount, details } of this.options.payments()) {
-      const dues = details as { account?: string; invoiceId?: string | null };
-      if (!dues.account) continue;
-      payments.set(dues.account, [...(payments.get(dues.account) ?? []), { amount, invoiceId: dues.invoiceId ?? null }]);
+      const d = details as { account?: string; folio?: string | null; invoiceId?: string | null };
+      if (!d.account) continue;
+      const key = d.folio ?? (d.invoiceId ? folioOfInvoice.get(d.invoiceId) : undefined) ?? this.firstFolioKey(d.account);
+      add(payments, key, { amount, invoiceId: d.invoiceId ?? null });
     }
     const states = new Map<string, AccountState>();
-    for (const unit of new Set([...payments.keys(), ...invoices.keys()])) {
-      const inv = invoices.get(unit) ?? [];
-      const pay = payments.get(unit) ?? [];
+    for (const key of new Set([...payments.keys(), ...invoices.keys()])) {
+      const inv = invoices.get(key) ?? [];
+      const pay = payments.get(key) ?? [];
       const { paid, credit } = settle(inv, pay);
-      states.set(unit, { invoices: inv, paid, credit, invoiced: inv.reduce((t, i) => t + i.total, 0), payments: pay.reduce((t, p) => t + p.amount, 0) });
+      states.set(key, { invoices: inv, paid, credit, invoiced: inv.reduce((t, i) => t + i.total, 0), payments: pay.reduce((t, p) => t + p.amount, 0) });
     }
     return states;
+  }
+
+  // ── Folios (D-048) ─────────────────────────────────────────────────────
+
+  private folioRow(id: string): FolioRow {
+    const row = this.options.db.prepare('SELECT * FROM accounting_receivables_folios WHERE id = ?').get(id) as FolioRow | undefined;
+    if (!row) throw new ReceivablesError(404, 'folio: unknown folio');
+    return row;
+  }
+
+  /** The unit's assigned folio: the newest; new invoices go on it. */
+  private assignedFolio(accountId: string): FolioRow | null {
+    return (this.options.db.prepare('SELECT * FROM accounting_receivables_folios WHERE account_id = ? ORDER BY number DESC LIMIT 1').get(accountId) as FolioRow | undefined) ?? null;
+  }
+
+  private folioOfPeriod(periodId: string): FolioRow | null {
+    return (this.options.db.prepare('SELECT * FROM accounting_receivables_folios WHERE period_id = ?').get(periodId) as FolioRow | undefined) ?? null;
+  }
+
+  /** The key money from before folios counts under: the unit's first folio, once it has one. */
+  private firstFolioKey(accountId: string): string {
+    const first = this.options.db.prepare('SELECT id FROM accounting_receivables_folios WHERE account_id = ? ORDER BY number LIMIT 1').get(accountId) as { id: string } | undefined;
+    return first?.id ?? legacyKey(accountId);
+  }
+
+  private folioKeyOf(r: InvoiceRow): string {
+    return r.folio_id ?? this.firstFolioKey(r.account_id);
+  }
+
+  private folioOfInvoice(r: InvoiceRow): FolioRow | null {
+    const key = this.folioKeyOf(r);
+    return key.startsWith('legacy:') ? null : this.folioRow(key);
+  }
+
+  private stateOf(states: Map<string, AccountState>, r: InvoiceRow): AccountState {
+    return states.get(this.folioKeyOf(r)) ?? emptyState();
+  }
+
+  private accountOfFolioKey(key: string): string {
+    return key.startsWith('legacy:') ? key.slice('legacy:'.length) : this.folioRow(key).account_id;
+  }
+
+  private nextFolioNumber(accountId: string): number {
+    const row = this.options.db.prepare('SELECT MAX(number) AS n FROM accounting_receivables_folios WHERE account_id = ?').get(accountId) as { n: number | null };
+    return (row.n ?? 0) + 1;
+  }
+
+  private labelOf(accountId: string): string {
+    const unit = this.options.accounts()?.get(accountId);
+    return unit ? accountLabel(unit) : accountId;
+  }
+
+  /**
+   * The folio for a month row's ownership period, created when the period is new: the unit's first
+   * folio takes the first period (and the money from before folios); every later period a new one,
+   * numbered on. Written with the invoices it is issued for.
+   */
+  private folioFor(actor: ReceivablesActor, row: MonthRow): FolioRow {
+    if (row.periodId) {
+      const keyed = this.folioOfPeriod(row.periodId);
+      if (keyed) return keyed;
+    }
+    const id = this.newId();
+    this.options.db.prepare(`INSERT INTO accounting_receivables_folios (id, account_id, number, period_id, period_from, owner_ids, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, row.accountId, this.nextFolioNumber(row.accountId), row.periodId, row.periodFrom, JSON.stringify(row.owners),
+      actor.actingUsername(), this.stamp());
+    return this.folioRow(id);
+  }
+
+  private folioView(f: FolioRow, state: AccountState, label: string): FolioView {
+    const balance = state.invoiced - state.payments;
+    const assigned = this.assignedFolio(f.account_id)?.id === f.id;
+    const items = (this.options.db.prepare("SELECT * FROM accounting_receivables_folio_items WHERE folio_id = ? AND status = 'recorded' ORDER BY date, created_at").all(f.id) as FolioItemRow[])
+      .map(i => ({ id: i.id, kind: i.kind, amount: i.amount, date: i.date, reason: i.reason, reference: i.reference }));
+    return { id: f.id, accountId: f.account_id, label, folio: folioNumber(f), from: f.period_from, owners: JSON.parse(f.owner_ids) as BillingOwner[],
+      assigned, open: assigned || balance !== 0, invoiced: state.invoiced, paid: state.payments, balance, items };
+  }
+
+  private async recordFolioItem(actor: ReceivablesActor, kind: 'opening' | 'write-off' | 'lien', input: { folio: string; amount: number; date: string; reason: string; reference?: string }): Promise<FolioView> {
+    await this.authorize(actor, 'invoice-issue');
+    const folio = this.folioRow(text(input.folio, 'folio'));
+    const amount = input.amount;
+    if (!Number.isInteger(amount) || amount === 0 || (kind !== 'opening' && amount < 0)) throw new ReceivablesError(400, `amount: ${kind === 'opening' ? 'a balance brought forward is not zero' : 'a positive amount'}, in cents`);
+    const reference = kind === 'lien' ? text(input.reference, 'reference') : null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(input.date))) throw new ReceivablesError(400, 'date must be YYYY-MM-DD');
+    const why = text(input.reason, 'reason');
+    if (kind === 'opening' && this.options.db.prepare("SELECT 1 FROM accounting_receivables_folio_items WHERE folio_id = ? AND kind = 'opening' AND status = 'recorded'").get(folio.id)) {
+      throw new ReceivablesError(409, 'folio: it already has a balance brought forward; void that one first');
+    }
+    const id = this.newId();
+    await this.audit(actor, { action: `folio-${kind}`, severity: 'high', resource: id, resourceType: 'receivables-folio', reason: why,
+      metadata: { folio: folioNumber(folio), amount, date: input.date, ...(reference ? { reference } : {}) } });
+    this.options.db.prepare(`INSERT INTO accounting_receivables_folio_items (id, folio_id, kind, amount, date, reason, reference, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'recorded', ?, ?)`).run(id, folio.id, kind, amount, input.date, why, reference, actor.actingUsername(), this.stamp());
+    await this.options.changed?.();
+    return this.folioView(folio, this.states().get(folio.id) ?? emptyState(), this.labelOf(folio.account_id));
   }
 
   /** Late charges already on issued invoices, by key, so none is made twice. */
@@ -577,10 +841,10 @@ export default class ReceivablesManager {
         this.wording(), this.options.formatMoney);
       // Where it went as typed, and the owners by @id and share at that date: no names (D-047).
       this.options.db.prepare(`INSERT INTO accounting_receivables_invoices (id, number, account_id, account_label, month, date, due_date, total, previous, owed, owners,
-          party, party_name, address, billing_address, owner_ids, html, sha256, status, created_by, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, NULL, ?, ?, ?, ?, 'issued', ?, ?)`).run(
+          party, party_name, address, billing_address, owner_ids, folio_id, html, sha256, status, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, NULL, ?, ?, ?, ?, ?, 'issued', ?, ?)`).run(
         id, number, row.accountId, row.label, month, date, dueDate, total, row.previous, owed,
-        row.party, row.partyName, row.address, JSON.stringify(row.owners),
+        row.party, row.partyName, row.address, JSON.stringify(row.owners), row.folioId,
         html, createHash('sha256').update(html).digest('hex'), actor.actingUsername(), this.stamp());
       lines.forEach((l, position) => this.options.db.prepare(`INSERT INTO accounting_receivables_invoice_lines (id, invoice_id, position, kind, description, amount, category,
           rule_id, applies_to, charge_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(this.newId(), id, position, l.kind, l.description, l.amount, l.category, l.ruleId, l.appliesTo, l.key));
@@ -640,6 +904,7 @@ export default class ReceivablesManager {
       id: r.id, number: r.number, accountId: r.account_id, accountLabel: r.account_label, month: r.month, date: r.date, dueDate: r.due_date,
       party: r.party, partyName: r.party_name, address: r.address ? JSON.parse(r.address) as PostalAddress : null,
       billingAddress: r.billing_address, ownerIds: ownersOf(r),
+      folioId: this.folioOfInvoice(r)?.id ?? null, folio: (() => { const f = this.folioOfInvoice(r); return f ? folioNumber(f) : ''; })(),
       total: r.total, previous: r.previous, owed: r.owed, owners: JSON.parse(r.owners) as Invoice['owners'], lines, html: r.html, sha256: r.sha256,
       status: r.status, voidReason: r.void_reason, emailedTo: r.emailed_to, emailedAt: r.emailed_at, pdfSha256: r.pdf_sha256, createdBy: r.created_by, createdAt: r.created_at,
       paid, remaining: r.status === 'issued' ? r.total - paid : 0
@@ -676,6 +941,12 @@ export default class ReceivablesManager {
 }
 
 const emptyState = (): AccountState => ({ invoices: [], paid: new Map(), credit: 0, invoiced: 0, payments: 0 });
+
+/** A folio's number as people read it: the unit and F01, F02, … (D-048). */
+const folioNumber = (f: { account_id: string; number: number }): string => `${f.account_id}/F${String(f.number).padStart(2, '0')}`;
+
+/** Where a unit's money counts before it has any folio. */
+const legacyKey = (accountId: string): string => `legacy:${accountId}`;
 
 /** The owners an invoice names, by @id and share (D-047); none on an invoice issued before identities. */
 const ownersOf = (r: { owner_ids: string | null }): BillingOwner[] => (r.owner_ids ? JSON.parse(r.owner_ids) as BillingOwner[] : []);
