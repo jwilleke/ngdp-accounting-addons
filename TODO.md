@@ -34,11 +34,11 @@ last_updated: "2026-10-26"
 
 ## 🟠 P1
 
-*None.*
+- [#75](https://github.com/jwilleke/ngdp-accounting-addons/issues/75) — [FEATURE] Folios: a unit is billed through folios, each with its own balance (D-048)
 
 ## 🟡 P2
 
-*None.*
+- [#76](https://github.com/jwilleke/ngdp-accounting-addons/issues/76) — [FEATURE] Payables: vendor bills outside the ledger, and unit tags on money out (D-049)
 
 ## 🔵 In review
 
