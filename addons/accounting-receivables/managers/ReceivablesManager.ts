@@ -16,7 +16,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
-import { billingMonth, chargeFor, lateChargesDue, settle, splitByShare, type Assessment, type Billed, type LateChargeRule, type Payment, type ProposedLateCharge } from '../billing.js';
+import { billingMonth, chargeFor, type Charge, lateChargesDue, settle, splitByShare, type Assessment, type Billed, type LateChargeRule, type Payment, type ProposedLateCharge } from '../billing.js';
 import { renderInvoice, type InvoiceWording, type PostalAddress } from './invoice.js';
 
 export type ReceivablesHost = Pick<AddonHost, 'actorOf' | 'addonAuditEventName'>;
@@ -143,7 +143,11 @@ export interface MonthRow {
   folioId: string | null; folio: string; periodId: string | null; periodFrom: string | null;
   /** Why the account cannot be billed this month (no billing address, no owner, …); nothing is issued for it. */
   problem: string | null;
-  charge: { dueDate: string; amount: number } | null;
+  /**
+   * This entry's charge: its share of the unit's, when it is due, and the unit's charge lines at their
+   * full amounts with the entry's share (percent), so the invoice shows how its amount was reached.
+   */
+  charge: { dueDate: string; amount: number; lines?: Charge['lines']; share?: number } | null;
   lateCharges: ProposedLateCharge[];
   /** Owed before this month; negative is a credit. */
   previous: number;
@@ -303,7 +307,7 @@ export default class ReceivablesManager {
                 const total = amount + lines.reduce((t, l) => t + l.amount, 0);
                 rows.push({ accountId: unit.id, label, party: `entry-${idx + 1}`, partyName: firstLine(entry.address), address: entry.address, owners: billing.owners,
                   folioId: folio?.id ?? null, folio: number, periodId: billing.period.id, periodFrom: billing.period.from,
-                  problem: null, charge: charge && amount > 0 ? { dueDate: charge.dueDate, amount } : null, lateCharges: lines,
+                  problem: null, charge: charge && amount > 0 ? { dueDate: charge.dueDate, amount, lines: charge.lines, share: entry.share } : null, lateCharges: lines,
                   previous, total, owed: Math.max(0, previous + total), invoiced: null });
               });
             }
@@ -836,7 +840,8 @@ export default class ReceivablesManager {
       const seq = this.options.db.prepare("SELECT next FROM accounting_receivables_sequence WHERE name = 'invoice'").get() as { next: number };
       this.options.db.prepare("UPDATE accounting_receivables_sequence SET next = next + 1 WHERE name = 'invoice'").run();
       const number = `I-${String(seq.next).padStart(4, '0')}`;
-      const html = renderInvoice({ number, accountLabel: row.label, month, date, dueDate, lines, previous: row.previous, total, owed,
+      const html = renderInvoice({ number, accountLabel: row.label, month, date, dueDate, lines, chargeLines: row.charge?.lines ?? [], share: row.charge?.share ?? 100,
+        previous: row.previous, total, owed,
         billTo: row.address ?? '', label: label.singular },
         this.wording(), this.options.formatMoney);
       // Where it went as typed, and the owners by @id and share at that date: no names (D-047).
