@@ -13,6 +13,8 @@
     "goods-note": "Where goods or services were provided in exchange for a contribution, their value is shown, and only the amount above it is deductible.",
     "tax-id": "{organization} is a tax-exempt organization. Its federal tax identification number is {taxId}."
   },
+  "_comment_executive_top_donors": "How many of the year's largest donors, by name, the donations card on the Executive Hub names (ngdpbase#2094, D-050); 0 names none. The card is shown only to holders of ledger-read, which the accounting add-on grants core's executive role.",
+  "ngdpbase.addons.accounting-donations.executive-top-donors": 3,
   "_comment_database": "Donations' own database (operator, 2026-10-20): in-kind donations and pledges. Never the accounting add-on's database. encrypt 'optional': SQLCipher when NGDPBASE_DATABASE_KEY is set.",
   "ngdpbase.addons.accounting-donations.database": {
     "owner": "accounting-donations",

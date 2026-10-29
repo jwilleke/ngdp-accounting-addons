@@ -77,7 +77,8 @@ Large non-cash donations (property over $5,000) involve extra IRS forms; they ar
 ## Who sees what
 
 - The __treasurer__ records donations (`ledger-record`) and sees donors (`ledger-read`).
-- The __board__ sees donation totals by fund without individual donors (`ledger-summary-read`), unless granted `ledger-read`.
+- The __executive__ role (the board) sees every donor and donation (`ledger-read`, granted by the accounting add-on, [D-050](../plans/decisions.md#d-050-the-executive-role-reads-all-of-accounting-actions-stay-the-treasurers)), and the year's totals with the largest donors by name on the Executive Hub. A donation recorded as anonymous is counted there and never named.
+- A __board kept in another role__ sees donation totals by fund without individual donors (`ledger-summary-read`), unless granted `ledger-read`.
 - A __donor who logs in__ sees their own donations and statements on their profile (`ledger-self`, the accounting add-on's one door to a person's own receipts, [D-037](../plans/decisions.md#d-037-people-see-their-own-money-through-one-ledger-door)).
 
 ## Still to decide

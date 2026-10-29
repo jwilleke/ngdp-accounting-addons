@@ -18,6 +18,7 @@
 import type { ActorContext, AddonHost, BackgroundJobManager, Decision, PluginFormatters } from '@jwilleke/ngdpbase-types';
 import { receivableValidator, RETIRED_KIND, retiredKind } from './billing.js';
 import { registerReceivableForms } from './forms.js';
+import { receivablesExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
 import ReceivablesManager, { accountLabel, type AccountSource, type BillingSource, type ReceivablesDb, type ReceivablesOptions, type IdentitySource, type LedgerLike as ReceivablesLedger } from './managers/ReceivablesManager.js';
 import { RECEIVABLES_LEDGER_TABLE, RECEIVABLES_MIGRATIONS } from './managers/migrations.js';
 import ReceivablesPlugin from './plugins/ReceivablesPlugin.js';
@@ -157,6 +158,8 @@ const AccountingReceivablesAddon = {
       const unit = accounts()?.get(id);
       return unit ? accountLabel(unit) : id;
     });
+    // The board's card on core's Executive Hub (ngdpbase#2094, D-050), for holders of account-read.
+    registerExecutiveCard(engine.getManager<CardRegistry>('AddonsManager'), receivablesExecutiveCard(dues, formatMoney, label));
     if (!accounts()) host.logger.warn(`[accounting-receivables] ${sourceName} is not running: there are no accounts to bill until it is`);
     registerScheduledRun(engine, host, dues);
     if (!billing()) host.logger.warn(`[accounting-receivables] ${billingName} is not running: no invoice can be issued until it is`);

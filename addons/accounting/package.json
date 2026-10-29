@@ -32,6 +32,7 @@
   "files": [
     "index.js",
     "forms.js",
+    "executive.js",
     "managers/*.js",
     "routes/*.js",
     "plugins/*.js",

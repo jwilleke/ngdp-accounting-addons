@@ -85,11 +85,31 @@ The add-on ships a __treasurer__ role holding every accounting permission. Give 
 - For now, voiding, transfers, refunds and the CSV export do __not__ ask for a fresh sign-in ([D-030](../plans/decisions.md#d-030-step-up-off-for-accountings-money-actions-for-now)): after the sign-in, the form came back empty and had to be filled in again. The treasurer's passkey sign-in and the audit record still apply. To turn it back on, add `"step-up": true` to `ledger-adjust`, `receipt-refund` and `ledger-export` in the add-on's `config/default-config.json`.
 - Every write is recorded in the audit log with who did it and when; if the record cannot be written, the money does not move.
 
-The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move Money Between Funds, Void an Entry, Deposits, Undo a Deposit, Create a Fund, Rename a Fund, Close a Fund, Set an Account's Opening Balance, Monthly Summary) are visible to the treasurer role only, and only an administrator can change them.
+The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move Money Between Funds, Void an Entry, Deposits, Undo a Deposit, Create a Fund, Rename a Fund, Close a Fund, Set an Account's Opening Balance, Monthly Summary) are visible to the treasurer role only (those that show the books also to the executive role, below), and only an administrator can change them.
+
+## The executive role
+
+ngdpbase's __executive__ role (the board, ngdpbase [#2093](https://github.com/jwilleke/ngdpbase/issues/2093)) reads everything these add-ons keep, names included ([D-050](../plans/decisions.md#d-050-the-executive-role-reads-all-of-accounting-actions-stay-the-treasurers)). The add-ons' own policies grant it, so a site configures nothing:
+
+| Add-on | Policy | Grants `executive` |
+| --- | --- | --- |
+| accounting | `accounting-executive` | `ledger-summary-read`, `ledger-read`, `ledger-export` (the CSV downloads) |
+| accounting-receivables | `accounting-receivables-executive` | `account-read` |
+| accounting-donations | none of its own | its reads ask accounting's `ledger-read` |
+
+It records nothing: receipts, deposits, invoices, write-offs, liens, corrections and locks stay the treasurer's. The treasurer's pages that show the books (Accounting, Ledger, Deposits, Bounced Checks, Monthly Summary, Invoices, Folios, Account Balances, Donations, Pledges, In-kind Donations, Donation Statements) list `executive` in their audience; the pages that only record stay the treasurer's. Folios, Pledges and In-kind Donations also carry the treasurer's forms: the executive sees them, and a submission is refused.
+
+The add-ons put three cards on the Executive Hub (`/executive`), each shown to a holder of its permission and read with the viewer's own context:
+
+- __Accounting__ (`ledger-summary-read`): funds, open funds, cash not yet deposited, and the date the books are locked through; with `ledger-read`, the receipts waiting for a deposit, the deposits not cleared and the bounced checks still owed.
+- __Invoices__ (`account-read`, titled with the site's `label`): what units owe, units owing, liens and write-offs standing, and the last month invoiced.
+- __Donations__ (`ledger-read`): this year's donations in the site's time zone, gifts, donors, in-kind donations, anonymous gifts, and the largest donors by name: `ngdpbase.addons.accounting-donations.executive-top-donors` of them (3; 0 names none). A donation recorded as anonymous is counted, never named.
+
+A site that already runs these add-ons gets the new page audiences only on a fresh seed: reseed and Required Pages Sync compare a page's body, not its frontmatter (ngdpbase, Known gaps). Add `executive` to those pages' audience by hand, or delete and resync them.
 
 ## Show the board the summary
 
-The board usually needs balances and the monthly summary, not who paid. Grant a role `ledger-summary-read` in the site's own policy:
+On a site that keeps its board in a role of its own rather than `executive`: the board usually needs balances and the monthly summary, not who paid. Grant a role `ledger-summary-read` in the site's own policy:
 
 ```json
 {
@@ -107,7 +127,7 @@ The board usually needs balances and the monthly summary, not who paid. Grant a 
 }
 ```
 
-Then put `[{Ledger view='summary' month='previous'}]` or `[{Ledger view='balances'}]` on a page whose audience includes the board. The summary carries no names. Leave out `export='true'`: downloads need `ledger-export`, which only the treasurer has.
+Then put `[{Ledger view='summary' month='previous'}]` or `[{Ledger view='balances'}]` on a page whose audience includes the board. The summary carries no names. Leave out `export='true'`: downloads need `ledger-export`, which only the treasurer and the executive role have.
 
 ## Back up
 
@@ -124,6 +144,7 @@ Raising ngdpbase is safe as long as it stays at or above the add-on's `minVersio
 - After the treasurer sets the accounts' opening balances, the Ledger page's accounts add up to its funds (otherwise it says by how much they differ).
 - Someone without the role who opens the Ledger page sees "You may not see the ledger." (or no page).
 - The board page shows the summary without names, and without download links.
+- A user holding only the executive role sees the Accounting, Invoices and Donations cards on `/executive`, opens the Ledger, Folios and Donation Statements pages, downloads the Monthly Summary's CSV, and is refused when submitting any treasurer form.
 - `scripts/smoke.sh <site-url> <admin-password>` passes against a copy of the site (it needs the test-only policy in `deploy/smoke/app-custom-config.json`; never use that on a real site).
 
 ## Known gaps

@@ -24,6 +24,7 @@
 import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types';
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
+import { ledgerExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
 import LedgerManager, { accountsFrom, categoriesFrom, type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import ReceiptManager, { receiptProvidersFrom } from './managers/ReceiptManager.js';
@@ -142,6 +143,8 @@ const AccountingAddon = {
     engine.app?.use('/api/accounting', apiRoutes(engine, host));
     await engine.getManager<PluginManagerLike>('PluginManager')?.registerPlugin('Ledger', LedgerPlugin);
     await registerForms(engine, host);
+    // The board's card on core's Executive Hub (ngdpbase#2094, D-050), for holders of ledger-summary-read.
+    registerExecutiveCard(engine.getManager<CardRegistry>('AddonsManager'), ledgerExecutiveCard(ledger, (minor) => formatMoney(minor, ledger.currencyCode())));
     unavailable = null;
     logger.info(`[accounting] Ledger ready (currency ${currency})`);
   },

@@ -159,6 +159,19 @@ export interface MonthRow {
 
 export interface AccountBalance { accountId: string; label: string; invoiced: number; paid: number; balance: number }
 
+/** What the Executive Hub's receivables card shows (ngdpbase#2094, D-050). Money in minor units. */
+export interface ReceivablesExecutiveSummary {
+  /** What units owe, all their folios together; a unit in credit adds nothing. */
+  outstanding: number;
+  unitsOwing: number;
+  /** Liens standing (filed with the county, not voided), and what they claim. */
+  liens: { count: number; total: number };
+  /** Write-offs standing, and what they gave up. */
+  writeOffs: { count: number; total: number };
+  /** The newest month with an issued invoice, as YYYY-MM; null before the first. */
+  lastInvoicedMonth: string | null;
+}
+
 /** A folio and its money (D-048). */
 export interface FolioView {
   id: string; accountId: string; label: string; folio: string; from: string | null; owners: BillingOwner[];
@@ -453,6 +466,29 @@ export default class ReceivablesManager {
       const s = totals.get(unit.id) ?? { invoiced: 0, payments: 0 };
       return { accountId: unit.id, label: accountLabel(unit), invoiced: s.invoiced, paid: s.payments, balance: s.invoiced - s.payments };
     }).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }
+
+  /**
+   * The receivables card on core's Executive Hub (ngdpbase#2094, D-050): what units owe
+   * and how many owe, the liens and write-offs standing, and the last month invoiced.
+   * One pass over the money, as `balances` makes, and aggregate queries for the rest;
+   * no unit is read from the accounts manager. Needs ledger-read, or account-read.
+   */
+  async executiveSummary(actor: ReceivablesActor): Promise<ReceivablesExecutiveSummary> {
+    await this.authorizeAny(actor, ['account-read', 'ledger-read']);
+    const byAccount = new Map<string, number>();
+    for (const [key, s] of this.states()) {
+      const account = this.accountOfFolioKey(key);
+      byAccount.set(account, (byAccount.get(account) ?? 0) + s.invoiced - s.payments);
+    }
+    const owing = [...byAccount.values()].filter(b => b > 0);
+    const items = (kind: 'lien' | 'write-off') => {
+      const row = this.options.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM accounting_receivables_folio_items
+        WHERE kind = ? AND status = 'recorded'`).get(kind) as { n: number; t: number };
+      return { count: row.n, total: row.t };
+    };
+    const last = this.options.db.prepare("SELECT MAX(month) AS m FROM accounting_receivables_invoices WHERE status = 'issued'").get() as { m: string | null };
+    return { outstanding: owing.reduce((t, b) => t + b, 0), unitsOwing: owing.length, liens: items('lien'), writeOffs: items('write-off'), lastInvoicedMonth: last.m };
   }
 
   /**

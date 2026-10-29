@@ -33,6 +33,7 @@
     "index.js",
     "billing.js",
     "forms.js",
+    "executive.js",
     "managers/*.js",
     "plugins/*.js",
     "routes/*.js",

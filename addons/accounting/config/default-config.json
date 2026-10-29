@@ -128,6 +128,24 @@
       ]
     },
     {
+      "id": "accounting-executive",
+      "name": "The board reads the books",
+      "description": "Core's executive role (the board, ngdpbase#2093) reads everything the ledger keeps, names included, and downloads it as CSV (D-050): fund balances, entries, receipts, deposits and bounced checks. It records nothing; receipts, deposits, corrections and locks stay the treasurer's.",
+      "priority": 90,
+      "effect": "allow",
+      "subjects": [
+        { "type": "role", "value": "executive" }
+      ],
+      "resources": [
+        { "type": "page", "pattern": "*" }
+      ],
+      "actions": [
+        "ledger-summary-read",
+        "ledger-read",
+        "ledger-export"
+      ]
+    },
+    {
       "id": "accounting-self-service",
       "name": "Everyone signed in sees their own receipts",
       "description": "Every signed-in person sees their own money and nothing else (D-037, D-043): receipts they paid, their donations, their billing party's invoices. Granted to vault-owner, the role core gives every account (ngdpbase.user.account-roles), which is how an add-on gives every user a permission (ngdpbase #1539).",
