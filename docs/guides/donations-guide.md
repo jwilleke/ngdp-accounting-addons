@@ -45,7 +45,7 @@ A donation that should appear on a statement is recorded against an __ngdpbase p
 
 __Anonymous cash__, such as the collection plate, needs no person. It counts in the fund totals and is on no statement.
 
-__Anonymous__ on a donation means hidden from the board and from public totals. The treasurer still knows the donor, and the donor still gets a statement.
+__Anonymous__ on a donation means anonymous to the public, not to the organization (operator, 2026-10-29): the donor is never named in a public place, such as a donor list, a thank-you page, a statement to anyone else, or the "largest donors" on the Executive Hub card, which counts the gift without the name. The treasurer and the board (the executive role) still see who gave, and the donor still gets a statement. The form says so: "Don't show my name publicly; the board and treasurer will still see it."
 
 ## What the donor receives
 
@@ -77,7 +77,8 @@ Large non-cash donations (property over $5,000) involve extra IRS forms; they ar
 ## Who sees what
 
 - The __treasurer__ records donations (`ledger-record`) and sees donors (`ledger-read`).
-- The __executive__ role (the board) sees every donor and donation (`ledger-read`, granted by the accounting add-on, [D-050](../plans/decisions.md#d-050-the-executive-role-reads-all-of-accounting-actions-stay-the-treasurers)), and the year's totals with the largest donors by name on the Executive Hub. A donation recorded as anonymous is counted there and never named.
+- The __executive__ role (the board) sees every donor and donation, anonymous ones included (`ledger-read`, granted by the accounting add-on, [D-050](../plans/decisions.md#d-050-the-executive-role-reads-all-of-accounting-actions-stay-the-treasurers)), and the year's totals with the largest donors by name on the Executive Hub, where an anonymous gift is counted and not named.
+- Every donations screen is gated by the permission its data asks, not by a page audience: the tables ask `ledger-read`, and each form is drawn only for a viewer who holds its write permission (accounting guide, "Who sees a screen").
 - A __board kept in another role__ sees donation totals by fund without individual donors (`ledger-summary-read`), unless granted `ledger-read`.
 - A __donor who logs in__ sees their own donations and statements on their profile (`ledger-self`, the accounting add-on's one door to a person's own receipts, [D-037](../plans/decisions.md#d-037-people-see-their-own-money-through-one-ledger-door)).
 

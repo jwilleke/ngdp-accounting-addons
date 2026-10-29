@@ -403,7 +403,7 @@ export default class DonationManager {
     const anonymous = { count: 0, total: 0 };
     for (const line of lines) {
       const { donor, anonymous: hidden } = line.details as { donor?: { id?: unknown; name?: unknown } | null; anonymous?: unknown };
-      // A donation recorded as anonymous was promised to be kept from the board's totals by name (donations guide).
+      // Anonymous means to the public, not to the board (operator, 2026-10-29): the card counts the gift and names nobody.
       if (!donor || typeof donor.id !== 'string' || hidden === true) { anonymous.count++; anonymous.total += line.amount; continue; }
       const seen = donors.get(donor.id) ?? { name: typeof donor.name === 'string' ? donor.name : donor.id, total: 0 };
       donors.set(donor.id, { ...seen, total: seen.total + line.amount });

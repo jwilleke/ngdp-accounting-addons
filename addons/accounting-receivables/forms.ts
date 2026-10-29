@@ -137,6 +137,17 @@ export const FOLIO_ITEM_VOID_FORM = {
 /** A form's amount field, in cents, as the forms add-on hands it over (as the payment form passes it on). */
 const cents = (v: unknown): number => Number(v);
 
+/**
+ * The permission each form's manager call asks (ngdpbase#2094). The pages carry no
+ * audience: a form is drawn only for a viewer the decision point permits this and
+ * `form-submit` (ReceivablesPlugin's `view='form'`), and anyone else reads a short
+ * note. The manager still asks it on submit.
+ */
+export const FORM_PERMISSIONS: Readonly<Record<string, string>> = {
+  'receivable-payment': 'ledger-record', 'invoice-issue': 'invoice-issue', 'invoice-void': 'invoice-issue',
+  'folio-opening': 'invoice-issue', 'folio-write-off': 'invoice-issue', 'folio-lien': 'invoice-issue', 'folio-item-void': 'invoice-issue'
+};
+
 export async function registerReceivableForms(engine: Engine, host: AddonHost, accountLabel: (id: string) => string): Promise<void> {
   const forms = engine.getManager<FormsAddonLike>('FormsAddon');
   const definitions = engine.getManager<FormsDataManagerLike>('FormsDataManager');

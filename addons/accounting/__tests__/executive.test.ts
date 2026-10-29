@@ -1,10 +1,9 @@
 /**
  * The executive role (ngdpbase#2094, D-050): what this add-on's own policy grants
- * it, which of the treasurer's pages it reads, and the card on core's Executive
- * Hub. Each test opens the accounting database in memory; nothing touches a data
- * directory.
+ * it, and the card on core's Executive Hub. Each test opens the accounting
+ * database in memory; nothing touches a data directory.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openTestLedgerDatabase, testFormatters, testLedgerParts } from './host.js';
 import LedgerManager, { type Fund, type LedgerActor, type LedgerDb } from '../managers/LedgerManager.js';
@@ -37,23 +36,6 @@ describe('the executive policy', () => {
 
   test('names only permissions this add-on declares', () => {
     for (const action of executive[0]!.actions) expect(declared).toContain(action);
-  });
-});
-
-describe("the treasurer's pages", () => {
-  const dir = new URL('../pages/', import.meta.url);
-  const pages = readdirSync(dir).filter(f => f.endsWith('.md')).map(f => {
-    const front = readFileSync(new URL(f, dir), 'utf8').split('\n---')[0]!;
-    return { title: /^title: (.*)$/m.exec(front)![1]!, audience: /^audience:\n((?:  - .*\n?)+)/m.exec(front)?.[1]?.match(/- (\S+)/g)?.map(m => m.slice(2)) ?? null };
-  });
-  const reading = ['Accounting', 'Bounced Checks', 'Deposits', 'Ledger', 'Monthly Summary'];
-
-  test('the pages that show the books admit the executive role; the pages that record stay the treasurer\'s', () => {
-    for (const page of pages) {
-      if (page.audience === null) continue; // the help page, for everyone
-      expect(page.audience, page.title).toEqual(reading.includes(page.title) ? ['treasurer', 'executive'] : ['treasurer']);
-    }
-    expect(pages.filter(p => p.audience?.includes('executive')).map(p => p.title).sort()).toEqual(reading);
   });
 });
 

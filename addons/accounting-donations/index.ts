@@ -19,6 +19,7 @@ import { DEFAULT_QUID_PRO_QUO, donationSlipNotes, donationValidator, type Donati
 import { registerDonationForms } from './forms.js';
 import DonationManager, { type Contacts, type DonationLine, type DonationOptions, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
 import { donationsExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
+import { clearShippedAudience, shippedPageUuids, type PageDoor } from './pageAudience.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from './managers/migrations.js';
 import DonationsPlugin from './plugins/DonationsPlugin.js';
 import donationRoutes from './routes/api.js';
@@ -137,6 +138,13 @@ const AccountingDonationsAddon = {
     const fmt = engine.getManager<{ formatters: PluginFormatters }>('PluginManager')?.formatters;
     // Core's formatters (escapeHtml, formatAsTable); without them the card stays off rather than build HTML by hand.
     profile = fmt ? { donations, f: fmt, money: settings.formatMoney } : null;
+    // Upgrade (ngdpbase#2094): a page seeded with the old shipped audience loses it; its data asks its own permission.
+    try {
+      await clearShippedAudience(engine.getManager<PageDoor>('PageManager'),
+        host.systemContext('accounting-donations: take the shipped audience off its own pages (ngdpbase#2094)'), 'accounting-donations', shippedPageUuids(), host.logger);
+    } catch (err) {
+      host.logger.warn(`[accounting-donations] Could not take the shipped audience off its pages: ${(err as Error).message}`);
+    }
     unavailable = null;
     host.logger.info('[accounting-donations] Donations ready');
   },

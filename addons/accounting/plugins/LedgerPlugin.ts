@@ -11,6 +11,7 @@
  *   [{Ledger view='entries' fund='<fund id>' voided='true'}]
  *   [{Ledger view='summary' month='previous'}]       a period: per fund start/in/out/end, per category income/expense
  *   [{Ledger view='summary' from='2026-01-01' to='2026-06-30' export='true'}]   with CSV download links
+ *   [{Ledger view='form' id='receipt-record'}]       one of the treasurer's forms, for a viewer who may submit it (gatedForm.ts)
  *
  * Every read goes through LedgerManager as the viewer (viewerActor), so the
  * ledger's own permissions decide: balances need ledger-summary-read, entries
@@ -22,6 +23,8 @@
  * Formatting comes from ngdpbase's plugin helpers, which PluginManager hands
  * every plugin as `context.formatters` (#1820).
  */
+import { gatedForm } from './gatedForm.js';
+import { FORM_PERMISSIONS } from '../forms.js';
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
 import { CASH_ON_HAND, accountLabel } from '../managers/LedgerManager.js';
@@ -334,7 +337,9 @@ const LedgerPlugin = {
   // Drawn on the server like every plugin. While the page is cached, ngdpbase
   // records that it read LedgerManager, and re-renders it after the ledger's
   // next write bumps that topic (caching-developer-guide.md).
-  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; formatters: PluginFormatters }, params: PluginParams): Promise<string> {
+  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; pageName?: string; formatters: PluginFormatters }, params: PluginParams): Promise<string> {
+    // A treasurer's form, for a viewer who may submit it (ngdpbase#2094).
+    if (params.view === 'form') return gatedForm(context, String(params.id ?? ''), FORM_PERMISSIONS);
     const ledger = context.engine.getManager<LedgerManager>('LedgerManager');
     if (!ledger) return note(context.formatters, 'The ledger is not available on this site.');
     return renderLedgerView(context.formatters, ledger, ledger.viewerActor(context.userContext), params);

@@ -85,7 +85,15 @@ The add-on ships a __treasurer__ role holding every accounting permission. Give 
 - For now, voiding, transfers, refunds and the CSV export do __not__ ask for a fresh sign-in ([D-030](../plans/decisions.md#d-030-step-up-off-for-accountings-money-actions-for-now)): after the sign-in, the form came back empty and had to be filled in again. The treasurer's passkey sign-in and the audit record still apply. To turn it back on, add `"step-up": true` to `ledger-adjust`, `receipt-refund` and `ledger-export` in the add-on's `config/default-config.json`.
 - Every write is recorded in the audit log with who did it and when; if the record cannot be written, the money does not move.
 
-The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move Money Between Funds, Void an Entry, Deposits, Undo a Deposit, Create a Fund, Rename a Fund, Close a Fund, Set an Account's Opening Balance, Monthly Summary) are visible to the treasurer role only (those that show the books also to the executive role, below), and only an administrator can change them.
+The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move Money Between Funds, Void an Entry, Deposits, Undo a Deposit, Create a Fund, Rename a Fund, Close a Fund, Set an Account's Opening Balance, Monthly Summary) are locked: only an administrator can change them.
+
+## Who sees a screen
+
+A screen is gated by the permission its data or its action asks, never by a page's `audience`: the add-ons' pages carry none. Every table on a page is read through the add-on's manager with the viewer's context, and someone without the permission reads a short note; each of the treasurer's forms is drawn only for a viewer who holds the form's write permission and `form-submit`, and anyone else reads "You don't have permission to do this." The write is still refused on the server. Filed documents (board papers, filed summaries and CSVs) will go in `/shared/accounting`, a shared folder the add-on declares once core builds shared folders ([ngdpbase#1775](https://github.com/jwilleke/ngdpbase/issues/1775)).
+
+Upgrading from a version whose pages shipped `audience: [treasurer]`: at each start every add-on takes that audience off its own seeded pages, by the uuids it ships, through ngdpbase's page door as the system with the reason stated, so each change is in the audit log; the body and date stay. A page whose audience the site changed keeps it, and the start-up log says which. Reseed alone would not do this: it compares the body and keeps the frontmatter a page has.
+
+Changed wording reaches a running site the usual ways: a shipped form (such as the donation form's "Anonymous" box) replaces the site's copy at the first start of a newer add-on version; a changed page body (such as Using Accounting) is refreshed by reseed or Required Pages Sync when the site's copy is unedited.
 
 ## The executive role
 
@@ -97,15 +105,13 @@ ngdpbase's __executive__ role (the board, ngdpbase [#2093](https://github.com/jw
 | accounting-receivables | `accounting-receivables-executive` | `account-read` |
 | accounting-donations | none of its own | its reads ask accounting's `ledger-read` |
 
-It records nothing: receipts, deposits, invoices, write-offs, liens, corrections and locks stay the treasurer's. The treasurer's pages that show the books (Accounting, Ledger, Deposits, Bounced Checks, Monthly Summary, Invoices, Folios, Account Balances, Donations, Pledges, In-kind Donations, Donation Statements) list `executive` in their audience; the pages that only record stay the treasurer's. Folios, Pledges and In-kind Donations also carry the treasurer's forms: the executive sees them, and a submission is refused.
+It records nothing: receipts, deposits, invoices, write-offs, liens, corrections and locks stay the treasurer's. It opens every page that shows the books, the units' accounts and the donations, since its permissions read them ([Who sees a screen](#who-sees-a-screen)); on a page that records, it reads "You don't have permission to do this." in place of the form.
 
 The add-ons put three cards on the Executive Hub (`/executive`), each shown to a holder of its permission and read with the viewer's own context:
 
 - __Accounting__ (`ledger-summary-read`): funds, open funds, cash not yet deposited, and the date the books are locked through; with `ledger-read`, the receipts waiting for a deposit, the deposits not cleared and the bounced checks still owed.
 - __Invoices__ (`account-read`, titled with the site's `label`): what units owe, units owing, liens and write-offs standing, and the last month invoiced.
-- __Donations__ (`ledger-read`): this year's donations in the site's time zone, gifts, donors, in-kind donations, anonymous gifts, and the largest donors by name: `ngdpbase.addons.accounting-donations.executive-top-donors` of them (3; 0 names none). A donation recorded as anonymous is counted, never named.
-
-A site that already runs these add-ons gets the new page audiences only on a fresh seed: reseed and Required Pages Sync compare a page's body, not its frontmatter (ngdpbase, Known gaps). Add `executive` to those pages' audience by hand, or delete and resync them.
+- __Donations__ (`ledger-read`): this year's donations in the site's time zone, gifts, donors, in-kind donations, anonymous gifts, and the largest donors by name: `ngdpbase.addons.accounting-donations.executive-top-donors` of them (3; 0 names none). A donation marked anonymous is counted there and never named, as in every public place; the executive and the treasurer still see the donor on the donation pages.
 
 ## Show the board the summary
 
@@ -144,7 +150,9 @@ Raising ngdpbase is safe as long as it stays at or above the add-on's `minVersio
 - After the treasurer sets the accounts' opening balances, the Ledger page's accounts add up to its funds (otherwise it says by how much they differ).
 - Someone without the role who opens the Ledger page sees "You may not see the ledger." (or no page).
 - The board page shows the summary without names, and without download links.
-- A user holding only the executive role sees the Accounting, Invoices and Donations cards on `/executive`, opens the Ledger, Folios and Donation Statements pages, downloads the Monthly Summary's CSV, and is refused when submitting any treasurer form.
+- A user holding only the executive role sees the Accounting, Invoices and Donations cards on `/executive`, reads the Ledger, Folios and Donation Statements pages, downloads the Monthly Summary's CSV, and reads "You don't have permission to do this." on Record a Receipt.
+- A signed-in user with no accounting permission who opens the Ledger or Record a Receipt reads only the notes, no figures, names or forms.
+- On an upgraded site, the start-up log says how many pages had the shipped audience taken off, and the audit log has a page save for each.
 - `scripts/smoke.sh <site-url> <admin-password>` passes against a copy of the site (it needs the test-only policy in `deploy/smoke/app-custom-config.json`; never use that on a real site).
 
 ## Known gaps

@@ -19,9 +19,11 @@ Turning it on for a site: [docs/guides/accounting-guide.md](../../docs/guides/ac
 | `routes/api.ts` | JSON API under `/api/accounting`, including the CSV download at `/export` |
 | `executive.ts` | The card on ngdpbase's Executive Hub (ngdpbase#2094): funds, cash not yet deposited, what waits on the treasurer |
 | `forms.ts` | The treasurer's forms (receipt, refund, money out, transfer, void, fund create/rename/close) for the forms add-on |
+| `plugins/gatedForm.ts` | `[{Ledger view='form' id='…'}]`: a treasurer's form, drawn only for a viewer the decision point permits its write permission and `form-submit`; anyone else reads a short note |
+| `pageAudience.ts` | Upgrade: at start, takes the old shipped `audience: [treasurer]` off the add-on's own pages through core's page door, as the system |
 | `plugins/LedgerPlugin.ts` | `[{Ledger view='balances' / 'entries' / 'summary'}]`, drawn for the viewer |
 | `config/default-config.json` | The database declaration, permissions with their audit rules (step-up is off for now, D-030), the `treasurer` role and its policy, and the `executive` role's read policy (D-050) |
-| `pages/` | The treasurer's pages and the Using Accounting help page, seeded on first enable |
+| `pages/` | The treasurer's pages and the Using Accounting help page, seeded on first enable. No page carries an audience: each screen asks the permission its data or action needs |
 | `__tests__/` | Ledger, report, form and plugin tests against a real SQLite database |
 
 ## How it reaches ngdpbase

@@ -19,6 +19,7 @@ import type { ActorContext, AddonHost, BackgroundJobManager, Decision, PluginFor
 import { receivableValidator, RETIRED_KIND, retiredKind } from './billing.js';
 import { registerReceivableForms } from './forms.js';
 import { receivablesExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
+import { clearShippedAudience, shippedPageUuids, type PageDoor } from './pageAudience.js';
 import ReceivablesManager, { accountLabel, type AccountSource, type BillingSource, type ReceivablesDb, type ReceivablesOptions, type IdentitySource, type LedgerLike as ReceivablesLedger } from './managers/ReceivablesManager.js';
 import { RECEIVABLES_LEDGER_TABLE, RECEIVABLES_MIGRATIONS } from './managers/migrations.js';
 import ReceivablesPlugin from './plugins/ReceivablesPlugin.js';
@@ -166,6 +167,13 @@ const AccountingReceivablesAddon = {
     const fmt = engine.getManager<{ formatters: PluginFormatters }>('PluginManager')?.formatters;
     // Core's formatters (escapeHtml, formatAsTable); without them the card stays off rather than build HTML by hand.
     profile = fmt ? { dues, f: fmt, money: formatMoney, title: () => `Your ${label().plural.toLowerCase()}` } : null;
+    // Upgrade (ngdpbase#2094): a page seeded with the old shipped audience loses it; its data asks its own permission.
+    try {
+      await clearShippedAudience(engine.getManager<PageDoor>('PageManager'),
+        host.systemContext('accounting-receivables: take the shipped audience off its own pages (ngdpbase#2094)'), 'accounting-receivables', shippedPageUuids(), host.logger);
+    } catch (err) {
+      host.logger.warn(`[accounting-receivables] Could not take the shipped audience off its pages: ${(err as Error).message}`);
+    }
     unavailable = null;
     host.logger.info('[accounting-receivables] Invoices ready');
   },

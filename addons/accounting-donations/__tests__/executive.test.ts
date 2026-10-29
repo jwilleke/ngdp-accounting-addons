@@ -1,11 +1,10 @@
 /**
  * The executive role (ngdpbase#2094, D-050): this add-on declares no read
  * permission of its own (its reads ask the accounting add-on's ledger-read, which
- * accounting grants the role), which of the treasurer's pages the role reads, and
- * the donations card on core's Executive Hub. Money goes through the accounting
- * add-on's ledger, in memory.
+ * accounting grants the role), and the donations card on core's Executive Hub.
+ * Money goes through the accounting add-on's ledger, in memory.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildAddonHost, openAddonTestDatabase } from '@jwilleke/ngdpbase-types/testing';
 import { openTestLedgerDatabase, testLedgerParts } from '../../accounting/__tests__/host.js';
@@ -13,6 +12,7 @@ import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting
 import DonationManager, { type DonationsDb } from '../managers/DonationManager.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from '../managers/migrations.js';
 import { donationValidator } from '../donation.js';
+import { DONATION_FORM } from '../forms.js';
 import { donationsExecutiveCard, registerExecutiveCard } from '../executive.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
@@ -38,15 +38,9 @@ describe('the executive role', () => {
     for (const write of ['donation-record', 'statement-issue']) expect(accounting.actions).not.toContain(write);
   });
 
-  test("the pages that show donations admit it; the pages that record or issue stay the treasurer's", () => {
-    const dir = new URL('../pages/', import.meta.url);
-    const pages = readdirSync(dir).filter(f => f.endsWith('.md')).map(f => {
-      const front = readFileSync(new URL(f, dir), 'utf8').split('\n---')[0]!;
-      return { title: /^title: (.*)$/m.exec(front)![1]!, audience: /^audience:\n((?:  - .*\n?)+)/m.exec(front)![1]!.match(/- (\S+)/g)!.map(m => m.slice(2)) };
-    });
-    const reading = ['Donation Statements', 'Donations', 'In-kind Donations', 'Pledges'];
-    for (const page of pages) expect(page.audience, page.title).toEqual(reading.includes(page.title) ? ['treasurer', 'executive'] : ['treasurer']);
-    expect(pages.filter(p => p.audience.includes('executive')).map(p => p.title).sort()).toEqual(reading);
+  test("the form's Anonymous box promises what is kept: anonymous to the public, not to the board (operator, 2026-10-29)", () => {
+    const box = DONATION_FORM.fields.find(f => f.name === 'anonymous')!;
+    expect(box.label).toBe("Anonymous: don't show my name publicly; the board and treasurer will still see it");
   });
 
   test('the top-donors setting ships as 3', () => {

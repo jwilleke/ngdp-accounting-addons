@@ -25,6 +25,7 @@ import type { ActorContext, AddonHost, Decision } from '@jwilleke/ngdpbase-types
 import apiRoutes from './routes/api.js';
 import { registerForms } from './forms.js';
 import { ledgerExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
+import { clearShippedAudience, shippedPageUuids, type PageDoor } from './pageAudience.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
 import LedgerManager, { accountsFrom, categoriesFrom, type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import ReceiptManager, { receiptProvidersFrom } from './managers/ReceiptManager.js';
@@ -145,6 +146,13 @@ const AccountingAddon = {
     await registerForms(engine, host);
     // The board's card on core's Executive Hub (ngdpbase#2094, D-050), for holders of ledger-summary-read.
     registerExecutiveCard(engine.getManager<CardRegistry>('AddonsManager'), ledgerExecutiveCard(ledger, (minor) => formatMoney(minor, ledger.currencyCode())));
+    // Upgrade (ngdpbase#2094): a page seeded with the old shipped audience loses it; its data asks its own permission.
+    try {
+      await clearShippedAudience(engine.getManager<PageDoor>('PageManager'),
+        host.systemContext('accounting: take the shipped audience off its own pages (ngdpbase#2094)'), 'accounting', shippedPageUuids(), host.logger);
+    } catch (err) {
+      host.logger.warn(`[accounting] Could not take the shipped audience off its pages: ${(err as Error).message}`);
+    }
     unavailable = null;
     logger.info(`[accounting] Ledger ready (currency ${currency})`);
   },

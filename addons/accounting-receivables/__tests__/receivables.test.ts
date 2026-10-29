@@ -401,6 +401,14 @@ describe('dues', () => {
     await expect(card.summary({ username: 'pat', granted: ['ledger-self'] } as never)).rejects.toThrow('not permitted: ledger-read');
   });
 
+  test("the form's unit list is for a viewer who may read the units' accounts (ngdpbase#2094: the page has no audience)", async () => {
+    expect(await dues.toFormOptions({ list: 'accounts' }, { username: 'pat', granted: ['ledger-self'] })).toEqual([]);
+    expect(await dues.toFormOptions({ list: 'accounts' }, undefined)).toEqual([]);
+    const units = [{ value: 'P-1', label: '1' }, { value: 'P-2', label: '2' }];
+    expect(await dues.toFormOptions({ list: 'accounts' }, { username: 'bea', granted: ['account-read'] })).toEqual(units);
+    expect(await dues.toFormOptions({ list: 'accounts' }, { username: 'tess', granted: ['ledger-read'] })).toEqual(units);
+  });
+
   test('the tables carry the new name; none keeps the old one (ngdpbase#2042)', () => {
     const tables = (ownDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map(t => t.name);
     expect(tables.filter(t => t.startsWith('accounting_'))).toEqual(['accounting_receivables_folio_items', 'accounting_receivables_folios', 'accounting_receivables_invoice_lines', 'accounting_receivables_invoices', 'accounting_receivables_schema_migrations', 'accounting_receivables_sequence']);

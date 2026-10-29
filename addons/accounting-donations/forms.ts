@@ -34,7 +34,7 @@ export const DONATION_FORM = {
     { name: 'who', type: 'section', label: 'From whom, and how' },
     { name: 'donor', type: 'dropdown', label: 'Donor (a person or organization; add new ones on Add a Donor)', required: false, optionsSource: 'fetch:DonationManager.toFormOptions(list=donors)' },
     { name: 'partyName', type: 'text', label: 'Received from (if not on the list, e.g. anonymous cash)', required: false },
-    { name: 'anonymous', type: 'checkbox', label: 'Anonymous: keep the donor hidden from the board and public totals', required: false },
+    { name: 'anonymous', type: 'checkbox', label: "Anonymous: don't show my name publicly; the board and treasurer will still see it", required: false },
     { name: 'paymentMethod', type: 'dropdown', label: 'Method', required: true, optionsSource: 'fetch:LedgerManager.toFormOptions(list=payment-methods)' },
     { name: 'paymentMethodId', type: 'text', label: 'Check number or confirmation code', required: false },
     { name: 'pledgeId', type: 'dropdown', label: 'Pays toward a pledge (optional)', required: false, optionsSource: 'fetch:DonationManager.toFormOptions(list=open-pledges)' },
@@ -159,6 +159,17 @@ export const PLEDGE_FORM = {
     { name: 'schedule', type: 'dropdown', label: 'How it is paid', required: true, options: ['once', 'monthly', 'quarterly', 'yearly'] },
     { name: 'memo', type: 'textarea', label: 'Note (e.g. building campaign)', required: false }
   ]
+};
+
+/**
+ * The permission each form's manager call asks (ngdpbase#2094). The pages carry no
+ * audience: a form is drawn only for a viewer the decision point permits this and
+ * `form-submit` (DonationsPlugin's `view='form'`), and anyone else reads a short
+ * note. The manager, or core's contact door for Add a Donor, still asks it on submit.
+ */
+export const FORM_PERMISSIONS: Readonly<Record<string, string>> = {
+  'donation-record': 'ledger-record', 'inkind-record': 'donation-record', 'pledge-create': 'donation-record',
+  'donor-add': 'identity-manage', 'statement-issue': 'statement-issue', 'statement-reissue': 'statement-issue'
 };
 
 export async function registerDonationForms(engine: Engine, host: AddonHost): Promise<void> {

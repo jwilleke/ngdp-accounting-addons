@@ -34,6 +34,7 @@
     "billing.js",
     "forms.js",
     "executive.js",
+    "pageAudience.js",
     "managers/*.js",
     "plugins/*.js",
     "routes/*.js",

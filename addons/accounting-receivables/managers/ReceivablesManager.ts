@@ -639,7 +639,7 @@ export default class ReceivablesManager {
   // ── Form choices ───────────────────────────────────────────────────────
 
   /**
-   *   accounts         every account, by label           (none: no account source)
+   *   accounts         every account, by label           account-read or ledger-read (none: no account source)
    *   folios           each folio, with its balance         account-read or ledger-read
    *   folio-items      balances brought forward, write-offs and liens, for voiding
    *   receivable-categories  the chart's categories for payments ledger-record (through LedgerManager)
@@ -649,6 +649,8 @@ export default class ReceivablesManager {
    */
   async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<{ value: string; label: string; amount?: number }[]> {
     if (options.list === 'accounts') {
+      // The units are the organization's accounts: listed for a viewer who may read them (ngdpbase#2094).
+      try { await this.authorizeAny(viewerActor(viewer), ['account-read', 'ledger-read']); } catch { return []; }
       const source = this.options.accounts();
       return (source?.list() ?? []).map(u => ({ value: u.id, label: accountLabel(u) })).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
     }

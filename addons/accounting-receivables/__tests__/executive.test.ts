@@ -1,8 +1,7 @@
 /**
- * The executive role (ngdpbase#2094, D-050): what this add-on's own policy grants
- * it, and which of the treasurer's pages it reads.
+ * The executive role (ngdpbase#2094, D-050): what this add-on's own policy grants it.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { registerExecutiveCard } from '../executive.js';
 
@@ -17,19 +16,6 @@ describe('the executive policy', () => {
     expect(executive.map(p => [p.id, p.effect, p.actions])).toEqual([['accounting-receivables-executive', 'allow', ['account-read']]]);
     for (const action of executive[0]!.actions) expect(declared).toContain(action);
     expect(executive[0]!.actions).not.toContain('invoice-issue');
-  });
-});
-
-describe("the treasurer's pages", () => {
-  test("the pages that show units' accounts admit the executive role; the pages that issue or record stay the treasurer's", () => {
-    const dir = new URL('../pages/', import.meta.url);
-    const pages = readdirSync(dir).filter(f => f.endsWith('.md')).map(f => {
-      const front = readFileSync(new URL(f, dir), 'utf8').split('\n---')[0]!;
-      return { title: /^title: (.*)$/m.exec(front)![1]!, audience: /^audience:\n((?:  - .*\n?)+)/m.exec(front)![1]!.match(/- (\S+)/g)!.map(m => m.slice(2)) };
-    });
-    const reading = ['Account Balances', 'Folios', 'Invoices'];
-    for (const page of pages) expect(page.audience, page.title).toEqual(reading.includes(page.title) ? ['treasurer', 'executive'] : ['treasurer']);
-    expect(pages.filter(p => p.audience.includes('executive')).map(p => p.title).sort()).toEqual(reading);
   });
 });
 
