@@ -13,6 +13,7 @@ import LedgerManager, { type LedgerActor, type LedgerDb } from '../../accounting
 import ReceivablesManager, { type AccountSource, type BillingSource, type ReceivablesDb, type IdentitySource } from '../managers/ReceivablesManager.js';
 import { RECEIVABLES_LEDGER_TABLE, RECEIVABLES_MIGRATIONS } from '../managers/migrations.js';
 import { receivableValidator, RETIRED_KIND, retiredKind } from '../billing.js';
+import { receivablesExecutiveCard } from '../executive.js';
 
 const defaults = JSON.parse(readFileSync(new URL('../config/default-config.json', import.meta.url), 'utf8')) as Record<string, unknown>;
 const host = buildAddonHost('accounting-receivables', defaults);
@@ -375,6 +376,37 @@ describe('dues', () => {
     expect((await dues.balances(actor())).find(b => b.accountId === 'P-2')!.balance).toBe(0);
     await expect(ledger.postReceipt(actor(), { date: '2026-09-03', partyName: 'x', paymentMethod: '20', memo: 'x',
       lines: [{ amount: 100, fundId, category: '4100', details: { dues: { account: 'P-2' } } }] }, { provider: 'manual' })).rejects.toThrow('payments are recorded as details.receivable now');
+  });
+
+  test("the Executive Hub card: what units owe, units owing, liens and write-offs standing, the last month invoiced, read as the viewer (ngdpbase#2094)", async () => {
+    const card = receivablesExecutiveCard(dues, (m) => `$${(m / 100).toFixed(2)}`, () => ({ plural: 'Assessments' }));
+    expect(card).toMatchObject({ addonName: 'accounting-receivables', title: 'Assessments', surface: 'executive', permission: 'account-read', adminUrl: '/view/account-balances' });
+    const board = { username: 'bea', granted: ['account-read'] } as never;
+    expect(await card.summary(board)).toEqual({ figures: [
+      { label: 'Owed by units', value: '$0.00' }, { label: 'Units owing', value: 0 }, { label: 'Liens', value: '0' }, { label: 'Written off', value: '0' }
+    ], message: 'No invoices issued yet' });
+    await dues.issueMonth(actor(), { month: '2026-09' });
+    await dues.issueMonth(actor(), { month: '2026-10', account: 'P-2' });
+    await pay('P-1', 41000, '2026-09-05');
+    await pay('P-2', 10000, '2026-10-05');
+    const [f] = await dues.folios(actor(), { accountId: 'P-2' });
+    await dues.writeOff(actor(), { folio: f!.id, amount: 2000, date: '2026-10-06', reason: 'Board forgave the fee' });
+    const voided = await dues.writeOff(actor(), { folio: f!.id, amount: 500, date: '2026-10-06', reason: 'typo' });
+    await dues.voidFolioItem(actor(), voided.items.find(i => i.kind === 'write-off' && i.amount === 500)!.id, 'entered twice');
+    await dues.fileLien(actor(), { folio: f!.id, amount: 48000, date: '2026-10-07', reference: 'Knox County 2026-012345' });
+    // P-2: 300.00 + 300.00 invoiced − 100.00 paid − 20.00 written off; a lien leaves the balance.
+    expect(await card.summary(board)).toEqual({ figures: [
+      { label: 'Owed by units', value: '$480.00' }, { label: 'Units owing', value: 1 }, { label: 'Liens', value: '1 ($480.00)' }, { label: 'Written off', value: '1 ($20.00)' }
+    ], message: 'Invoices last issued for 2026-10' });
+    await expect(card.summary({ username: 'pat', granted: ['ledger-self'] } as never)).rejects.toThrow('not permitted: ledger-read');
+  });
+
+  test("the form's unit list is for a viewer who may read the units' accounts (ngdpbase#2094: the page has no audience)", async () => {
+    expect(await dues.toFormOptions({ list: 'accounts' }, { username: 'pat', granted: ['ledger-self'] })).toEqual([]);
+    expect(await dues.toFormOptions({ list: 'accounts' }, undefined)).toEqual([]);
+    const units = [{ value: 'P-1', label: '1' }, { value: 'P-2', label: '2' }];
+    expect(await dues.toFormOptions({ list: 'accounts' }, { username: 'bea', granted: ['account-read'] })).toEqual(units);
+    expect(await dues.toFormOptions({ list: 'accounts' }, { username: 'tess', granted: ['ledger-read'] })).toEqual(units);
   });
 
   test('the tables carry the new name; none keeps the old one (ngdpbase#2042)', () => {

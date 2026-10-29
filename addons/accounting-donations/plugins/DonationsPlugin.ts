@@ -9,6 +9,8 @@
  * Every read goes through DonationManager as the viewer, so its permissions
  * decide (ledger-read: these name donors).
  */
+import { gatedForm } from './gatedForm.js';
+import { FORM_PERMISSIONS } from '../forms.js';
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type DonationManager from '../managers/DonationManager.js';
 
@@ -61,7 +63,9 @@ const DonationsPlugin = {
   description: 'Pledges and in-kind donations, for those allowed to see them',
   author: 'jwilleke',
   version: '0.1.0',
-  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; formatters: PluginFormatters }, params: Params): Promise<string> {
+  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; pageName?: string; formatters: PluginFormatters }, params: Params): Promise<string> {
+    // A treasurer's form, for a viewer who may submit it (ngdpbase#2094).
+    if (params.view === 'form') return gatedForm(context, String(params.id ?? ''), FORM_PERMISSIONS);
     const donations = context.engine.getManager<DonationManager>('DonationManager');
     const ledger = context.engine.getManager<{ currencyCode(): string }>('LedgerManager');
     if (!donations || !ledger) return note(context.formatters, 'Donations are not available on this site.');

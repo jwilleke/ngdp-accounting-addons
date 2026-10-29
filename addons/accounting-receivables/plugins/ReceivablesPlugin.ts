@@ -10,6 +10,8 @@
  * Every read goes through ReceivablesManager as the viewer, so its permissions decide
  * (ledger-read: these name accounts and what they owe).
  */
+import { gatedForm } from './gatedForm.js';
+import { FORM_PERMISSIONS } from '../forms.js';
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type ReceivablesManager from '../managers/ReceivablesManager.js';
 
@@ -83,7 +85,9 @@ const ReceivablesPlugin = {
   description: 'Invoices and account balances for the site\'s charges, for those allowed to see them',
   author: 'jwilleke',
   version: '0.1.0',
-  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; formatters: PluginFormatters }, params: Params): Promise<string> {
+  async execute(context: { engine: { getManager<T = unknown>(name: string): T | null | undefined }; userContext?: unknown; pageName?: string; formatters: PluginFormatters }, params: Params): Promise<string> {
+    // A treasurer's form, for a viewer who may submit it (ngdpbase#2094).
+    if (params.view === 'form') return gatedForm(context, String(params.id ?? ''), FORM_PERMISSIONS);
     const dues = context.engine.getManager<ReceivablesManager>('ReceivablesManager');
     const ledger = context.engine.getManager<{ currencyCode(): string }>('LedgerManager');
     if (!dues || !ledger) return note(context.formatters, 'Invoices are not available on this site.');

@@ -159,6 +159,19 @@ export interface MonthRow {
 
 export interface AccountBalance { accountId: string; label: string; invoiced: number; paid: number; balance: number }
 
+/** What the Executive Hub's receivables card shows (ngdpbase#2094, D-050). Money in minor units. */
+export interface ReceivablesExecutiveSummary {
+  /** What units owe, all their folios together; a unit in credit adds nothing. */
+  outstanding: number;
+  unitsOwing: number;
+  /** Liens standing (filed with the county, not voided), and what they claim. */
+  liens: { count: number; total: number };
+  /** Write-offs standing, and what they gave up. */
+  writeOffs: { count: number; total: number };
+  /** The newest month with an issued invoice, as YYYY-MM; null before the first. */
+  lastInvoicedMonth: string | null;
+}
+
 /** A folio and its money (D-048). */
 export interface FolioView {
   id: string; accountId: string; label: string; folio: string; from: string | null; owners: BillingOwner[];
@@ -456,6 +469,29 @@ export default class ReceivablesManager {
   }
 
   /**
+   * The receivables card on core's Executive Hub (ngdpbase#2094, D-050): what units owe
+   * and how many owe, the liens and write-offs standing, and the last month invoiced.
+   * One pass over the money, as `balances` makes, and aggregate queries for the rest;
+   * no unit is read from the accounts manager. Needs ledger-read, or account-read.
+   */
+  async executiveSummary(actor: ReceivablesActor): Promise<ReceivablesExecutiveSummary> {
+    await this.authorizeAny(actor, ['account-read', 'ledger-read']);
+    const byAccount = new Map<string, number>();
+    for (const [key, s] of this.states()) {
+      const account = this.accountOfFolioKey(key);
+      byAccount.set(account, (byAccount.get(account) ?? 0) + s.invoiced - s.payments);
+    }
+    const owing = [...byAccount.values()].filter(b => b > 0);
+    const items = (kind: 'lien' | 'write-off') => {
+      const row = this.options.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM accounting_receivables_folio_items
+        WHERE kind = ? AND status = 'recorded'`).get(kind) as { n: number; t: number };
+      return { count: row.n, total: row.t };
+    };
+    const last = this.options.db.prepare("SELECT MAX(month) AS m FROM accounting_receivables_invoices WHERE status = 'issued'").get() as { m: string | null };
+    return { outstanding: owing.reduce((t, b) => t + b, 0), unitsOwing: owing.length, liens: items('lien'), writeOffs: items('write-off'), lastInvoicedMonth: last.m };
+  }
+
+  /**
    * Every folio, or one unit's (D-048): its number, owners, whether new invoices go on it, whether it
    * is open (assigned, or still owed or owing), and its money, with the balance brought forward and
    * write-offs recorded on it. Needs ledger-read, or account-read (the board).
@@ -603,7 +639,7 @@ export default class ReceivablesManager {
   // ── Form choices ───────────────────────────────────────────────────────
 
   /**
-   *   accounts         every account, by label           (none: no account source)
+   *   accounts         every account, by label           account-read or ledger-read (none: no account source)
    *   folios           each folio, with its balance         account-read or ledger-read
    *   folio-items      balances brought forward, write-offs and liens, for voiding
    *   receivable-categories  the chart's categories for payments ledger-record (through LedgerManager)
@@ -613,6 +649,8 @@ export default class ReceivablesManager {
    */
   async toFormOptions(options: Record<string, string> = {}, viewer?: unknown): Promise<{ value: string; label: string; amount?: number }[]> {
     if (options.list === 'accounts') {
+      // The units are the organization's accounts: listed for a viewer who may read them (ngdpbase#2094).
+      try { await this.authorizeAny(viewerActor(viewer), ['account-read', 'ledger-read']); } catch { return []; }
       const source = this.options.accounts();
       return (source?.list() ?? []).map(u => ({ value: u.id, label: accountLabel(u) })).sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
     }

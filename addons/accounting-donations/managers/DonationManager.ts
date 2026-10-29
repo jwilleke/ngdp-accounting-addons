@@ -111,6 +111,23 @@ export interface IssuedStatement {
   emailedTo: string | null; emailedAt: string | null; issuedBy: string; issuedAt: string;
 }
 
+/** What the Executive Hub's donations card shows for a year (ngdpbase#2094, D-050). Money in minor units. */
+export interface DonationsExecutiveSummary {
+  year: number;
+  /** Donations of money in the year, net of refunds, bounced checks left out. */
+  total: number;
+  donationCount: number;
+  /** Named donors who gave money in the year. Anonymous gifts (no donor, or recorded as anonymous) are counted in `anonymous` and never named. */
+  donorCount: number;
+  anonymous: { count: number; total: number };
+  /** The largest named donors of the year, largest first: as many as the site's setting asks. */
+  topDonors: { name: string; total: number }[];
+  inKindCount: number;
+}
+
+/** A donation line as the ledger hands this add-on its own `donation` lines (LineDetailsReader). */
+export interface DonationLine { amount: number; date: string; details: Record<string, unknown> }
+
 export interface DonationOptions {
   host: DonationsHost;
   db: DonationsDb;
@@ -132,6 +149,10 @@ export interface DonationOptions {
   pdf?: () => { htmlToPdf(ctx: ActorContext, html: string): Promise<Buffer> } | null | undefined;
   /** The caller's own ngdpbase person, as its `@id`, for a donor's own view (D-037); read as the caller (IdentityManager.getByUserIdentifier, ngdpbase #2018: their own under profile-manage). */
   personOf?: (actor: { readonly subject: ActorContext | null; actingUsername(): string }) => Promise<string | null>;
+  /** The ledger's posted `donation` lines dated in a range, net of refunds (the reader registerLineDetails returned). */
+  donationLines?: (range: { from: string; to: string }) => DonationLine[];
+  /** How many of the year's largest donors the Executive Hub card names (configuration). */
+  topDonors?: () => number;
   now?: () => Date;
   newId?: () => string;
 }
@@ -363,6 +384,38 @@ export default class DonationManager {
     const where = [filter.includeSuperseded ? '' : "status = 'issued'", filter.year ? 'year = ?' : ''].filter(Boolean);
     return (this.options.db.prepare(`SELECT id FROM accounting_donations_statements ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY issued_at DESC`)
       .all(...(filter.year ? [statementYear(filter.year)] : [])) as { id: string }[]).map(r => this.getStatementRow(r.id));
+  }
+
+  // ── The Executive Hub (ngdpbase#2094, D-050) ───────────────────────────
+
+  /**
+   * A year's donations for the board: the total, how many gifts and donors, the
+   * anonymous gifts (anonymous cash, and donations recorded as anonymous, never
+   * named), the largest donors by name, and the in-kind donations. Reads
+   * only the year's donation lines, through the ledger's reader. Needs ledger-read:
+   * it names donors.
+   */
+  async executiveSummary(actor: DonationsActor, year: number): Promise<DonationsExecutiveSummary> {
+    await this.authorize(actor, 'ledger-read');
+    const y = statementYear(year);
+    const lines = this.options.donationLines?.({ from: `${y}-01-01`, to: `${y}-12-31` }) ?? [];
+    const donors = new Map<string, { name: string; total: number }>();
+    const anonymous = { count: 0, total: 0 };
+    for (const line of lines) {
+      const { donor, anonymous: hidden } = line.details as { donor?: { id?: unknown; name?: unknown } | null; anonymous?: unknown };
+      // Anonymous means to the public, not to the board (operator, 2026-10-29): the card counts the gift and names nobody.
+      if (!donor || typeof donor.id !== 'string' || hidden === true) { anonymous.count++; anonymous.total += line.amount; continue; }
+      const seen = donors.get(donor.id) ?? { name: typeof donor.name === 'string' ? donor.name : donor.id, total: 0 };
+      donors.set(donor.id, { ...seen, total: seen.total + line.amount });
+    }
+    const top = Math.max(0, Math.floor(this.options.topDonors?.() ?? 0));
+    const inKind = this.options.db.prepare(`SELECT COUNT(*) AS n FROM accounting_donations_inkind
+      WHERE status = 'posted' AND date >= ? AND date <= ?`).get(`${y}-01-01`, `${y}-12-31`) as { n: number };
+    return {
+      year: y, total: lines.reduce((t, l) => t + l.amount, 0), donationCount: lines.length, donorCount: donors.size, anonymous,
+      topDonors: [...donors.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)).slice(0, top),
+      inKindCount: inKind.n
+    };
   }
 
   // ── A donor's own view (D-037) ──────────────────────────────────────────

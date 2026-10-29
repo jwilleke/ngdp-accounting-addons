@@ -354,6 +354,21 @@ export const LEDGER_FORMS: LedgerForm[] = [
   }
 ];
 
+/**
+ * The permission each form's manager call asks (ngdpbase#2094). The pages carry no
+ * audience: a form is drawn only for a viewer the decision point permits this and
+ * `form-submit` (LedgerPlugin's `view='form'`), and anyone else reads a short note.
+ * The manager still asks it on submit.
+ */
+export const FORM_PERMISSIONS: Readonly<Record<string, string>> = {
+  'ledger-entry': 'ledger-record', 'ledger-transfer': 'ledger-adjust', 'ledger-void': 'ledger-adjust',
+  'receipt-record': 'ledger-record', 'receipt-refund': 'receipt-refund',
+  'deposit-make': 'ledger-record', 'deposit-clear': 'ledger-record', 'deposit-unclear': 'ledger-record', 'deposit-undo': 'ledger-adjust',
+  'check-bounce': 'ledger-adjust', 'bounce-repay': 'ledger-record',
+  'lock-settings': 'fund-manage', 'period-lock': 'fund-manage', 'period-unlock': 'fund-manage',
+  'fund-create': 'fund-manage', 'fund-rename': 'fund-manage', 'fund-close': 'fund-manage', 'account-opening': 'fund-manage'
+};
+
 /** The field a LedgerError is about: the form's own mapping, else the message's first word when it is a field. */
 export function fieldOf(ledgerForm: LedgerForm, message: string): string | undefined {
   // A line's refusal goes under that row's field, the key the lines field shows it at: "lines[1].amount" (ngdpbase #1913).

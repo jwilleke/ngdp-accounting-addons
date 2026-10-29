@@ -258,10 +258,31 @@ export interface LineDetailsKind {
  * What a module reads of its own line details, handed to it when it registers
  * the kind and to no one else: every posted receipt line carrying the kind,
  * bounced checks left out, net of refunds. accounting-receivables works out which of
- * its invoices are paid from it.
+ * its invoices are paid from it. `range` keeps only receipts dated in it, both
+ * ends included, as YYYY-MM-DD (accounting-donations: one year's donations).
  */
 export interface LineDetailsReader {
-  lines(): { lineId: string; receiptId: string; date: string; amount: number; details: Record<string, unknown> }[];
+  lines(range?: { from?: string; to?: string }): { lineId: string; receiptId: string; date: string; amount: number; details: Record<string, unknown> }[];
+}
+
+/**
+ * What the Executive Hub's accounting card shows (ngdpbase#2094, D-050): figures
+ * the ledger keeps as totals, read in a few aggregate queries. `pending` is read
+ * only for a viewer who may read the ledger's entries (ledger-read); null otherwise.
+ */
+export interface LedgerExecutiveSummary {
+  /** Open funds, and what all funds hold together. */
+  openFunds: number;
+  fundsTotal: number;
+  /** Cash on Hand's balance: cash and checks received and not yet deposited. */
+  cashOnHand: number;
+  /** The date everything is locked through, as YYYY-MM-DD; null when nothing is. */
+  lockedThrough: string | null;
+  pending: {
+    receiptsToDeposit: { count: number; total: number };
+    depositsNotCleared: { count: number; total: number };
+    bouncesOwed: { count: number; total: number };
+  } | null;
 }
 
 /** Notes a module adds to a receipt slip, e.g. a donation's quid pro quo disclosure: plain text, one per paragraph. */
@@ -1151,7 +1172,7 @@ export default class LedgerManager {
     if (!DETAIL_KIND.test(kind)) throw new Error(`accounting: line details kind '${kind}' must be lowercase letters, digits and dashes`);
     if (this.lineKinds.has(kind)) throw new Error(`accounting: line details kind '${kind}' is already registered`);
     this.lineKinds.set(kind, definition);
-    return { lines: () => this.linesOfKind(kind) };
+    return { lines: (range) => this.linesOfKind(kind, range) };
   }
 
   /** Let a module add notes to receipt slips (accounting-donations: the quid pro quo disclosure). */
@@ -1988,6 +2009,46 @@ export default class LedgerManager {
     }));
   }
 
+  // ── The Executive Hub (ngdpbase#2094, D-050) ───────────────────────────
+
+  /**
+   * The accounting card's figures: what the funds hold, Cash on Hand, and how far the
+   * books are locked (ledger-summary-read); with ledger-read, what waits on the
+   * treasurer too: receipts not yet deposited, deposits the bank has not cleared,
+   * and bounced checks still owed. Aggregate queries only: the hub reads it on
+   * every view.
+   */
+  async executiveSummary(actor: LedgerActor): Promise<LedgerExecutiveSummary> {
+    const funds = await this.fundBalances(actor);
+    const cash = (await this.accountBalances(actor)).find(a => a.accountId === CASH_ON_HAND);
+    const { lockedThrough } = await this.lockStatus(actor);
+    const summary: LedgerExecutiveSummary = {
+      openFunds: funds.filter(f => f.active).length,
+      fundsTotal: funds.reduce((t, f) => t + f.balance, 0),
+      cashOnHand: cash?.balance ?? 0,
+      lockedThrough,
+      pending: null
+    };
+    // The pending items name no one, but they are the ledger's entries: shown only to a viewer who may read those.
+    if (!(await this.decide(actor.subject, { action: 'ledger-read' })).permit) return summary;
+    const counted = (sql: string, ...params: unknown[]) => {
+      const row = this.db.prepare(sql).get(...params) as { n: number; t: number };
+      return { count: row.n, total: row.t };
+    };
+    summary.pending = {
+      receiptsToDeposit: counted(`SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t FROM accounting_documents d
+        WHERE d.kind = 'receipt' AND d.status = 'posted' AND d.account_id = ?
+          AND NOT EXISTS (SELECT 1 FROM accounting_deposit_receipts r WHERE r.receipt_id = d.id AND r.undone = 0)`, CASH_ON_HAND),
+      depositsNotCleared: counted(`SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t FROM accounting_deposits d
+        WHERE d.status = 'posted' AND NOT EXISTS (SELECT 1 FROM accounting_deposit_clearings c WHERE c.deposit_id = d.id AND c.removed = 0)`),
+      bouncesOwed: counted(`SELECT COUNT(*) AS n, COALESCE(SUM(owed), 0) AS t FROM (
+        SELECT b.check_amount + b.fee + b.penalty - COALESCE((SELECT SUM(total) FROM accounting_documents
+          WHERE kind = 'receipt' AND status = 'posted' AND source_type = ? AND source_id = b.id), 0) AS owed
+        FROM accounting_bounces b) WHERE owed > 0`, BOUNCED_CHECK)
+    };
+    return summary;
+  }
+
   // ── Internals ──────────────────────────────────────────────────────────
 
   private newEntry(user: string, input: NewTransaction, link: { sourceType: string; sourceId?: string; voidsId?: string; transferId?: string; provider?: string; confirmationNumber?: string; documentId?: string; lineOf?: string }): Transaction {
@@ -2370,13 +2431,16 @@ export default class LedgerManager {
 
   /** Receipts or refunds, newest first. */
   /** Posted receipt lines carrying a kind of details, bounced checks left out, net of refunds. */
-  private linesOfKind(kind: string): ReturnType<LineDetailsReader['lines']> {
+  private linesOfKind(kind: string, range: { from?: string; to?: string } = {}): ReturnType<LineDetailsReader['lines']> {
+    const from = range.from === undefined ? undefined : isoDate(range.from, 'from');
+    const to = range.to === undefined ? undefined : isoDate(range.to, 'to');
     const refunded = new Map<string, number>();
-    for (const r of this.documents('refund')) for (const l of r.lines) {
+    // A refund is never dated before its receipt, so refunds from `from` on are all that can net a line in range.
+    for (const r of this.documents('refund', { from })) for (const l of r.lines) {
       if (l.status === 'posted' && l.receiptLineId) refunded.set(l.receiptLineId, (refunded.get(l.receiptLineId) ?? 0) + l.amount);
     }
     const out: ReturnType<LineDetailsReader['lines']> = [];
-    for (const r of this.documents('receipt') as Receipt[]) {
+    for (const r of this.documents('receipt', { from, to }) as Receipt[]) {
       if (r.bounced) continue;
       for (const l of r.lines) {
         const details = l.details[kind];
@@ -2388,9 +2452,11 @@ export default class LedgerManager {
     return out;
   }
 
-  private documents(kind: 'receipt' | 'refund', { includeVoided = false } = {}): (Receipt | Refund)[] {
-    return (this.db.prepare(`SELECT id FROM accounting_documents WHERE kind = ? ${includeVoided ? '' : "AND status = 'posted'"}
-      ORDER BY date DESC, created_at DESC`).all(kind) as { id: string }[]).map(r => this.document(r.id));
+  private documents(kind: 'receipt' | 'refund', { includeVoided = false, from, to }: { includeVoided?: boolean; from?: string; to?: string } = {}): (Receipt | Refund)[] {
+    const where = ['kind = ?', includeVoided ? '' : "status = 'posted'", from ? 'date >= ?' : '', to ? 'date <= ?' : ''].filter(Boolean);
+    const params = [kind, ...(from ? [from] : []), ...(to ? [to] : [])];
+    return (this.db.prepare(`SELECT id FROM accounting_documents WHERE ${where.join(' AND ')}
+      ORDER BY date DESC, created_at DESC`).all(...params) as { id: string }[]).map(r => this.document(r.id));
   }
 
   private stamp(): string {

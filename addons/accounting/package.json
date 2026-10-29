@@ -32,6 +32,8 @@
   "files": [
     "index.js",
     "forms.js",
+    "executive.js",
+    "pageAudience.js",
     "managers/*.js",
     "routes/*.js",
     "plugins/*.js",

@@ -77,6 +77,22 @@
       ]
     },
     {
+      "id": "accounting-receivables-executive",
+      "name": "The board reads every unit's account",
+      "description": "Core's executive role (the board, ngdpbase#2093) reads every unit's account (D-047, D-050): its invoices, payments and balance, its folios, and the balances brought forward, write-offs and liens recorded on them. It issues, voids and records nothing; that stays the treasurer's.",
+      "priority": 90,
+      "effect": "allow",
+      "subjects": [
+        { "type": "role", "value": "executive" }
+      ],
+      "resources": [
+        { "type": "page", "pattern": "*" }
+      ],
+      "actions": [
+        "account-read"
+      ]
+    },
+    {
       "id": "accounting-receivables-issue-job",
       "name": "The scheduled invoice run issues invoices",
       "description": "A scheduled run of accounting-receivables.issue-invoices acts as the job (ngdpbase #1999): it holds only what issuing the month's invoices needs, reading each unit's billing through the accommodation add-on's permission and the owners it emails through core's identity-read. Run now acts as the admin who clicked.",
@@ -102,5 +118,5 @@
       ]
     }
   ],
-  "_comment_account_read": "account-read lets someone see every unit's account (invoices, payments, balance) without the rest of the ledger: for the board (D-047). No role holds it by default; a site grants it to its board in its own policy."
+  "_comment_account_read": "account-read lets someone see every unit's account (invoices, payments, balance, folios) without the rest of the ledger: for the board (D-047). Core's executive role holds it through this add-on's policy (D-050); a site that keeps its board in another role grants it there in its own policy."
 }

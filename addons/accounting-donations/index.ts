@@ -10,13 +10,16 @@
  *   ngdpbase.addons.accounting-donations.enabled     — true/false (defaults to false)
  *   ngdpbase.addons.accounting-donations.categories  — chart codes a donation may use, e.g. ["4200"]
  *   ngdpbase.addons.accounting-donations.wording     — { "quid-pro-quo": "…{amount}…{deductible}…{goods}…{value}" }
+ *   ngdpbase.addons.accounting-donations.executive-top-donors — how many of the year's largest donors the Executive Hub card names (3)
  *
  * The exported `name` MUST equal `ngdpbase.slug` in package.json.
  */
 import type { ActorContext, AddonHost, Decision, PluginFormatters } from '@jwilleke/ngdpbase-types';
 import { DEFAULT_QUID_PRO_QUO, donationSlipNotes, donationValidator, type DonationSettings, type ReceiptLike } from './donation.js';
 import { registerDonationForms } from './forms.js';
-import DonationManager, { type Contacts, type DonationOptions, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
+import DonationManager, { type Contacts, type DonationLine, type DonationOptions, type DonationsDb, type LedgerLike as DonationLedger } from './managers/DonationManager.js';
+import { donationsExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
+import { clearShippedAudience, shippedPageUuids, type PageDoor } from './pageAudience.js';
 import { DONATIONS_LEDGER_TABLE, DONATIONS_MIGRATIONS } from './managers/migrations.js';
 import DonationsPlugin from './plugins/DonationsPlugin.js';
 import donationRoutes from './routes/api.js';
@@ -31,7 +34,8 @@ interface Engine {
 
 /** The slice of the accounting add-on's LedgerManager this add-on calls. */
 interface LedgerLike extends DonationLedger {
-  registerLineDetails(kind: string, definition: ReturnType<typeof donationValidator>): void;
+  /** Returns this add-on's reader of its own `donation` lines (the accounting add-on's LineDetailsReader). */
+  registerLineDetails(kind: string, definition: ReturnType<typeof donationValidator>): { lines(range?: { from?: string; to?: string }): DonationLine[] };
   registerSlipNotes(notes: (receipt: ReceiptLike) => string[]): void;
 }
 
@@ -84,8 +88,15 @@ const AccountingDonationsAddon = {
       },
       formatMoney: (minor) => plugins?.formatters.formatMoney(minor, ledger.currencyCode()) ?? String(minor)
     };
+    // The ledger's reader of this add-on's own `donation` lines, handed over when the kind is registered below.
+    let donationLines: ReturnType<LedgerLike['registerLineDetails']> | null = null;
     const donations = new DonationManager({
       host, db, ledger, categories: settings.categories, formatMoney: settings.formatMoney,
+      donationLines: (range) => donationLines?.lines(range) ?? [],
+      topDonors: () => {
+        const n = setting('executive-top-donors', 3);
+        return typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : 3;
+      },
       // Donors are core's contacts (ngdpbase #1930): persons and organizations, through their doors.
       wording: () => {
         const org = (setting('organization', {}) ?? {}) as Record<string, unknown>;
@@ -114,15 +125,26 @@ const AccountingDonationsAddon = {
       recordAudit: async (record) => { await host.recordAuditEvent(auditSink, { ...record, result: 'success' } as never); },
       decide: async (subject, request) => (pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' })
     });
-    ledger.registerLineDetails('donation', donationValidator({ ...settings, pledgeIsOpen: (id) => donations.pledgeIsOpen(id) }));
+    donationLines = ledger.registerLineDetails('donation', donationValidator({ ...settings, pledgeIsOpen: (id) => donations.pledgeIsOpen(id) }));
     ledger.registerSlipNotes(donationSlipNotes(settings));
     engine.registerManager('DonationManager', donations);
     await engine.getManager<{ registerPlugin(name: string, plugin: unknown): Promise<void> }>('PluginManager')?.registerPlugin('Donations', DonationsPlugin);
     engine.app?.use('/api/accounting-donations', donationRoutes(engine, host));
     await registerDonationForms(engine, host);
+    // The board's card on core's Executive Hub (ngdpbase#2094, D-050), for holders of ledger-read: this year, in the site's time zone.
+    const jobs = engine.getManager<{ scheduleTimeZone(): string }>('BackgroundJobManager');
+    const thisYear = () => (jobs ? host.zonedParts(new Date(), jobs.scheduleTimeZone()).year : new Date().getFullYear());
+    registerExecutiveCard(engine.getManager<CardRegistry>('AddonsManager'), donationsExecutiveCard(donations, settings.formatMoney, thisYear));
     const fmt = engine.getManager<{ formatters: PluginFormatters }>('PluginManager')?.formatters;
     // Core's formatters (escapeHtml, formatAsTable); without them the card stays off rather than build HTML by hand.
     profile = fmt ? { donations, f: fmt, money: settings.formatMoney } : null;
+    // Upgrade (ngdpbase#2094): a page seeded with the old shipped audience loses it; its data asks its own permission.
+    try {
+      await clearShippedAudience(engine.getManager<PageDoor>('PageManager'),
+        host.systemContext('accounting-donations: take the shipped audience off its own pages (ngdpbase#2094)'), 'accounting-donations', shippedPageUuids(), host.logger);
+    } catch (err) {
+      host.logger.warn(`[accounting-donations] Could not take the shipped audience off its pages: ${(err as Error).message}`);
+    }
     unavailable = null;
     host.logger.info('[accounting-donations] Donations ready');
   },
