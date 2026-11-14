@@ -27,6 +27,7 @@ import { registerForms } from './forms.js';
 import { ledgerExecutiveCard, registerExecutiveCard, type CardRegistry } from './executive.js';
 import { clearShippedAudience, shippedPageUuids, type PageDoor } from './pageAudience.js';
 import LedgerPlugin from './plugins/LedgerPlugin.js';
+import { ledgerExportSource } from './exportSource.js';
 import LedgerManager, { accountsFrom, categoriesFrom, type LedgerDb, type RecordAudit } from './managers/LedgerManager.js';
 import ReceiptManager, { receiptProvidersFrom } from './managers/ReceiptManager.js';
 import { ACCOUNTING_LEDGER_TABLE, ACCOUNTING_MIGRATIONS } from './managers/migrations.js';
@@ -92,7 +93,7 @@ const AccountingAddon = {
     const pdp = engine.getManager<PolicyDecisionPointLike>('PolicyDecisionPoint');
     // The ledger asks ngdpbase's decision point for every action (D-025).
     const decide = async (subject: unknown, request: { action: string }): Promise<Decision> =>
-      pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point' };
+      pdp ? pdp.decide(subject, request) : { permit: false, applicable: false, reason: 'no_decision_point', policyIds: [] };
     const categories = (): unknown => config?.getProperty('ngdpbase.addons.accounting.categories', {});
 
     const accounts = (): unknown => config?.getProperty('ngdpbase.addons.accounting.accounts', {});
@@ -125,6 +126,8 @@ const AccountingAddon = {
     };
     const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv, personOf });
     engine.registerManager('LedgerManager', ledger);
+    // The CSV download through ngdpbase's export engine (ngdpbase#2174, v5.45.0); the ledger stays the one door.
+    host.registerExportSource(ledgerExportSource(ledger));
     // Say once, at startup, what the account configuration gets wrong; history is never lost (D-031).
     accountsFrom(accounts(), (m) => logger.warn(m));
     // The chart, and the two categories a bounced check needs (D-032, D-034).
