@@ -16,8 +16,9 @@
  * Every read goes through LedgerManager as the viewer (viewerActor), so the
  * ledger's own permissions decide: balances need ledger-summary-read, entries
  * need ledger-read, a summary needs ledger-summary-read (no names). The
- * download links lead to /api/accounting/export, which asks ledger-export and
- * a fresh sign-in itself. ngdpbase caches the rendered page per viewer
+ * download links are shown only to a holder of ledger-export and lead to
+ * ngdpbase's Export screen for the ledger source (exportSource.ts), which asks
+ * ledger-export and a fresh sign-in through the ledger. ngdpbase caches the rendered page per viewer
  * (username and roles) and re-renders it after the ledger's next write (the
  * ledger bumps its topic).
  * Formatting comes from ngdpbase's plugin helpers, which PluginManager hands
@@ -27,6 +28,7 @@ import { gatedForm } from './gatedForm.js';
 import { FORM_PERMISSIONS } from '../forms.js';
 import type { PluginFormatters } from '@jwilleke/ngdpbase-types';
 import type LedgerManager from '../managers/LedgerManager.js';
+import { LEDGER_EXPORT_SOURCE, ledgerExportRef } from '../exportSource.js';
 import { CASH_ON_HAND, accountLabel } from '../managers/LedgerManager.js';
 import type { AccountBalance, Bounce, Deposit, FundBalance, LedgerActor, PeriodSummary } from '../managers/LedgerManager.js';
 
@@ -263,8 +265,9 @@ function summaryTables(f: PluginFormatters, s: PeriodSummary, withExport: boolea
       footer: [`<strong>Total</strong> (net ${money(net)})`, money(s.totals.income), money(s.totals.expense)]
     }
   );
-  const link = (kind: string, label: string) =>
-    `<a class="btn btn-sm btn-outline-secondary me-2" href="/api/accounting/export?kind=${kind}&amp;from=${encodeURIComponent(s.period.from)}&amp;to=${encodeURIComponent(s.period.to)}">${label}</a>`;
+  // The downloads run through ngdpbase's export engine: its Export screen for the ledger source, the ref naming the kind and period.
+  const link = (kind: 'transactions' | 'funds', label: string) =>
+    `<a class="btn btn-sm btn-outline-secondary me-2" href="/export/source/${encodeURIComponent(LEDGER_EXPORT_SOURCE)}?ref=${encodeURIComponent(ledgerExportRef(kind, s.period))}">${label}</a>`;
   const downloads = withExport ? `<p>${link('transactions', 'Download entries (CSV)')}${link('funds', 'Download fund summary (CSV)')}</p>` : '';
   return `${heading}\n<h4>Funds</h4>\n${funds}\n<h4>Accounts</h4>\n<p class="text-muted small">The same money, by where it sits.</p>\n${accounts}\n<h4>Income and expense by category</h4>\n<p class="text-muted small">Transfers between funds are left out: they net to zero.</p>\n${categories}\n${downloads}`;
 }
@@ -308,7 +311,10 @@ async function render(f: PluginFormatters, ledger: LedgerManager, actor: LedgerA
   if (view === 'summary') {
     const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
     const period = ledger.period({ month: str(params.month), from: str(params.from), to: str(params.to) });
-    return summaryTables(f, await ledger.periodSummary(actor, period), parseBoolParam(params.export as string | undefined, false));
+    const summary = await ledger.periodSummary(actor, period);
+    // Download links only for someone who holds ledger-export: the engine's screen is a 404 for anyone else.
+    const withExport = parseBoolParam(params.export as string | undefined, false) && await ledger.mayExport(actor);
+    return summaryTables(f, summary, withExport);
   }
   return note(f, `Ledger: unknown view '${view}'; use balances, accounts, entries, deposits, bounces, lock or summary.`);
 }

@@ -82,7 +82,7 @@ The add-ons' forms are shipped with them and are read-only on the site. When an 
 The add-on ships a __treasurer__ role holding every accounting permission. Give it to the people who keep the books (__Admin → Users__).
 
 - The role needs a strong sign-in: a passkey (`required-aal: 2`, capped at what the account can reach).
-- For now, voiding, transfers, refunds and the CSV export do __not__ ask for a fresh sign-in ([D-030](../plans/decisions.md#d-030-step-up-off-for-accountings-money-actions-for-now)): after the sign-in, the form came back empty and had to be filled in again. The treasurer's passkey sign-in and the audit record still apply. To turn it back on, add `"step-up": true` to `ledger-adjust`, `receipt-refund` and `ledger-export` in the add-on's `config/default-config.json`.
+- For now, voiding, transfers, refunds and the CSV export do __not__ ask for a fresh sign-in ([D-030](../plans/decisions.md#d-030-step-up-off-for-accountings-money-actions-for-now)): after the sign-in, the form came back empty and had to be filled in again. The treasurer's passkey sign-in and the audit record still apply. To turn it back on, add `"step-up": true` to `ledger-adjust`, `receipt-refund` and `ledger-export` in the add-on's `config/default-config.json`. The CSV download now runs through ngdpbase's export engine, which cannot send a person to sign in again: with step-up on for `ledger-export`, sign in again first, then download.
 - Every write is recorded in the audit log with who did it and when; if the record cannot be written, the money does not move.
 
 The treasurer's pages (Accounting, Ledger, Record a Receipt, Refund a Receipt, Record an Entry, Move Money Between Funds, Void an Entry, Deposits, Undo a Deposit, Create a Fund, Rename a Fund, Close a Fund, Set an Account's Opening Balance, Monthly Summary) are locked: only an administrator can change them.
@@ -157,7 +157,7 @@ Raising ngdpbase is safe as long as it stays at or above the add-on's `minVersio
 
 ## Known gaps
 
-- No QuickBooks or Wave formats yet (#20); use the CSV.
+- No QuickBooks or Wave formats yet (#20); use the CSV. The download links on the Monthly Summary open ngdpbase's Export screen (ngdpbase 5.45.0 or later); the add-on's README says what the CSV holds.
 - No online receipts yet (Stripe cards and ACH, #49, deferred); receipts are recorded by hand.
 - No events module or membership tiers yet (#6, #2, deferred). Donations are the `accounting-donations` add-on ([Donations guide](donations-guide.md)); invoices for assessments, rent or dues are the `accounting-receivables` add-on ([its README](../../addons/accounting-receivables/README.md)), whose units, owners and billing addresses come from the accommodation add-on.
 - Changing the database key, or encrypting a ledger that was started without one, is not built; it is ngdpbase core's ([ngdpbase#2078](https://github.com/jwilleke/ngdpbase/issues/2078)).

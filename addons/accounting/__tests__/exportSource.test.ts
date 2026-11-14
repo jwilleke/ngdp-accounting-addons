@@ -78,7 +78,7 @@ describe('the ledger as an export source', () => {
   test('a reader with ledger-export and a recent sign-in gets one record per row, with the old columns in the old order', async () => {
     expect(await source.mayExport(OCT, user())).toBe(true);
     const items = await source.read(OCT, user(), info);
-    expect(items).toHaveLength(3); // the opening balance's receipt, the dues receipt and the supplies entry dated in October
+    expect(items).toHaveLength(2); // the dues receipt and the supplies entry
     expect(items?.every(i => i.kind === 'record' && i.name === 'ledger-transactions-2026-10-01-to-2026-10-31')).toBe(true);
     expect(Object.keys(rowsOf(items)[0])).toEqual(TRANSACTION_COLUMNS);
     expect(rowsOf(items).map(r => r.amount_minor)).toContain(20000);
@@ -121,9 +121,10 @@ describe('the ledger as an export source', () => {
     await expect(source.read(OCT, user(), info)).rejects.toThrow(/audit down/);
   });
 
-  test('an empty period hands over nothing and records nothing', async () => {
+  test('an empty period hands over nothing (the engine says there is nothing to export); the record says 0 rows', async () => {
     expect(await source.read(ledgerExportRef('transactions', { from: '2020-01-01', to: '2020-01-31' }), user(), info)).toBeNull();
-    expect(audit).toEqual([]);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].metadata).toMatchObject({ rows: 0, via: 'ice' });
   });
 
   test('the old download and the engine give the same rows: one code path', async () => {
