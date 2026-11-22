@@ -4,7 +4,7 @@ The base accounting add-on for [ngdpbase](https://github.com/jwilleke/ngdpbase):
 
 - __Slug:__ `accounting`. It is the registry key and the config key, and equals the `name` exported from `index.ts`.
 - __Type:__ `additive`.
-- __Requires:__ ngdpbase 5.45.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on for the screens (`optionalDependencies: ['forms']`).
+- __Requires:__ ngdpbase 5.46.0 or later (`ngdpbase.minVersion` in `package.json`); the forms add-on for the screens (`optionalDependencies: ['forms']`).
 
 Turning it on for a site: [docs/guides/accounting-guide.md](../../docs/guides/accounting-guide.md). The ledger's API for other add-ons: [docs/managers/LedgerManager.md](../../docs/managers/LedgerManager.md). Why it is built this way: [docs/plans/ledger-design.md](../../docs/plans/ledger-design.md) and [docs/plans/decisions.md](../../docs/plans/decisions.md).
 

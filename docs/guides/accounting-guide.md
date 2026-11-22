@@ -1,7 +1,7 @@
 ---
 name: Accounting site guide
 description: Turning on the accounting add-on, giving the treasurer and the board access, and what it does not do yet
-dateModified: 2026-10-18
+dateModified: 2026-11-22
 category: guides
 relatedModules: [LedgerManager, DatabaseManager, PolicyDecisionPoint, FormsAddon]
 ---
@@ -157,7 +157,7 @@ Raising ngdpbase is safe as long as it stays at or above the add-on's `minVersio
 
 ## Known gaps
 
-- No QuickBooks or Wave formats yet (#20); use the CSV. The download links on the Monthly Summary open ngdpbase's Export screen (ngdpbase 5.45.0 or later); the add-on's README says what the CSV holds.
+- No QuickBooks or Wave formats yet (#20); use the CSV. The download links on the Monthly Summary open ngdpbase's Export screen (ngdpbase 5.46.0 or later); the add-on's README says what the CSV holds.
 - No online receipts yet (Stripe cards and ACH, #49, deferred); receipts are recorded by hand.
 - No events module or membership tiers yet (#6, #2, deferred). Donations are the `accounting-donations` add-on ([Donations guide](donations-guide.md)); invoices for assessments, rent or dues are the `accounting-receivables` add-on ([its README](../../addons/accounting-receivables/README.md)), whose units, owners and billing addresses come from the accommodation add-on.
 - Changing the database key, or encrypting a ledger that was started without one, is not built; it is ngdpbase core's ([ngdpbase#2078](https://github.com/jwilleke/ngdpbase/issues/2078)).
