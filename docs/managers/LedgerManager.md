@@ -56,7 +56,8 @@ Step-up (a fresh sign-in) is __off for now__ on every accounting permission ([D-
 | `setAccountOpening` | `fund-manage` | no | `fund-manage` (`account-opening`) |
 | `setLockSettings`, `lockPeriod`, `unlockPeriod` | `fund-manage` | no | `fund-manage` (`lock-settings`, `period-lock`, `period-unlock`) |
 | `accountNumbers` | `fund-manage` | no | `fund-manage` (`account-number-view`) |
-| `exportCsv` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
+| `exportCsv`, `exportRecords` | `ledger-export` | off for now | `ledger-export` (`ledger-export`) |
+| `mayExport` | `ledger-export` | no | — |
 | `toFormOptions` | each list its own: `funds`, `accounts` `ledger-summary-read`; `entries`, `receipts`, `refundable-lines`, `deposit-receipts`, `deposits`, `uncleared-deposits`, `cleared-deposits`, `bounceable-receipts`, `unsettled-bounces` `ledger-read`; `bank-accounts` `ledger-summary-read`; `categories`, `payment-methods` `ledger-record` | no | — |
 
 The permissions, their audit rules and the `treasurer` role's policy are declared in `config/default-config.json`. Writes whose audit rule says `on-failure: refuse` stop if their audit record cannot be written: no money moves without a record. The record's "who" comes from ngdpbase's `actorOf`, so under proxy access it names both the person represented and the person who acted.
@@ -99,7 +100,9 @@ Amounts are integer minor units (cents) in the site currency, `currencyCode()`. 
 - `fundBalances(actor)` → per fund: opening balance, money in, money out, balance (opening + in − out, posted entries only).
 - `period({ month?, from?, to? })` → `{ from, to }`. `month` is `current`, `previous` or `YYYY-MM`; the default is the current month.
 - `periodSummary(actor, period)` → per fund and per account start, opened, in, out and end, and per category income and expense, with totals. Transfers and deposits are left out of the categories; they net to zero. It carries no names, so a summary reader never sees who paid.
-- `exportCsv(actor, 'transactions' | 'funds', period)` → `{ filename, body, sha256 }`. Built with ngdpbase's one CSV writer (`ExportManager.toCsv`); the audit record carries the file's SHA-256.
+- `exportCsv(actor, 'transactions' | 'funds', period)` → `{ kind, period, filename, body, rows, sha256 }`, where `rows` is the row count. Built with ngdpbase's one CSV writer (`ExportManager.toCsv`); the audit record carries the file's SHA-256.
+- `exportRecords(actor, 'transactions' | 'funds', period, via?)` → `{ kind, period, filename, headers, rows, body, sha256 }`, where `rows` holds the values themselves. The one code path behind `exportCsv` and the export engine's source (`exportSource.ts`); the audit record is written before anything is handed over, and `via: 'ice'` is noted in it when the export engine asked.
+- `mayExport({ subject })` → whether the caller holds `ledger-export`, a recent sign-in or not. The export engine asks it to decide whether to offer the download; it records nothing and refuses nothing, and a person who only needs to sign in again still holds it.
 - `toFormOptions({ list })` → choices for a forms add-on dropdown: `funds`, `accounts`, `bank-accounts`, `entries`, `receipts`, `deposit-receipts`, `deposits` (posted receipts with money left to refund), `categories` (with `kind=in` only income types, `kind=out` the rest) or `payment-methods`. Reached from a form definition as `optionsSource: "fetch:LedgerManager.toFormOptions(list=funds)"`; each list asks its own permission of the viewer, so a dropdown never offers what its reader may not see.
 
 A bad input throws `LedgerError` with a status (400, 404 or 409) and a message naming the field. A refusal throws ngdpbase's `ApiError`.

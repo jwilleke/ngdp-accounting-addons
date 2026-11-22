@@ -520,6 +520,20 @@ export interface LedgerExport {
   sha256: string;
 }
 
+/** An export before it is a file: the rows as values, for the export engine, with the ledger's own CSV and hash. */
+export interface LedgerExportRecords {
+  kind: 'transactions' | 'funds';
+  period: Period;
+  filename: string;
+  headers: string[];
+  rows: unknown[][];
+  body: string;
+  sha256: string;
+}
+
+/** The decision point's reason for a holder whose sign-in is not fresh enough (ngdpbase STEP_UP_REASON; types ship no runtime). */
+const STEP_UP_REASON = 'step-up';
+
 export interface LedgerOptions {
   /** ngdpbase's host for this add-on: the refusal type, actorOf and the audit event names. */
   host: LedgerHost;
@@ -810,7 +824,7 @@ export default class LedgerManager {
     this.currency = options.currency;
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? randomUUID;
-    this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point' }));
+    this.decide = options.decide ?? (async () => ({ permit: false, applicable: false, reason: 'no_decision_point', policyIds: [] }));
     this.categoriesConfig = options.categories ?? (() => ({}));
     this.accountsConfig = options.accounts ?? (() => ({}));
     this.bouncedChecksConfig = options.bouncedChecks ?? (() => ({}));
@@ -952,6 +966,31 @@ export default class LedgerManager {
    * cannot be written there is no file.
    */
   async exportCsv(actor: LedgerActor, kind: 'transactions' | 'funds', period: Period): Promise<LedgerExport> {
+    const records = await this.exportRecords(actor, kind, period);
+    return { kind, period, filename: records.filename, body: records.body, rows: records.rows.length, sha256: records.sha256 };
+  }
+
+  /**
+   * Whether this caller holds ledger-export, a recent sign-in or not. The
+   * export engine asks it to decide whether to offer the download: it records
+   * nothing and refuses nothing. A person who needs only to sign in again
+   * still holds it; exportRecords is what asks for the fresh sign-in.
+   */
+  async mayExport(actor: Pick<LedgerActor, 'subject'>): Promise<boolean> {
+    const decision = await this.decide(actor.subject, { action: 'ledger-export' });
+    return decision.permit || decision.reason === STEP_UP_REASON;
+  }
+
+  /**
+   * The one code path behind every export: the CSV download (exportCsv) and
+   * the export engine's source (exportSource.ts). The rows as values, the
+   * CSV the ledger itself would write from them, its SHA-256, and the audit
+   * record, written before anything is handed over. The hash is of the
+   * ledger's own CSV from these rows; when core's file maker writes the
+   * file (CRLF and the formula guard are the same, cell types can differ) its
+   * bytes are core's, so the hash vouches for the rows handed over.
+   */
+  async exportRecords(actor: LedgerActor, kind: 'transactions' | 'funds', period: Period, via?: 'ice'): Promise<LedgerExportRecords> {
     await this.authorize(actor, 'ledger-export');
     if (kind !== 'transactions' && kind !== 'funds') throw new LedgerError(400, "kind must be 'transactions' or 'funds'");
     actor.actingUsername(); // a person must be signed in to take the file
@@ -985,9 +1024,9 @@ export default class LedgerManager {
     await this.audit(actor, {
       eventType: this.host.addonAuditEventName('ledger-export'), action: 'ledger-export',
       severity: 'high', resource: `${kind}:${period.from}..${period.to}`, resourceType: 'accounting-export',
-      metadata: { kind, from: period.from, to: period.to, rows: rows.length, sha256 }
+      metadata: { kind, from: period.from, to: period.to, rows: rows.length, sha256, ...(via ? { via } : {}) }
     });
-    return { kind, period, filename: `ledger-${kind}-${period.from}-to-${period.to}.csv`, body, rows: rows.length, sha256 };
+    return { kind, period, filename: `ledger-${kind}-${period.from}-to-${period.to}.csv`, headers, rows, body, sha256 };
   }
 
   // ── Decisions ──────────────────────────────────────────────────────────

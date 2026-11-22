@@ -135,9 +135,17 @@ describe('reports', () => {
     expect(html).toContain('2026-10-01 to 2026-10-31');
     expect(html).toContain('<strong>$292.00</strong>');
     expect(html).toContain('4100 Dues');
-    expect(html).not.toContain('/api/accounting/export');
+    expect(html).not.toContain('/export/source/');
     const withLinks = await render({ view: 'summary', month: '2026-10', export: 'true' });
-    expect(withLinks).toContain('/api/accounting/export?kind=transactions&amp;from=2026-10-01&amp;to=2026-10-31');
+    // The download is ngdpbase's Export screen for the ledger source, the ref naming the kind and period.
+    expect(withLinks).toContain('/export/source/accounting.ledger?ref=transactions%3A2026-10-01..2026-10-31');
+    expect(withLinks).toContain('/export/source/accounting.ledger?ref=funds%3A2026-10-01..2026-10-31');
+    expect(withLinks).not.toContain('/api/accounting/export');
+    // Someone without ledger-export sees no Export, even on a page that asks for the links.
+    const reader = { ...ledger.viewerActor({ username: 'reader', granted: ['ledger-summary-read'] }) };
+    const without = await renderLedgerView(testFormatters, ledger, reader, { view: 'summary', month: '2026-10', export: 'true' });
+    expect(without).toContain('2026-10-01 to 2026-10-31');
+    expect(without).not.toContain('/export/source/');
     expect(await render({ view: 'summary', month: 'May' })).toContain('month must be current, previous or YYYY-MM');
   });
 });
