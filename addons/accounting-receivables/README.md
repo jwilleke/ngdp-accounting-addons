@@ -4,7 +4,7 @@ Receivables for the [accounting](../accounting/README.md) add-on of [ngdpbase](h
 
 - __Slug:__ `accounting-receivables`, equal to the `name` exported from `index.ts`.
 - __Type:__ `additive`. __Depends on__ `accounting`; the forms add-on carries the screens.
-- __Requires:__ ngdpbase 5.31.0 or later.
+- __Requires:__ ngdpbase 5.46.0 or later.
 - __Accounts:__ read from managers named in configuration, and never copied. A condominium uses the accommodation add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)): `AccommodationManager` (`accounts-manager`) for `list()`, `get(id)`, `assessment(id)` (amount, monthly or annual, due day, from the accommodation's category) and `lateCharges()`; and `ResidencyManager` (`billing-manager`) for `billing(ctx, id, { on })`, where the unit's invoices go and its owners on the charge's due date, and `ownUnits(ctx)`, the units the viewer owns today.
 - __Data:__ invoices are in this add-on's own database, declared as `ngdpbase.addons.accounting-receivables.database`, outside the ledger, which holds only money that moved. A payment is a receipt made through the accounting add-on's `ReceiptManager`, whose line carries `receivable` details (`{ account, invoiceId }`) registered with `LedgerManager.registerLineDetails`. The accounting database is never touched.
 - __Permissions:__ its own `invoice-issue` (issue, void and email invoices), which the add-on's policy grants the treasurer role; recording a payment is accounting's `ledger-record`. Its own `account-read` (every unit's account), which the add-on's policy grants ngdpbase's `executive` role (D-050).

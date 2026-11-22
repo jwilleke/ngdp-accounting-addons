@@ -126,7 +126,7 @@ const AccountingAddon = {
     };
     const ledger = new LedgerManager({ host, db, recordAudit, currency, decide, categories, accounts, bouncedChecks, dataChanged, formatMoney, toCsv, personOf });
     engine.registerManager('LedgerManager', ledger);
-    // The CSV download through ngdpbase's export engine (ngdpbase#2174, v5.45.0); the ledger stays the one door.
+    // The CSV download through ngdpbase's export engine (ngdpbase#2174, v5.46.0); the ledger stays the one door.
     host.registerExportSource(ledgerExportSource(ledger));
     // Say once, at startup, what the account configuration gets wrong; history is never lost (D-031).
     accountsFrom(accounts(), (m) => logger.warn(m));

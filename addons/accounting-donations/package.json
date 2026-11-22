@@ -22,7 +22,7 @@
   "ngdpbase": {
     "slug": "accounting-donations",
     "type": "additive",
-    "minVersion": "5.31.0"
+    "minVersion": "5.46.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

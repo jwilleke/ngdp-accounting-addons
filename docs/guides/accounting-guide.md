@@ -14,7 +14,7 @@ Accounting keeps funds and a ledger of money in and out. It is not a full accoun
 
 ## Before you start
 
-- ngdpbase __5.31.0 or later__. The add-on declares this as its `minVersion`; an older core refuses to load it.
+- ngdpbase __5.46.0 or later__. The add-on declares this as its `minVersion`; an older core refuses to load it. 5.46.0 brings the CSV export of records with no row limit, which the ledger download uses.
 - The site's database on: `ngdpbase.database.provider` set to `sqlite`.
 - The __forms__ add-on enabled. The treasurer's screens are forms; without it the ledger still works through the API and the `[{Ledger}]` plugin, but there is nothing to type into.
 - `NGDPBASE_DATABASE_KEY` set in the site's environment or `.env`, so the ledger is encrypted. Without it the ledger is plain SQLite and the site warns at startup.

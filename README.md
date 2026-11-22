@@ -16,7 +16,7 @@ Not built yet: online payments (Stripe), membership tiers and renewals, event fe
 - The ledger's API for other add-ons: [docs/managers/LedgerManager.md](docs/managers/LedgerManager.md)
 - Every decision and why: [docs/plans/decisions.md](docs/plans/decisions.md)
 
-__Requires:__ ngdpbase v5.31.0 or later. The invoices read units, owners and billing addresses from the `accommodation` add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)).
+__Requires:__ ngdpbase v5.46.0 or later. The invoices read units, owners and billing addresses from the `accommodation` add-on ([ngdpbase-addons](https://github.com/jwilleke/ngdpbase-addons)).
 
 ## Who it is for
 
